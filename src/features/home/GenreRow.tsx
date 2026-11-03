@@ -37,19 +37,23 @@ function GenreTile({ genre }: { genre: BaseItem }) {
   );
 }
 
-export function GenreRow({ preferred }: { preferred: string[] }) {
+export function GenreRow({ preferred, counts }: { preferred: string[]; counts?: Map<string, number> }) {
   const genres = useQuery({
     queryKey: ["genres", "home"],
     queryFn: () => getGenres({ includeItemTypes: ["Movie", "Series"] }).then((r) => r.Items),
     staleTime: 30 * 60_000,
   });
 
-  // The user's own leading genres first, then the rest of the library's.
+  // Real genres only: drop tiny ones and lowercase tag imports (e.g. AniDB's "afterlife").
+  // The user's own leading genres come first, then the library's biggest.
   const ordered = useMemo(() => {
-    const list = genres.data ?? [];
+    const count = (name: string) => counts?.get(name) ?? 0;
+    const list = (genres.data ?? []).filter((g) => /^\p{Lu}/u.test(g.Name) && (!counts || count(g.Name) >= 3));
     const rank = new Map(preferred.map((g, i) => [g, i]));
-    return [...list].sort((a, b) => (rank.get(a.Name) ?? 999) - (rank.get(b.Name) ?? 999) || a.Name.localeCompare(b.Name)).slice(0, 18);
-  }, [genres.data, preferred]);
+    return [...list]
+      .sort((a, b) => (rank.get(a.Name) ?? 999) - (rank.get(b.Name) ?? 999) || count(b.Name) - count(a.Name) || a.Name.localeCompare(b.Name))
+      .slice(0, 16);
+  }, [genres.data, preferred, counts]);
 
   if (!genres.isPending && !ordered.length) return null;
   return (

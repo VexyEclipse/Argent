@@ -103,6 +103,8 @@ export interface ScoredItem {
   strength: Strength;
   components: Record<keyof Omit<Weights, "impressionPenalty" | "negative" | "diversity" | "rotation">, number>;
   reason: Reason;
+  /** All applicable reasons, most specific first (reason === reasons[0]). */
+  reasons: Reason[];
 }
 
 /** Signals gathered from the server beyond item metadata. */

@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getNextUp, getSeasons } from "@/api/jellyfin";
+import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getSeasons } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, formatRuntime, progressOf } from "@/api/format";
 import type { BaseItem } from "@/api/types";
@@ -10,6 +10,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { MediaCard } from "@/components/MediaCard";
 import { ErrorState, Spinner } from "@/components/States";
+import { seriesPlayTarget } from "@/features/player/playback";
 import { Hero } from "./Hero";
 import { CastRow, InfoTable, SimilarRow } from "./Sections";
 import { useTogglePlayed } from "./useItemActions";
@@ -62,24 +63,12 @@ function MovieDetails({ item }: { item: BaseItem }) {
 function SeriesDetails({ item }: { item: BaseItem }) {
   const [params, setParams] = useSearchParams();
   const seasons = useQuery({ queryKey: ["seasons", item.Id], queryFn: () => getSeasons(item.Id).then((r) => r.Items), staleTime: 60_000 });
-  const nextUp = useQuery({
-    queryKey: ["nextup", item.Id],
-    // Rewatching enabled so a finished series still offers "play again from S1E1".
-    queryFn: () => getNextUp({ seriesId: item.Id, limit: 1, enableRewatching: true }).then((r) => r.Items[0] ?? null),
-    staleTime: 30_000,
-  });
+  const nextUp = useQuery({ queryKey: ["nextup", item.Id], queryFn: () => seriesPlayTarget(item.Id), staleTime: 30_000 });
 
   const seasonList = seasons.data ?? [];
   const selectedId = params.get("season") ?? nextUp.data?.SeasonId ?? seasonList.find((s) => (s.IndexNumber ?? 0) > 0)?.Id ?? seasonList[0]?.Id;
 
-  // Fallback when Next Up has nothing: the first episode of the first season.
-  const firstEpisode = useQuery({
-    queryKey: ["episodes", item.Id, "first"],
-    queryFn: () => getEpisodes(item.Id).then((r) => r.Items.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? r.Items[0] ?? null),
-    enabled: nextUp.isSuccess && !nextUp.data,
-    staleTime: 60_000,
-  });
-  const playTarget = nextUp.data ?? firstEpisode.data ?? null;
+  const playTarget = nextUp.data ?? null;
   const started = (item.UserData?.PlayedPercentage ?? 0) > 0 || Boolean(playTarget && progressOf(playTarget) > 0);
 
   return (
@@ -137,11 +126,6 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
     queryFn: () => getEpisodes(seriesId, seasonId).then((r) => r.Items),
     staleTime: 30_000,
   });
-
-  useEffect(() => {
-    if (!highlightId || !episodes.data) return;
-    document.getElementById(`ep-${highlightId}`)?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [highlightId, episodes.data]);
 
   if (episodes.isPending) return <Spinner />;
   if (!episodes.data?.length) return <p className="muted">No episodes in this season.</p>;

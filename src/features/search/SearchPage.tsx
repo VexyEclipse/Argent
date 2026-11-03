@@ -68,6 +68,11 @@ export default function SearchPage() {
   const input = useRef<HTMLInputElement>(null);
   const [recent, setRecent] = useState(readRecent);
 
+  // autoFocus alone doesn't survive a client-side navigation into the page.
+  useEffect(() => {
+    input.current?.focus();
+  }, []);
+
   const set = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries(patch)) v ? next.set(k, v) : next.delete(k);
@@ -132,7 +137,8 @@ export default function SearchPage() {
 
   const matchedGenres = useMemo(() => {
     const all = genres.data ?? [];
-    if (!enabled) return all.slice(0, 24);
+    // Idle suggestions: proper genres only (lowercase entries are imported tags).
+    if (!enabled) return all.filter((g) => /^\p{Lu}/u.test(g.Name)).slice(0, 24);
     const t = term.toLowerCase();
     return all.filter((g) => g.Name.toLowerCase().includes(t));
   }, [genres.data, term, enabled]);

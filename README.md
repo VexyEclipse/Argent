@@ -6,13 +6,14 @@ It is still Jellyfin. The name and logo stay; the logo is recoloured silver. The
 
 ## What's in it
 
-- **Homepage.** A full-bleed featured header (MediaBar), then Continue Watching, Next Up, Recommended For You, Recently Added, Your Movies, Your Series, Collections, Discover, Genres, and up to three personalised sections ("Because you watched…", "From the director…", your favourite genre pairing or decade).
+- **Homepage.** A full-bleed featured header (MediaBar), then Continue Watching, Next Up, Recommended For You, Recently Added, Your Movies, Your Series, Your Anime, Collections, Discover, Genres, and up to three personalised sections ("Because you watched…", "From the director…", your favourite genre pairing or decade).
 - **MediaBar.** Re-implements the [Jellyfin Media Bar](https://github.com/MakD/Jellyfin-Media-Bar) plugin's behaviour without needing the plugin at runtime. See [MediaBar parity](#mediabar-parity).
 - **Recommendation engine.** Weighted, per-user scoring over your real viewing history. It only recommends titles in your library. See [docs/RECOMMENDATIONS.md](docs/RECOMMENDATIONS.md).
-- **Library browsing.** Separate Movies and Series views with library tabs, sorting, genre/decade/status/favourite filters, a title filter, A–Z jump, three poster densities and infinite scroll.
+- **Anime.** Libraries whose name contains "Anime" get their own section (top navigation, mobile tab bar, TV rail) and a homepage row. Series then means your other TV libraries. Jellyfin has no anime library type, so the name is what marks one.
+- **Library browsing.** Separate Movies, Series and Anime views with library tabs, sorting, genre/decade/status/favourite filters, a title filter, A–Z jump, three poster densities and infinite scroll.
 - **Details pages.** Movies, series (seasons and episodes, next-episode targeting), episodes (previous/next), collections and people. Cast and crew, media info, trailers, favourite and watched toggles.
 - **Search.** Movies, series, episodes, actors, directors and writers, genres and collections. Debounced and cancellable, with type filters and sorting.
-- **Player.** Direct Play, Direct Stream and Transcoding (HLS via hls.js), chosen by a device profile built from what the browser can decode. Also: audio and subtitle selection, subtitle sync offset, quality and speed, fullscreen, picture-in-picture, volume, seeking with trickplay thumbnails and chapter marks, resume, skip intro/recap (media segments), previous/next episode, Up Next with autoplay, progress reporting to the server, Media Session keys, and keyboard and remote control.
+- **Player.** Direct Play, Direct Stream and Transcoding (HLS via hls.js), chosen by a device profile built from what the browser can decode. Also: audio and subtitle selection, subtitle sync offset, quality and speed, fullscreen, picture-in-picture, volume, seeking with trickplay thumbnails and chapter marks, resume, skip intro/recap (media segments), previous/next episode, Up Next with autoplay (it pauses to ask "Are you still watching?" after three unattended episodes), progress reporting to the server, Media Session keys, and keyboard and remote control. Every card has a play button; on a series it plays the episode in progress, otherwise the next one.
 - **Three interfaces, one design system.** Desktop (top navigation), mobile (bottom tab bar, touch layouts, double-tap seeking) and TV (focus rail, D-pad spatial navigation, 10-foot sizing). The platform is detected automatically and can be overridden in Profile → Display, or with `?platform=tv|mobile|desktop|auto`.
 
 ## Running it
@@ -40,6 +41,11 @@ npm run build      # type-check and build to dist/
 ```
 
 If you serve it under a sub-path, build with `npx vite build --base=/argent/`.
+
+## Playback notes
+
+- **Styled and image subtitles (ASS/SSA, PGS)** are burned in by the server, because browsers can't draw them. That needs a full video transcode, so playback with them is slower to start (about 20–45 s on a typical server). Text subtitles (SRT/VTT) are shown by the browser and keep Direct Play.
+- **Closing the tab mid-playback.** Browsers won't send the final "stopped" report to a server on another origin while the page unloads, so Jellyfin ends the session itself after a few minutes. Progress is saved every 10 seconds, so nothing is lost. Leaving the player inside the app reports straight away.
 
 ## MediaBar parity
 

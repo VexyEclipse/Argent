@@ -52,16 +52,7 @@ html[data-platform="tv"] .toolbar {
   outline: none;
   box-shadow: none;
 }
-.select--compact {
-  height: 38px;
-  width: auto;
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-small);
-  padding-left: 14px;
-}
-.flip {
-  transform: rotate(180deg);
-}
+
 .toolbar__density {
   display: flex;
   margin-left: auto;
@@ -186,28 +177,4 @@ html[data-platform="mobile"] .filters__group {
 }
 .browse__sentinel {
   min-height: 40px;
-}
-
-.tabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-2);
-  border: 1px solid var(--line-1);
-}
-.tabs button,
-.tabs a {
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-small);
-  font-weight: 500;
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-}
-.tabs .is-active {
-  background: var(--bg-4);
-  color: var(--text-1);
 }

@@ -2,23 +2,33 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { client, getViews } from "@/api/jellyfin";
+import { isAnimeLibrary, useLibraryGroups } from "@/api/libraries";
 import { useAuth } from "@/auth/AuthProvider";
 import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
 
-const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
-  { to: "/", label: "Home", icon: "home", end: true },
-  { to: "/movies", label: "Movies", icon: "film" },
-  { to: "/series", label: "Series", icon: "tv" },
-  { to: "/collections", label: "Collections", icon: "stack" },
-];
+type NavItem = { to: string; label: string; icon: IconName; end?: boolean };
+
+/** Main sections. Anime appears only when the user has an anime library. */
+function useNav(): NavItem[] {
+  const { anime } = useLibraryGroups();
+  return [
+    { to: "/", label: "Home", icon: "home", end: true },
+    { to: "/movies", label: "Movies", icon: "film" },
+    { to: "/series", label: "Series", icon: "tv" },
+    ...(anime.length ? [{ to: "/anime", label: "Anime", icon: "sparkle" as IconName }] : []),
+    { to: "/collections", label: "Collections", icon: "stack" },
+  ];
+}
 
 /** Views that aren't covered by Movies/Series/Collections get their own entry. */
 export function useOtherLibraries() {
   const views = useQuery({ queryKey: ["views"], queryFn: getViews, staleTime: 5 * 60_000 });
-  return (views.data?.Items ?? []).filter((v) => !["movies", "tvshows", "boxsets", "playlists", "livetv"].includes(v.CollectionType ?? ""));
+  return (views.data?.Items ?? []).filter(
+    (v) => !["movies", "tvshows", "boxsets", "playlists", "livetv"].includes(v.CollectionType ?? "") && !isAnimeLibrary(v),
+  );
 }
 
 function Avatar({ size = 32 }: { size?: number }) {
@@ -106,6 +116,7 @@ function ProfileMenu() {
 }
 
 function DesktopNav() {
+  const nav = useNav();
   const [solid, setSolid] = useState(false);
   useEffect(() => {
     const on = () => setSolid(window.scrollY > 24);
@@ -119,7 +130,7 @@ function DesktopNav() {
         <JellyfinLogo size={26} />
       </Link>
       <nav className="nav__links" aria-label="Main">
-        {NAV.map((n) => (
+        {nav.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} className="nav__link">
             {n.label}
           </NavLink>
@@ -136,6 +147,7 @@ function DesktopNav() {
 }
 
 function MobileNav() {
+  const nav = useNav();
   return (
     <>
       <header className="mnav">
@@ -145,7 +157,7 @@ function MobileNav() {
         <ProfileMenu />
       </header>
       <nav className="tabbar" aria-label="Main">
-        {[...NAV.slice(0, 3), { to: "/search", label: "Search", icon: "search" as IconName }, NAV[3]].map((n) => (
+        {[...nav.slice(0, -1), { to: "/search", label: "Search", icon: "search" as IconName }, nav[nav.length - 1]].map((n) => (
           <NavLink key={n.to} to={n.to} end={"end" in n ? n.end : undefined} className="tabbar__item">
             <Icon name={n.icon} size={22} />
             <span>{n.label}</span>
@@ -157,10 +169,11 @@ function MobileNav() {
 }
 
 function TvRail() {
+  const nav = useNav();
   const others = useOtherLibraries();
   const items: { to: string; label: string; icon: IconName; end?: boolean }[] = [
     { to: "/search", label: "Search", icon: "search" },
-    ...NAV,
+    ...nav,
     ...others.map((v) => ({ to: `/library/${v.Id}`, label: v.Name, icon: "grid" as IconName })),
     { to: "/profile", label: "Profile", icon: "user" },
   ];

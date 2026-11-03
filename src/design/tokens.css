@@ -69,12 +69,12 @@
   --section-gap: clamp(28px, 3.2vw, 44px);
 
   /* Media sizing */
-  --poster-w: 168px; /* overridden by density */
+  --poster-w: 196px; /* overridden by density */
   --poster-ratio: 2 / 3;
-  --landscape-w: 320px;
+  --landscape-w: 384px;
   --landscape-ratio: 16 / 9;
-  --person-w: 128px;
-  --hero-h: min(86vh, 920px);
+  --person-w: 140px;
+  --hero-h: min(96vh, 1040px);
   --radius-sm: 6px;
   --radius: 10px;
   --radius-lg: 16px;
@@ -106,13 +106,13 @@
 
 /* Grid densities for library browsing */
 [data-density="compact"] {
-  --poster-w: 132px;
+  --poster-w: 152px;
 }
 [data-density="comfortable"] {
-  --poster-w: 168px;
+  --poster-w: 196px;
 }
 [data-density="large"] {
-  --poster-w: 216px;
+  --poster-w: 252px;
 }
 
 /* ---- Platform tuning ---- */

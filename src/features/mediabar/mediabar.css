@@ -2,6 +2,8 @@
  * one stage; only the content block and panel treatment differ. */
 
 .mediabar {
+  /* Space between the featured content and the first home row beneath it. */
+  --mb-bottom: clamp(112px, 17vh, 190px);
   position: relative;
   height: var(--hero-h);
   min-height: 460px;
@@ -100,7 +102,7 @@
 /* ---- content ---- */
 .mb-content {
   position: absolute;
-  inset: auto var(--gutter) clamp(72px, 11vh, 120px) var(--gutter);
+  inset: auto var(--gutter) var(--mb-bottom) var(--gutter);
   display: flex;
   align-items: flex-end;
   gap: var(--sp-8);
@@ -110,7 +112,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-4);
+  gap: 18px;
   max-width: min(640px, 52vw);
 }
 
@@ -268,7 +270,7 @@
 .mb-poster {
   display: none;
   flex: 0 0 auto;
-  width: 150px;
+  width: 172px;
   aspect-ratio: 2 / 3;
   border-radius: var(--radius);
   overflow: hidden;
@@ -287,6 +289,9 @@
 }
 
 /* ---- plate layout ---- */
+.mediabar--plate .mb-content__main {
+  max-width: min(560px, 38vw);
+}
 .mediabar--plate .mb-plate {
   position: absolute;
   inset: 0 auto 0 0;
@@ -360,7 +365,7 @@
   position: absolute;
   z-index: 3;
   right: var(--gutter);
-  bottom: clamp(72px, 11vh, 120px);
+  bottom: var(--mb-bottom);
   display: flex;
   align-items: center;
   gap: var(--sp-5);
@@ -412,9 +417,10 @@
   position: absolute;
   z-index: 5;
   right: var(--gutter);
-  bottom: calc(clamp(72px, 11vh, 120px) + 52px);
+  bottom: calc(var(--mb-bottom) + 52px);
   width: min(360px, calc(100vw - 32px));
-  max-height: calc(var(--hero-h) - 180px);
+  /* Stay clear of the navigation bar above the bar. */
+  max-height: calc(var(--hero-h) - var(--mb-bottom) - 52px - var(--nav-h) - 24px);
   display: flex;
   flex-direction: column;
   background: rgb(18 19 21 / 0.92);
@@ -511,7 +517,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 0 var(--gutter) clamp(72px, 11vh, 120px);
+  padding: 0 var(--gutter) var(--mb-bottom);
   width: min(640px, 80vw);
 }
 .mb-skeleton__logo {

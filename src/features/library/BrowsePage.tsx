@@ -1,32 +1,37 @@
-import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
-import { getViews } from "@/api/jellyfin";
+import { useLibraryGroups } from "@/api/libraries";
+import { Spinner } from "@/components/States";
 import { BrowseView } from "./BrowseView";
 
-const COLLECTION_TYPE = { Movie: "movies", Series: "tvshows" } as const;
+export type BrowseKind = "Movie" | "Series" | "Anime";
 
-export default function BrowsePage({ kind }: { kind: "Movie" | "Series" }) {
+const TITLES: Record<BrowseKind, string> = { Movie: "Movies", Series: "Series", Anime: "Anime" };
+
+export default function BrowsePage({ kind }: { kind: BrowseKind }) {
   const [params, setParams] = useSearchParams();
-  const views = useQuery({ queryKey: ["views"], queryFn: getViews, staleTime: 5 * 60_000 });
-  const libraries = (views.data?.Items ?? []).filter((v) => v.CollectionType === COLLECTION_TYPE[kind]);
-  const libraryId = params.get("lib");
-  const active = libraries.find((l) => l.Id === libraryId);
+  const groups = useLibraryGroups();
+  if (groups.isPending) return <Spinner />;
 
+  const libraries = kind === "Movie" ? groups.movies : kind === "Series" ? groups.series : groups.anime;
+  const requested = libraries.find((l) => l.Id === params.get("lib"));
+  // Movies can show every library at once. Series and Anime can't: the API has no
+  // way to say "all TV libraries except the anime ones", so they default to a library.
+  const allowAll = kind === "Movie" || libraries.length === 0;
+  const active = requested ?? (allowAll ? undefined : libraries[0]);
+
+  const tabs = allowAll ? [undefined, ...libraries] : libraries;
   const header =
-    libraries.length > 1 ? (
+    tabs.length > 1 ? (
       <div className="tabs" role="tablist" aria-label="Library">
-        <button role="tab" aria-selected={!active} className={!active ? "is-active" : ""} onClick={() => setParams({}, { replace: true })}>
-          All
-        </button>
-        {libraries.map((l) => (
+        {tabs.map((l) => (
           <button
-            key={l.Id}
+            key={l?.Id ?? "all"}
             role="tab"
-            aria-selected={active?.Id === l.Id}
-            className={active?.Id === l.Id ? "is-active" : ""}
-            onClick={() => setParams({ lib: l.Id }, { replace: true })}
+            aria-selected={active?.Id === l?.Id}
+            className={active?.Id === l?.Id ? "is-active" : ""}
+            onClick={() => setParams(l ? { lib: l.Id } : {}, { replace: true })}
           >
-            {l.Name}
+            {l?.Name ?? "All"}
           </button>
         ))}
       </div>
@@ -40,8 +45,8 @@ export default function BrowsePage({ kind }: { kind: "Movie" | "Series" }) {
   return (
     <BrowseView
       key={kind}
-      title={kind === "Movie" ? "Movies" : "Series"}
-      base={{ includeItemTypes: [kind], parentId: active?.Id }}
+      title={TITLES[kind]}
+      base={{ includeItemTypes: kind === "Anime" ? ["Series", "Movie"] : [kind], parentId: active?.Id }}
       sorts={sorts}
       header={header}
       queryKey={[kind, active?.Id ?? "all"]}

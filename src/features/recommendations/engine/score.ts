@@ -85,22 +85,21 @@ function runtimeScore(item: EngineItem, profile: Profile): number {
   return Math.exp(-Math.abs(item.runtimeMinutes - profile.runtimeMedian) / 55);
 }
 
-function similarScore(item: EngineItem, signals: ExternalSignals, seedWeight: Map<string, number>): { value: number; seedId?: string } {
+function similarScore(item: EngineItem, signals: ExternalSignals, seedWeight: Map<string, number>): { value: number; seedIds: string[] } {
   const hits = signals.similarHits.get(item.id);
-  if (!hits?.length) return { value: 0 };
+  if (!hits?.length) return { value: 0, seedIds: [] };
   let best = 0;
-  let seedId: string | undefined;
   let sum = 0;
+  const bySeed: [string, number][] = [];
   for (const h of hits) {
     const v = (seedWeight.get(h.seedId) ?? 0) * (1 - (h.rank / Math.max(1, h.of)) * 0.5);
     sum += v;
-    if (v > best) {
-      best = v;
-      seedId = h.seedId;
-    }
+    bySeed.push([h.seedId, v]);
+    best = Math.max(best, v);
   }
   // Similar to several watched titles is a pattern, not a coincidence.
-  return { value: Math.min(1, best + 0.35 * (sum - best)), seedId };
+  const seedIds = bySeed.sort((a, b) => b[1] - a[1]).map(([id]) => id);
+  return { value: Math.min(1, best + 0.35 * (sum - best)), seedIds: [...new Set(seedIds)].slice(0, 2) };
 }
 
 function peopleScore(item: EngineItem, profile: Profile, signals: ExternalSignals): { value: number; personId?: string } {
@@ -121,38 +120,49 @@ function peopleScore(item: EngineItem, profile: Profile, signals: ExternalSignal
   return { value: topWeighted(values), personId };
 }
 
+/**
+ * Every reason that applies to a pick, most specific first. Specific evidence beats
+ * broad evidence even when it contributes a little less: "Because you watched Arrival"
+ * says more than "Matches your taste in Drama". Rows use the alternatives to avoid
+ * repeating one reason on every card.
+ */
 function explain(
   item: EngineItem,
   c: ScoredItem["components"],
-  weights: Weights,
   profile: Profile,
-  ctx: { seedId?: string; personId?: string; seedNames: Map<string, string> },
-): Reason {
-  const contributions: [keyof ScoredItem["components"], number][] = (Object.keys(c) as (keyof ScoredItem["components"])[]).map((k) => [
-    k,
-    c[k] * (weights[k] as number),
-  ]);
-  contributions.sort((a, b) => b[1] - a[1]);
-  for (const [key] of contributions) {
-    if (key === "similar" && ctx.seedId && c.similar > 0.25)
-      return { kind: "similar", text: `Because you watched ${ctx.seedNames.get(ctx.seedId) ?? "something similar"}` };
-    if (key === "people" && ctx.personId && c.people > 0.3) {
-      const p = profile.people.get(ctx.personId);
-      if (p) return { kind: "person", text: p.role === "Director" ? `Directed by ${p.name}` : p.role === "Writer" ? `Written by ${p.name}` : `With ${p.name}` };
-    }
-    if (key === "genre" && c.genre > 0.35) {
-      const g = [...item.genres].sort((a, b) => (profile.genres.get(b) ?? 0) - (profile.genres.get(a) ?? 0))[0];
-      if (g) return { kind: "genre", text: `Matches your taste in ${g}` };
-    }
-    if (key === "tags" && c.tags > 0.4) {
-      const t = [...item.tags].sort((a, b) => (profile.tags.get(b) ?? 0) - (profile.tags.get(a) ?? 0))[0];
-      if (t) return { kind: "tag", text: `More ${t.toLowerCase()}` };
-    }
-    if (key === "era" && c.era > 0.6 && item.year) return { kind: "era", text: `From the ${decadeOf(item.year)}s you watch most` };
-    if (key === "quality" && c.quality > 0.72) return { kind: "quality", text: "Highly rated in your library" };
-    if (key === "freshness" && c.freshness > 0.5) return { kind: "new", text: "Recently added" };
+  ctx: { seedIds: string[]; personId?: string; seedNames: Map<string, string> },
+): Reason[] {
+  const out: Reason[] = [];
+  const topGenre = [...item.genres].sort((a, b) => (profile.genres.get(b) ?? 0) - (profile.genres.get(a) ?? 0))[0];
+  if (c.similar > 0.2) for (const id of ctx.seedIds) out.push({ kind: "similar", text: `Because you watched ${ctx.seedNames.get(id) ?? "something similar"}` });
+  if (ctx.personId && c.people > 0.3) {
+    const p = profile.people.get(ctx.personId);
+    if (p)
+      out.push({ kind: "person", text: p.role === "Director" ? `Directed by ${p.name}` : p.role === "Writer" ? `Written by ${p.name}` : `With ${p.name}` });
   }
-  return { kind: "explore", text: "Something different" };
+  const sorted = [...item.genres].sort();
+  let pair: [string, number] | null = null;
+  for (let i = 0; i < sorted.length; i++)
+    for (let j = i + 1; j < sorted.length; j++) {
+      const v = profile.genrePairs.get(`${sorted[i]}|${sorted[j]}`) ?? 0;
+      if (!pair || v > pair[1]) pair = [`${sorted[i]}|${sorted[j]}`, v];
+    }
+  if (pair && pair[1] > 0.55 && c.genre > 0.5) {
+    const [a, b] = pair[0].split("|");
+    out.push({ kind: "genre", text: `${a} meets ${b}, as you like it` });
+  }
+  if (c.tags > 0.5) {
+    const t = [...item.tags].sort((a, b) => (profile.tags.get(b) ?? 0) - (profile.tags.get(a) ?? 0))[0];
+    if (t) out.push({ kind: "tag", text: `More ${t.toLowerCase()}` });
+  }
+  if (c.era > 0.75 && c.genre > 0.4 && item.year)
+    out.push({ kind: "era", text: topGenre ? `${decadeOf(item.year)}s ${topGenre}, a favourite era` : `From the ${decadeOf(item.year)}s you watch most` });
+  if (c.quality > 0.78 && c.genre > 0.35) out.push({ kind: "quality", text: "Highly rated and right up your street" });
+  if (c.genre > 0.35 && topGenre) out.push({ kind: "genre", text: `Matches your taste in ${topGenre}` });
+  if (c.freshness > 0.5) out.push({ kind: "new", text: "Recently added" });
+  if (c.quality > 0.72) out.push({ kind: "quality", text: "Highly rated in your library" });
+  out.push({ kind: "explore", text: "Something different" });
+  return out;
 }
 
 export interface ScoreContext {
@@ -212,15 +222,10 @@ export function scoreCandidates(candidates: EngineItem[], ctx: ScoreContext): Sc
     // Daily rotation: same day = same order; across days, near-ties trade places.
     score += (hash01(`${item.id}:${day}`) - 0.5) * weights.rotation;
 
-    scored.push({
-      item,
-      score,
-      strength: "exploratory",
-      components,
-      reason: coldStart
-        ? { kind: "quality", text: components.freshness > 0.3 ? "Recently added" : "Highly rated in your library" }
-        : explain(item, components, weights, profile, { seedId: sim.seedId, personId: ppl.personId, seedNames }),
-    });
+    const reasons: Reason[] = coldStart
+      ? [{ kind: "quality", text: components.freshness > 0.3 ? "Recently added" : "Highly rated in your library" }]
+      : explain(item, components, profile, { seedIds: sim.seedIds, personId: ppl.personId, seedNames });
+    scored.push({ item, score, strength: "exploratory", components, reason: reasons[0], reasons });
   }
 
   scored.sort((a, b) => b.score - a.score);

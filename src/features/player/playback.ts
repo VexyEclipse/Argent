@@ -1,4 +1,4 @@
-import { client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
+import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
 import { buildDeviceProfile, capabilities } from "./deviceProfile";
 
@@ -30,15 +30,36 @@ export interface StreamInfo {
  * Resolve what to actually play: a series plays its next-up episode, a season its
  * first unwatched episode, a collection its first unwatched title.
  */
+/**
+ * What "Play" means for a series: the episode left part-way, else Next Up, else the
+ * first episode (a finished series starts over).
+ */
+export async function seriesPlayTarget(seriesId: string): Promise<BaseItem | null> {
+  const [resumable, next] = await Promise.all([
+    getItems({
+      parentId: seriesId,
+      recursive: true,
+      includeItemTypes: ["Episode"],
+      filters: ["IsResumable"],
+      sortBy: ["DatePlayed"],
+      sortOrder: "Descending",
+      limit: 1,
+      fields: CARD_FIELDS,
+    }),
+    getNextUp({ seriesId, limit: 1 }),
+  ]);
+  if (resumable.Items[0]) return resumable.Items[0];
+  if (next.Items[0]) return next.Items[0];
+  const eps = (await getEpisodes(seriesId)).Items;
+  return eps.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? eps[0] ?? null;
+}
+
 export async function resolvePlayable(id: string): Promise<BaseItem> {
   const item = await getItemFull(id);
   if (item.Type === "Series") {
-    const next = (await getNextUp({ seriesId: id, limit: 1, enableRewatching: true })).Items[0];
-    if (next) return getItemFull(next.Id);
-    const eps = (await getEpisodes(id)).Items;
-    const first = eps.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? eps[0];
-    if (!first) throw new Error("This series has no playable episodes.");
-    return getItemFull(first.Id);
+    const target = await seriesPlayTarget(id);
+    if (!target) throw new Error("This series has no playable episodes.");
+    return getItemFull(target.Id);
   }
   if (item.Type === "Season") {
     const eps = (await getEpisodes(item.SeriesId!, item.Id)).Items;
@@ -74,14 +95,19 @@ function textTracksOf(source: MediaSource): StreamInfo["textTracks"] {
 }
 
 export async function requestStream(item: BaseItem, opts: StreamOptions): Promise<StreamInfo> {
+  // The server only honours explicit track choices when the media source is named;
+  // without it, it quietly substitutes the user's remembered tracks.
+  const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;
   const info = await getPlaybackInfo(item.Id, {
+    MediaSourceId: mediaSourceId,
     DeviceProfile: buildDeviceProfile(opts.maxBitrate),
     MaxStreamingBitrate: opts.maxBitrate,
     StartTimeTicks: opts.startTicks,
     AudioStreamIndex: opts.audioIndex,
     SubtitleStreamIndex: opts.subtitleIndex,
     EnableDirectPlay: !opts.disableDirectPlay,
-    EnableDirectStream: true,
+    // A static direct stream can't swap audio or burn subtitles either.
+    EnableDirectStream: !opts.disableDirectPlay,
     EnableTranscoding: true,
     AllowVideoStreamCopy: true,
     AllowAudioStreamCopy: true,
@@ -103,12 +129,16 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
   const c = client();
   const audioIndex = opts.audioIndex ?? source.DefaultAudioStreamIndex;
   const subtitleIndex = opts.subtitleIndex ?? source.DefaultSubtitleStreamIndex;
-  // A non-default audio track or burned-in subtitle needs the server to rebuild the stream.
-  const needsServerAudio = audioIndex !== undefined && audioIndex !== source.DefaultAudioStreamIndex;
-
-  // Browsers can't switch audio tracks in a file they direct-play, so ask for a remux.
-  if (needsServerAudio && source.SupportsDirectPlay && !opts.disableDirectPlay) {
-    return requestStream(item, { ...opts, audioIndex, disableDirectPlay: true });
+  // Browsers play a file's own default audio track and can't draw image or styled
+  // (ASS) subtitles. Either choice needs a server-built stream. Note the server echoes
+  // the requested track back as "DefaultAudioStreamIndex", so compare with the file.
+  const audioStreams = source.MediaStreams.filter((s) => s.Type === "Audio");
+  const fileDefaultAudio = (audioStreams.find((s) => s.IsDefault) ?? audioStreams[0])?.Index;
+  const needsServerAudio = audioIndex !== undefined && audioStreams.length > 1 && audioIndex !== fileDefaultAudio;
+  const subtitle = source.MediaStreams.find((s) => s.Type === "Subtitle" && s.Index === subtitleIndex);
+  const needsBurnIn = subtitle?.DeliveryMethod === "Encode";
+  if ((needsServerAudio || needsBurnIn) && !opts.disableDirectPlay && (source.SupportsDirectPlay || !source.TranscodingUrl)) {
+    return requestStream(item, { ...opts, audioIndex, subtitleIndex, disableDirectPlay: true });
   }
 
   // Same precedence as jellyfin-web: Direct Play, then Direct Stream, then Transcode.
@@ -144,7 +174,13 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
     throw new Error("The server didn't offer a playable stream.");
   }
 
-  const reasons = source.TranscodingUrl ? (new URL(withAuth(source.TranscodingUrl)).searchParams.get("TranscodeReasons")?.split(",") ?? []) : [];
+  const params = method === "Transcode" && source.TranscodingUrl ? new URL(withAuth(source.TranscodingUrl)).searchParams : null;
+  const reasons = params?.get("TranscodeReasons")?.split(",") ?? [];
+  // Report the tracks the server actually built the stream with, not just what was asked.
+  const urlAudio = params?.get("AudioStreamIndex");
+  const urlSubtitle = params?.get("SubtitleStreamIndex");
+  const actualAudio = urlAudio ? Number(urlAudio) : audioIndex;
+  const actualSubtitle = params && needsBurnIn ? (urlSubtitle ? Number(urlSubtitle) : -1) : subtitleIndex;
 
   return {
     url,
@@ -152,8 +188,8 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
     method,
     source,
     playSessionId: info.PlaySessionId,
-    audioIndex,
-    subtitleIndex,
+    audioIndex: actualAudio,
+    subtitleIndex: actualSubtitle,
     transcodeReasons: reasons,
     textTracks: textTracksOf(source),
   };

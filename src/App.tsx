@@ -31,6 +31,7 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="movies" element={<BrowsePage kind="Movie" />} />
           <Route path="series" element={<BrowsePage kind="Series" />} />
+          <Route path="anime" element={<BrowsePage kind="Anime" />} />
           <Route path="collections" element={<CollectionsPage />} />
           <Route path="library/:id" element={<LibraryPage />} />
           <Route path="genre/:id" element={<GenrePage />} />

@@ -285,14 +285,27 @@ export const setPlayed = (id: string, played: boolean) =>
 export const getPlaybackInfo = (id: string, body: Record<string, unknown>) =>
   client().request<PlaybackInfoResponse>(`/Items/${id}/PlaybackInfo`, {
     method: "POST",
-    query: { userId: uid() },
+    // Track choices also go in the query: the server reads them from there and
+    // otherwise falls back to the user's remembered tracks.
+    query: {
+      userId: uid(),
+      mediaSourceId: body.MediaSourceId as string | undefined,
+      audioStreamIndex: body.AudioStreamIndex as number | undefined,
+      subtitleStreamIndex: body.SubtitleStreamIndex as number | undefined,
+      startTimeTicks: body.StartTimeTicks as number | undefined,
+      maxStreamingBitrate: body.MaxStreamingBitrate as number | undefined,
+      enableDirectPlay: body.EnableDirectPlay as boolean | undefined,
+      enableDirectStream: body.EnableDirectStream as boolean | undefined,
+    },
     body: { UserId: uid(), ...body },
   });
 
 export const reportPlaybackStart = (body: Record<string, unknown>) => client().request<void>("/Sessions/Playing", { method: "POST", body });
 export const reportPlaybackProgress = (body: Record<string, unknown>) => client().request<void>("/Sessions/Playing/Progress", { method: "POST", body });
 export const reportPlaybackStopped = (body: Record<string, unknown>) =>
-  client().request<void>("/Sessions/Playing/Stopped", { method: "POST", body, keepalive: true });
+  // No keepalive: Chrome rejects keepalive requests that need a CORS preflight, which
+  // every authenticated cross-origin call to Jellyfin does.
+  client().request<void>("/Sessions/Playing/Stopped", { method: "POST", body });
 export const pingPlayback = (playSessionId: string) => client().request<void>("/Sessions/Playing/Ping", { method: "POST", query: { playSessionId } });
 
 export const stopEncoding = (playSessionId: string) =>

@@ -58,6 +58,16 @@ function discover(scored: ScoredItem[], exclude: Set<string>, count: number, now
     }));
 }
 
+/** Use each reason at most twice in a row; later cards fall back to their next-best reason. */
+function spreadReasons(list: ScoredItem[], maxRepeats = 2): ScoredItem[] {
+  const used = new Map<string, number>();
+  return list.map((s) => {
+    const reason = s.reasons.find((r) => (used.get(r.text) ?? 0) < maxRepeats) ?? s.reason;
+    used.set(reason.text, (used.get(reason.text) ?? 0) + 1);
+    return reason === s.reason ? s : { ...s, reason };
+  });
+}
+
 export function recommend(input: EngineInput): RecommendationResult {
   const now = input.now ?? Date.now();
   const weights = input.weights ?? DEFAULT_WEIGHTS;
@@ -69,26 +79,38 @@ export function recommend(input: EngineInput): RecommendationResult {
   const scored = scoreCandidates(input.library, { profile, signals: input.signals, feedback: input.feedback, weights, now });
   const personalised = profile.totalWeight > 0 && profile.historySize >= 2;
 
-  const recommended = diversify(scored, limits.recommended, weights.diversity);
+  const recommended = spreadReasons(diversify(scored, limits.recommended, weights.diversity));
   const used = new Set(recommended.map((s) => s.item.id));
+  // Titles already on screen; each section leads with titles nobody has shown yet.
+  const shown = new Set(used);
+  const take = (pool: ScoredItem[], minFresh: number): ScoredItem[] | null => {
+    const fresh = pool.filter((s) => !shown.has(s.item.id));
+    if (fresh.length < minFresh) return null;
+    const items = [...fresh, ...pool.filter((s) => shown.has(s.item.id))].slice(0, limits.section);
+    items.slice(0, 8).forEach((s) => shown.add(s.item.id));
+    return items;
+  };
 
   const sections: PersonalSection[] = [];
   if (personalised) {
     // "Because you watched": strongest recent seeds with enough similar titles.
     for (const seed of profile.seeds.slice(0, 6)) {
       if (sections.filter((s) => s.id.startsWith("seed:")).length >= 2) break;
-      const items = scored
-        .filter((s) => input.signals.similarHits.get(s.item.id)?.some((h) => h.seedId === seed.item.id))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limits.section);
-      if (items.length >= 5) sections.push({ id: `seed:${seed.item.id}`, eyebrow: "Because you watched", title: seed.item.name, items });
+      const items = take(
+        scored.filter((s) => input.signals.similarHits.get(s.item.id)?.some((h) => h.seedId === seed.item.id)),
+        4,
+      );
+      if (items) sections.push({ id: `seed:${seed.item.id}`, eyebrow: "Because you watched", title: seed.item.name, items });
     }
 
     // A person whose work recurs in the history and has several unwatched titles.
     for (const person of topPeople(profile).sort((a, b) => b.affinity * b.titles - a.affinity * a.titles)) {
       if (person.titles < 2) continue;
-      const items = scored.filter((s) => input.signals.personHits.get(s.item.id)?.includes(person.id)).slice(0, limits.section);
-      if (items.length >= 4) {
+      const items = take(
+        scored.filter((s) => input.signals.personHits.get(s.item.id)?.includes(person.id)),
+        3,
+      );
+      if (items) {
         sections.push({
           id: `person:${person.id}`,
           eyebrow: person.role === "Director" ? "From the director" : person.role === "Writer" ? "From the writer" : "Starring",
@@ -103,15 +125,21 @@ export function recommend(input: EngineInput): RecommendationResult {
     const topPair = [...profile.genrePairs.entries()].sort((a, b) => b[1] - a[1])[0];
     if (topPair && topPair[1] > 0.5) {
       const [a, b] = topPair[0].split("|");
-      const items = scored.filter((s) => s.item.genres.includes(a) && s.item.genres.includes(b)).slice(0, limits.section);
-      if (items.length >= 5) sections.push({ id: `pair:${topPair[0]}`, eyebrow: "Your kind of", title: `${a} & ${b}`, items });
+      const items = take(
+        scored.filter((s) => s.item.genres.includes(a) && s.item.genres.includes(b)),
+        5,
+      );
+      if (items) sections.push({ id: `pair:${topPair[0]}`, eyebrow: "Your kind of", title: `${a} and ${b}`, items });
     }
 
     // A favoured decade, when it stands out from the library's own mix.
     const topDecade = [...profile.decades.entries()].sort((a, b) => b[1] - a[1])[0];
     if (topDecade && sections.length < limits.sections + 1) {
-      const items = scored.filter((s) => s.item.year && Math.floor(s.item.year / 10) * 10 === topDecade[0]).slice(0, limits.section);
-      if (items.length >= 6) sections.push({ id: `decade:${topDecade[0]}`, eyebrow: "A decade you love", title: `The ${topDecade[0]}s`, items });
+      const items = take(
+        scored.filter((s) => s.item.year && Math.floor(s.item.year / 10) * 10 === topDecade[0]),
+        6,
+      );
+      if (items) sections.push({ id: `decade:${topDecade[0]}`, eyebrow: "A decade you love", title: `The ${topDecade[0]}s`, items });
     }
   }
 

@@ -26,6 +26,24 @@ const VOLUME_KEY = "argent.volume";
 const QUALITY_KEY = "argent.maxBitrate";
 const HIDE_AFTER_MS = 3200;
 const UP_NEXT_SECONDS = 30;
+const MAX_UNATTENDED_EPISODES = 3;
+const CHAIN_KEY = "argent.autoplayChain";
+
+function readAutoplayChain(): number {
+  try {
+    return Number(sessionStorage.getItem(CHAIN_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeAutoplayChain(n: number) {
+  try {
+    sessionStorage.setItem(CHAIN_KEY, String(n));
+  } catch {
+    /* ignore */
+  }
+}
 
 function readNumber(key: string, fallback: number) {
   try {
@@ -114,11 +132,15 @@ function Player({ id }: { id: string }) {
 
   // ---- reporting ------------------------------------------------------------------
   const live = useRef({ current: 0, playing: false, muted: false, volume: 1, rate: 1 });
+  // Until playback has actually reached the start point, the element reports 0:00.
+  // Sending that would make Jellyfin wipe the resume point, so report the start point.
+  const startSeconds = useRef(0);
+  const reachedStart = useRef(false);
   live.current = { current, playing, muted, volume, rate };
   const reporter = useMemo(
     () =>
       new PlaybackReporter(() => ({
-        positionSeconds: video.current?.currentTime ?? live.current.current,
+        positionSeconds: reachedStart.current ? (video.current?.currentTime ?? live.current.current) : startSeconds.current,
         paused: !live.current.playing,
         muted: live.current.muted,
         volume: live.current.volume,
@@ -164,6 +186,8 @@ function Player({ id }: { id: string }) {
       .then((s) => {
         if (cancelled) return;
         pendingSeek.current = opts.startTicks / TICKS_PER_SECOND;
+        startSeconds.current = opts.startTicks / TICKS_PER_SECOND;
+        reachedStart.current = false;
         setStream(s);
       })
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : "Playback failed."));
@@ -175,10 +199,14 @@ function Player({ id }: { id: string }) {
   /** Rebuild the stream (audio change, burned-in subtitle, quality) at the current position. */
   const reload = useCallback(
     (patch: Partial<StreamOptions>) => {
-      const position = video.current?.currentTime ?? current;
-      setOpts((o) => (o ? { ...o, ...patch, startTicks: Math.round(position * TICKS_PER_SECOND) } : o));
+      // Before the stream reaches its start point the element reads 0:00; keep the start.
+      const position = reachedStart.current ? (video.current?.currentTime ?? current) : startSeconds.current;
+      // Always restate both tracks: if either is left out, the server substitutes the
+      // user's remembered track instead of the one playing now.
+      const tracks = { audioIndex: stream?.audioIndex, subtitleIndex: stream?.subtitleIndex ?? -1 };
+      setOpts((o) => (o ? { ...o, ...tracks, ...patch, startTicks: Math.round(position * TICKS_PER_SECOND) } : o));
     },
-    [current],
+    [current, stream],
   );
 
   // ---- attach the source ----------------------------------------------------------
@@ -203,9 +231,12 @@ function Player({ id }: { id: string }) {
           fragLoadingTimeOut: 60_000,
         });
         hls.current = h;
+        let recoveries = 0;
         h.on(HlsCtor.Events.ERROR, (_e, data) => {
+          if (import.meta.env.DEV) console.warn("[hls]", data.type, data.details, data.fatal ? "fatal" : "", data.reason ?? data.error?.message ?? "");
           if (!data.fatal) return;
-          if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR) h.recoverMediaError();
+          // Recover a media error at most twice; looping recovery hammers the server.
+          if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR && recoveries++ < 2) h.recoverMediaError();
           else setError("The stream was interrupted. Check your connection to the server.");
         });
         h.loadSource(stream.url);
@@ -235,8 +266,10 @@ function Player({ id }: { id: string }) {
       hls.current?.destroy();
       hls.current = null;
     };
+    // Only a new play session needs a new source; switching a text subtitle must not
+    // restart playback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream]);
+  }, [stream?.playSessionId, stream?.url]);
 
   // ---- video events ---------------------------------------------------------------
   useEffect(() => {
@@ -249,6 +282,7 @@ function Player({ id }: { id: string }) {
       }
     };
     const onPlaying = () => {
+      if (el.currentTime >= startSeconds.current - 5) reachedStart.current = true;
       setLoading(false);
       setPlaying(true);
     };
@@ -263,7 +297,11 @@ function Player({ id }: { id: string }) {
       setCurrent(el.currentTime);
       if (el.buffered.length) setBuffered(el.buffered.end(el.buffered.length - 1));
     };
-    const onSeeked = () => reporter.nudge("TimeUpdate");
+    const onSeeked = () => {
+      // A completed seek (ours to the resume point, or the viewer's) means currentTime is real.
+      if (el.currentTime > 1 || startSeconds.current < 1) reachedStart.current = true;
+      reporter.nudge("TimeUpdate");
+    };
     const onVolume = () => {
       setVolume(el.volume);
       setMuted(el.muted);
@@ -423,7 +461,32 @@ function Player({ id }: { id: string }) {
   const outro = segments.data?.find((s) => s.Type === "Outro");
   const next = neighbours.data?.next ?? null;
   const prev = neighbours.data?.prev ?? null;
-  const autoplay = config?.EnableNextEpisodeAutoPlay !== false;
+  // Autoplay stops after a few unattended episodes and asks first, so a player left
+  // running doesn't work through a season (and mark it watched) on its own.
+  const [stillWatching, setStillWatching] = useState(false);
+  const autoplay = config?.EnableNextEpisodeAutoPlay !== false && !stillWatching;
+  const autoplayNext = useCallback(() => {
+    if (!next) return;
+    if (readAutoplayChain() >= MAX_UNATTENDED_EPISODES) {
+      video.current?.pause();
+      setCountdown(null);
+      setStillWatching(true);
+      return;
+    }
+    writeAutoplayChain(readAutoplayChain() + 1);
+    playItem(next);
+  }, [next, playItem]);
+
+  // Any input from the viewer proves someone is watching.
+  useEffect(() => {
+    const reset = () => writeAutoplayChain(0);
+    window.addEventListener("pointerdown", reset);
+    window.addEventListener("keydown", reset);
+    return () => {
+      window.removeEventListener("pointerdown", reset);
+      window.removeEventListener("keydown", reset);
+    };
+  }, []);
   const upNextAt = outro ? outro.StartTicks / TICKS_PER_SECOND : duration - UP_NEXT_SECONDS;
   const showUpNext = Boolean(next && duration > 60 && current >= upNextAt && !upNextDismissed);
 
@@ -437,23 +500,23 @@ function Player({ id }: { id: string }) {
   useEffect(() => {
     if (countdown === null || !playing) return;
     if (countdown <= 0) {
-      playItem(next);
+      autoplayNext();
       return;
     }
     const t = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
     return () => window.clearTimeout(t);
-  }, [countdown, playing, next, playItem]);
+  }, [countdown, playing, autoplayNext]);
 
   useEffect(() => {
     const el = video.current;
     if (!el) return;
     const onEnded = () => {
-      if (next && autoplay) playItem(next);
-      else exit();
+      if (next && autoplay) autoplayNext();
+      else if (!stillWatching) exit();
     };
     el.addEventListener("ended", onEnded);
     return () => el.removeEventListener("ended", onEnded);
-  }, [next, autoplay, playItem, exit]);
+  }, [next, autoplay, autoplayNext, exit, stillWatching]);
 
   // ---- keyboard & remote ----------------------------------------------------------
   useEffect(() => {
@@ -481,7 +544,9 @@ function Player({ id }: { id: string }) {
         poke();
         return;
       }
-      if (onControl && (e.key === "Enter" || e.key === " ")) {
+      // Enter activates the focused control; Space always means play/pause, so it can
+      // never trigger whichever button was clicked last (e.g. "previous episode").
+      if (onControl && e.key === "Enter") {
         poke();
         return;
       }
@@ -584,6 +649,14 @@ function Player({ id }: { id: string }) {
     const t = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  // Mouse clicks shouldn't leave a button focused for the keyboard shortcuts to hit.
+  // Remote and keyboard users keep focus where they put it.
+  const releaseFocus = (e: React.MouseEvent) => {
+    if (platform === "tv") return;
+    const button = (e.target as HTMLElement).closest("button");
+    if (button && !button.closest(".pmenu")) button.blur();
+  };
 
   // ---- touch: tap toggles controls, double-tap sides to seek ------------------------
   const lastTap = useRef(0);
@@ -689,7 +762,7 @@ function Player({ id }: { id: string }) {
       )}
 
       {/* ---- top bar ---- */}
-      <div className="pc pc--top">
+      <div className="pc pc--top" onMouseUp={releaseFocus}>
         <button className="pc__btn" onClick={exit} aria-label="Back">
           <Icon name="chevronLeft" size={26} />
         </button>
@@ -723,7 +796,34 @@ function Player({ id }: { id: string }) {
         </button>
       )}
 
-      {showUpNext && next && (
+      {stillWatching && next && (
+        <div className="upnext upnext--still fade-in" role="dialog" aria-label="Still watching?">
+          <div className="upnext__text">
+            <span className="eyebrow">Paused</span>
+            <span className="upnext__title">Are you still watching?</span>
+            <span className="upnext__code">
+              Next: {episodeCode(next)} · {next.Name}
+            </span>
+            <div className="upnext__actions">
+              <button
+                className="btn btn--primary btn--sm"
+                autoFocus
+                onClick={() => {
+                  writeAutoplayChain(0);
+                  playItem(next);
+                }}
+              >
+                <Icon name="play" size={14} /> Keep watching
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={exit}>
+                Stop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUpNext && next && !stillWatching && (
         <div className="upnext fade-in" role="dialog" aria-label="Up next">
           <div className="upnext__thumb">
             <Artwork image={landscapeImage(next, 480)} alt="" />
@@ -745,7 +845,7 @@ function Player({ id }: { id: string }) {
       )}
 
       {/* ---- bottom controls ---- */}
-      <div className="pc pc--bottom">
+      <div className="pc pc--bottom" onMouseUp={releaseFocus}>
         {item && (
           <Seekbar
             item={item}

@@ -37,6 +37,8 @@ export const MediaCard = memo(function MediaCard({ item, variant = "poster", sub
   const title = item.Type === "Episode" && variant === "landscape" ? item.Name : item.SeriesName && variant === "poster" ? item.SeriesName : item.Name;
   const sub = subtitle ?? (item.Type === "Episode" && variant === "poster" ? item.Name : cardSubtitle(item));
   const to = playOnClick ? `/play/${item.Id}` : detailsPath(item);
+  // Series and collections resolve to the right episode or film in the player.
+  const playable = item.Type !== "Person" && item.Type !== "Genre";
 
   const dismiss = (event: MouseEvent) => {
     event.preventDefault();
@@ -62,11 +64,6 @@ export const MediaCard = memo(function MediaCard({ item, variant = "poster", sub
             </span>
           )}
           {!played && unplayed ? <span className="card__badge">{unplayed}</span> : null}
-          {variant === "landscape" && (
-            <span className="card__play" onClick={play} role="presentation">
-              <Icon name="play" size={18} />
-            </span>
-          )}
           {progress > 0 && progress < 100 && (
             <span className="card__progress" aria-label={`${Math.round(progress)}% watched`}>
               <span style={{ width: `${progress}%` }} />
@@ -79,11 +76,19 @@ export const MediaCard = memo(function MediaCard({ item, variant = "poster", sub
           {caption && <span className="card__caption">{caption}</span>}
         </div>
       </Link>
-      {onDismiss && (
-        <button className="card__dismiss" onClick={dismiss} aria-label={`Not interested in ${item.Name}`} title="Not interested">
-          <Icon name="close" size={14} />
-        </button>
-      )}
+      {/* Buttons sit over the artwork but outside the link (no buttons inside anchors). */}
+      <div className="card__overlay">
+        {playable && (
+          <button className="card__play" onClick={play} aria-label={`Play ${item.Name}`} title="Play" tabIndex={-1}>
+            <Icon name="play" size={18} />
+          </button>
+        )}
+        {onDismiss && (
+          <button className="card__dismiss" onClick={dismiss} aria-label={`Not interested in ${item.Name}`} title="Not interested">
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
 });

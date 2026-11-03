@@ -8,6 +8,8 @@ import { Row } from "@/components/Row";
 import { MediaBar } from "@/features/mediabar/MediaBar";
 import { useRecommendations, type UiPick } from "@/features/recommendations/useRecommendations";
 import { recordImpressions, recordOpen } from "@/features/recommendations/feedback";
+import { useLibraryGroups } from "@/api/libraries";
+import { interleave } from "@/features/mediabar/logic";
 import { GenreRow } from "./GenreRow";
 import "./home.css";
 
@@ -44,20 +46,29 @@ function useRecentlyAdded() {
   });
 }
 
-function useLibraryRow(kind: "Movie" | "Series") {
+/**
+ * A shelf from the user's libraries: unwatched first, shuffled once per cache lifetime
+ * so it changes between visits. `parents` limits it to specific libraries (merged
+ * round-robin); null means every library.
+ */
+function useLibraryRow(key: string, types: string[], parents: string[] | null, enabled = true) {
   return useQuery({
-    queryKey: ["home", "library", kind],
-    // Unwatched first, shuffled once per cache lifetime so the row changes between visits.
-    queryFn: () =>
-      getItems({
-        includeItemTypes: [kind],
+    queryKey: ["home", "library", key, parents],
+    queryFn: async () => {
+      const query = {
+        includeItemTypes: types,
         recursive: true,
         sortBy: ["IsUnplayed", "Random"],
         sortOrder: "Descending",
         limit: 24,
         fields: CARD_FIELDS,
         enableImageTypes: ROW_IMAGES,
-      }).then((r) => r.Items),
+      };
+      if (!parents) return (await getItems(query)).Items;
+      const pages = await Promise.all(parents.map((parentId) => getItems({ ...query, parentId }).then((r) => r.Items)));
+      return interleave(pages, 24);
+    },
+    enabled,
     staleTime: 15 * 60_000,
   });
 }
@@ -102,8 +113,17 @@ export function HomePage() {
   const resume = useQuery({ queryKey: ["home", "resume"], queryFn: () => getResume(20).then((r) => r.Items), staleTime: 30_000 });
   const nextUp = useQuery({ queryKey: ["home", "nextup"], queryFn: () => getNextUp({ limit: 20 }).then((r) => r.Items), staleTime: 30_000 });
   const recent = useRecentlyAdded();
-  const movies = useLibraryRow("Movie");
-  const series = useLibraryRow("Series");
+  const groups = useLibraryGroups();
+  const hasAnime = groups.anime.length > 0;
+  const movies = useLibraryRow("movies", ["Movie"], null);
+  // With an anime library present, Series means the other TV libraries.
+  const series = useLibraryRow("series", ["Series"], hasAnime ? groups.series.map((l) => l.Id) : null, !groups.isPending);
+  const anime = useLibraryRow(
+    "anime",
+    ["Series", "Movie"],
+    groups.anime.map((l) => l.Id),
+    hasAnime,
+  );
   const collections = useCollections();
   const recs = useRecommendations();
 
@@ -148,8 +168,8 @@ export function HomePage() {
           </Row>
         )}
 
-        {nextUpItems.length > 0 && (
-          <Row title="Next Up" variant="landscape">
+        {(nextUp.isPending || nextUpItems.length > 0) && (
+          <Row title="Next Up" variant="landscape" loading={nextUp.isPending}>
             {nextUpItems.map((item) => (
               <MediaCard key={item.Id} item={item} variant="landscape" playOnClick />
             ))}
@@ -164,7 +184,7 @@ export function HomePage() {
             className="row--feature"
           >
             {recs.data?.recommended.map((p) => (
-              <PickCard key={p.item.Id} pick={p} onOpen={onOpen} onDismiss={(i) => recs.dismiss(i.Id)} />
+              <PickCard key={p.item.Id} pick={p} onOpen={onOpen} onDismiss={(i) => recs.dismiss(i.Id)} showReason />
             ))}
           </Row>
         )}
@@ -195,6 +215,14 @@ export function HomePage() {
           </Row>
         )}
 
+        {hasAnime && (anime.isPending || (anime.data?.length ?? 0) > 0) && (
+          <Row title="Your Anime" seeAllTo="/anime" loading={anime.isPending}>
+            {anime.data?.map((item) => (
+              <MediaCard key={item.Id} item={item} />
+            ))}
+          </Row>
+        )}
+
         {renderPersonal(1)}
 
         {(collections.data?.length ?? 0) > 0 && (
@@ -215,16 +243,27 @@ export function HomePage() {
 
         {renderPersonal(2)}
 
-        <GenreRow preferred={recs.data?.topGenres ?? []} />
+        <GenreRow preferred={recs.data?.topGenres ?? []} counts={recs.data?.genreCounts} />
       </div>
     </div>
   );
 }
 
-function PickCard({ pick, onOpen, onDismiss }: { pick: UiPick; onOpen: (i: BaseItem) => void; onDismiss?: (i: BaseItem) => void }) {
+/** Reasons show on the main row only; section rows already say why in their heading. */
+function PickCard({
+  pick,
+  onOpen,
+  onDismiss,
+  showReason,
+}: {
+  pick: UiPick;
+  onOpen: (i: BaseItem) => void;
+  onDismiss?: (i: BaseItem) => void;
+  showReason?: boolean;
+}) {
   return (
-    <div className={`pick pick--${pick.scored.strength}`} onClickCapture={() => onOpen(pick.item)}>
-      <MediaCard item={pick.item} caption={pick.scored.reason.text} onDismiss={onDismiss} />
+    <div className={`pick pick--${pick.strength}`} onClickCapture={() => onOpen(pick.item)}>
+      <MediaCard item={pick.item} caption={showReason ? pick.reason.text : undefined} onDismiss={onDismiss} />
     </div>
   );
 }
