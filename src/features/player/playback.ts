@@ -1,6 +1,9 @@
 import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
+import { isAssCodec } from "./assRenderer";
 import { buildDeviceProfile, capabilities } from "./deviceProfile";
+
+const FONT_TYPES = /font|opentype|truetype|.(ttf|otf|ttc|woff2?)/i;
 
 export type PlayMethod = "DirectPlay" | "DirectStream" | "Transcode";
 
@@ -11,6 +14,8 @@ export interface StreamOptions {
   maxBitrate: number;
   /** Set after a direct-play failure so the server remuxes or transcodes instead. */
   disableDirectPlay?: boolean;
+  /** Burn ASS/SSA in on the server (when the in-browser renderer can't run). */
+  burnInSubtitles?: boolean;
 }
 
 export interface StreamInfo {
@@ -24,6 +29,10 @@ export interface StreamInfo {
   transcodeReasons: string[];
   /** Text subtitle tracks the browser renders itself. */
   textTracks: { index: number; label: string; language?: string; url: string }[];
+  /** ASS/SSA tracks the browser renders with libass, keeping Direct Play. */
+  assTracks: { index: number; url: string }[];
+  /** Fonts embedded in the file, for ASS typesetting. */
+  fonts: string[];
 }
 
 /**
@@ -83,15 +92,15 @@ function withAuth(path: string): string {
   return url.toString();
 }
 
+const clientDelivered = (s: MediaStream) => s.Type === "Subtitle" && (s.DeliveryMethod === "External" || s.DeliveryMethod === "Hls") && Boolean(s.DeliveryUrl);
+
 function textTracksOf(source: MediaSource): StreamInfo["textTracks"] {
-  return source.MediaStreams.filter((s) => s.Type === "Subtitle" && (s.DeliveryMethod === "External" || s.DeliveryMethod === "Hls") && s.DeliveryUrl).map(
-    (s) => ({
-      index: s.Index,
-      label: s.DisplayTitle || s.Language || `Subtitle ${s.Index}`,
-      language: s.Language,
-      url: withAuth(s.DeliveryUrl!.replace(/\.(srt|subrip|ass|ssa|ttml)(\?|$)/i, ".vtt$2")),
-    }),
-  );
+  return source.MediaStreams.filter((s) => clientDelivered(s) && !isAssCodec(s.Codec)).map((s) => ({
+    index: s.Index,
+    label: s.DisplayTitle || s.Language || `Subtitle ${s.Index}`,
+    language: s.Language,
+    url: withAuth(s.DeliveryUrl!.replace(/\.(srt|subrip|ass|ssa|ttml)(\?|$)/i, ".vtt$2")),
+  }));
 }
 
 export async function requestStream(item: BaseItem, opts: StreamOptions): Promise<StreamInfo> {
@@ -100,7 +109,7 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
   const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;
   const info = await getPlaybackInfo(item.Id, {
     MediaSourceId: mediaSourceId,
-    DeviceProfile: buildDeviceProfile(opts.maxBitrate),
+    DeviceProfile: buildDeviceProfile(opts.maxBitrate, { burnInAss: opts.burnInSubtitles }),
     MaxStreamingBitrate: opts.maxBitrate,
     StartTimeTicks: opts.startTicks,
     AudioStreamIndex: opts.audioIndex,
@@ -192,6 +201,10 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
     subtitleIndex: actualSubtitle,
     transcodeReasons: reasons,
     textTracks: textTracksOf(source),
+    assTracks: source.MediaStreams.filter((s) => clientDelivered(s) && isAssCodec(s.Codec)).map((s) => ({ index: s.Index, url: withAuth(s.DeliveryUrl!) })),
+    fonts: (source.MediaAttachments ?? [])
+      .filter((a) => a.DeliveryUrl && FONT_TYPES.test(`${a.MimeType ?? ""} ${a.FileName ?? ""}`))
+      .map((a) => withAuth(a.DeliveryUrl!)),
   };
 }
 
@@ -200,6 +213,7 @@ export function streamsOfType(source: MediaSource | undefined, type: MediaStream
 }
 
 /** Whether a subtitle can be shown client-side (WebVTT track) or must be burned in. */
+/** Whether a subtitle is shown client-side (WebVTT track or libass) rather than burned in. */
 export function subtitleIsText(stream: MediaStream): boolean {
   return (
     stream.DeliveryMethod === "External" || stream.DeliveryMethod === "Hls" || Boolean(stream.IsTextSubtitleStream && !/ass|ssa/i.test(stream.Codec ?? ""))

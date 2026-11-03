@@ -44,7 +44,8 @@ If you serve it under a sub-path, build with `npx vite build --base=/argent/`.
 
 ## Playback notes
 
-- **Styled and image subtitles (ASS/SSA, PGS)** are burned in by the server, because browsers can't draw them. That needs a full video transcode, so playback with them is slower to start (about 20–45 s on a typical server). Text subtitles (SRT/VTT) are shown by the browser and keep Direct Play.
+- **ASS/SSA subtitles** (common on anime) are drawn in the browser by [JASSUB](https://github.com/ThaUnknown/jassub), libass compiled to WebAssembly, with the file's embedded fonts. Playback keeps Direct Play and starts instantly. The renderer (~1 MB gzipped) loads only when an ASS track is shown. If a browser can't run it, the server burns the subtitles in instead.
+- **Image subtitles (PGS, VobSub)** are burned in by the server, which needs a full video transcode, so they're slower to start (about 20–45 s on a typical server). Text subtitles (SRT/VTT) are shown by the browser and keep Direct Play.
 - **Closing the tab mid-playback.** Browsers won't send the final "stopped" report to a server on another origin while the page unloads, so Jellyfin ends the session itself after a few minutes. Progress is saved every 10 seconds, so nothing is lost. Leaving the player inside the app reports straight away.
 
 ## MediaBar parity
@@ -97,3 +98,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions.
 - Jellyfin logo: © Jellyfin contributors, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), from [jellyfin-ux](https://github.com/jellyfin/jellyfin-ux). Argent's silver version (`public/jellyfin-silver.svg`, `src/components/JellyfinLogo.tsx`) is an adaptation under the same licence.
 - MediaBar behaviour is modelled on the Jellyfin Media Bar by **MakD** (with IAmParadox27 & M0RPH3US), which builds on work by BobHasNoSoul, SethBacon and TedHinklater.
 - Fonts: Inter and Inter Tight (SIL OFL), loaded from Google Fonts.
+- Subtitle rendering: [JASSUB](https://github.com/ThaUnknown/jassub) and libass (LGPL-2.1+ and others; see the package's licence), used unmodified as a separate, dynamically loaded module.

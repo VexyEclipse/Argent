@@ -73,8 +73,17 @@ export interface MediaStream {
   VideoRangeType?: string;
 }
 
+export interface MediaAttachment {
+  Index: number;
+  Codec?: string;
+  FileName?: string;
+  MimeType?: string;
+  DeliveryUrl?: string;
+}
+
 export interface MediaSource {
   Id: string;
+  MediaAttachments?: MediaAttachment[];
   Name?: string;
   Path?: string;
   Container?: string;

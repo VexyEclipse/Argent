@@ -559,3 +559,10 @@ html[data-platform="tv"] .seek:focus-visible .seek__track {
 html[data-platform="tv"] .pmenu {
   width: 420px;
 }
+
+/* ---- ASS/SSA canvas (libass) ---- */
+.player__ass {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}

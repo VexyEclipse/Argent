@@ -14,6 +14,7 @@ import { usePlatform } from "@/platform/platform";
 import { isBackKey, moveFocus } from "@/platform/spatialNavigation";
 import { QUALITY_OPTIONS } from "./deviceProfile";
 import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, streamsOfType, subtitleIsText, type StreamInfo, type StreamOptions } from "./playback";
+import { createAssRenderer, type AssRenderer } from "./assRenderer";
 import { PlayerMenu } from "./PlayerMenu";
 import { PlaybackReporter } from "./reporter";
 import { Seekbar } from "./Seekbar";
@@ -374,10 +375,44 @@ function Player({ id }: { id: string }) {
     }
     appliedOffset.current = subOffset;
   }, [subOffset, textTrack]);
+  // ---- ASS/SSA (libass in the browser, keeps Direct Play) -------------------------
+  const assTrack = stream?.assTracks.find((t) => t.index === stream.subtitleIndex);
+  const assCanvas = useRef<HTMLCanvasElement>(null);
+  const assRenderer = useRef<AssRenderer | null>(null);
+  const subOffsetRef = useRef(subOffset);
+  subOffsetRef.current = subOffset;
+  useEffect(() => {
+    const el = video.current;
+    const canvas = assCanvas.current;
+    if (!el || !canvas || !assTrack || !stream) return;
+    let cancelled = false;
+    createAssRenderer({ video: el, canvas, subUrl: assTrack.url, fonts: stream.fonts, delay: subOffsetRef.current })
+      .then((r) => {
+        if (cancelled) r.destroy();
+        else assRenderer.current = r;
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.warn("ASS renderer unavailable; asking the server to burn subtitles in.", e);
+        setToast("Switching to server-rendered subtitles…");
+        reload({ subtitleIndex: assTrack.index, burnInSubtitles: true });
+      });
+    return () => {
+      cancelled = true;
+      assRenderer.current?.destroy();
+      assRenderer.current = null;
+    };
+    // A new renderer per track and per play session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assTrack?.url, stream?.playSessionId]);
+  useEffect(() => {
+    assRenderer.current?.setDelay(subOffset);
+  }, [subOffset]);
+
   useEffect(() => {
     appliedOffset.current = 0;
     setSubOffset(0);
-  }, [textTrack?.url]);
+  }, [textTrack?.url, assTrack?.url]);
 
   // ---- controls visibility --------------------------------------------------------
   const hideTimer = useRef(0);
@@ -430,8 +465,9 @@ function Player({ id }: { id: string }) {
     setMenu(null);
     if (!stream) return;
     const target = stream.source.MediaStreams.find((s) => s.Index === index);
-    const currentlyBurned = stream.subtitleIndex !== undefined && stream.subtitleIndex >= 0 && !stream.textTracks.some((t) => t.index === stream.subtitleIndex);
-    if (index === -1 || (target && subtitleIsText(target) && stream.textTracks.some((t) => t.index === index))) {
+    const clientSide = (i?: number) => stream.textTracks.some((t) => t.index === i) || stream.assTracks.some((t) => t.index === i);
+    const currentlyBurned = stream.subtitleIndex !== undefined && stream.subtitleIndex >= 0 && !clientSide(stream.subtitleIndex);
+    if (index === -1 || (target && subtitleIsText(target) && clientSide(index))) {
       if (currentlyBurned) reload({ subtitleIndex: index });
       else {
         setStream({ ...stream, subtitleIndex: index });
@@ -734,6 +770,8 @@ function Player({ id }: { id: string }) {
         ))}
       </video>
 
+      {assTrack && stream && <canvas key={`${stream.playSessionId}-${assTrack.index}`} ref={assCanvas} className="player__ass" aria-hidden="true" />}
+
       {cueHtml.length > 0 && (
         <div className="player__cues" aria-live="off">
           {cueHtml.map((frag, i) => (
@@ -983,7 +1021,7 @@ function Player({ id }: { id: string }) {
               })),
             ]}
             footer={
-              textTrack ? (
+              textTrack || assTrack ? (
                 <div className="pmenu__offset">
                   <span>Sync</span>
                   <button className="pc__btn pc__btn--sm" onClick={() => setSubOffset((o) => Math.round((o - 0.1) * 10) / 10)} aria-label="Subtitles earlier">

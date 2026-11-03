@@ -1,3 +1,5 @@
+import { canRenderAss } from "./assRenderer";
+
 // Builds a Jellyfin DeviceProfile from what this browser can actually decode, so the
 // server picks Direct Play, Direct Stream (remux) or Transcoding correctly.
 
@@ -57,7 +59,7 @@ export function capabilities(): Capabilities {
   };
 }
 
-export function buildDeviceProfile(maxBitrate: number) {
+export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boolean } = {}) {
   const c = capabilities();
   const video = ["h264", c.hevc && "hevc", c.av1 && "av1", c.vp9 && "vp9"].filter(Boolean).join(",");
   const audioMp4 = ["aac", c.mp3 && "mp3", c.opus && "opus", c.flac && "flac", c.ac3 && "ac3", c.eac3 && "eac3", c.dts && "dts"].filter(Boolean).join(",");
@@ -108,14 +110,22 @@ export function buildDeviceProfile(maxBitrate: number) {
         ],
       },
     ],
-    // Text subtitles are delivered as WebVTT tracks; image and styled formats burn in.
+    // Text subtitles are delivered as WebVTT tracks; image formats burn in.
     SubtitleProfiles: [
       { Format: "vtt", Method: "External" },
       { Format: "srt", Method: "External" },
       { Format: "subrip", Method: "External" },
       { Format: "ttml", Method: "External" },
-      { Format: "ass", Method: "Encode" },
-      { Format: "ssa", Method: "Encode" },
+      // ASS/SSA: drawn in the browser by libass when it can run, else burned in.
+      ...(canRenderAss() && !opts.burnInAss
+        ? [
+            { Format: "ass", Method: "External" },
+            { Format: "ssa", Method: "External" },
+          ]
+        : [
+            { Format: "ass", Method: "Encode" },
+            { Format: "ssa", Method: "Encode" },
+          ]),
       { Format: "pgssub", Method: "Encode" },
       { Format: "pgs", Method: "Encode" },
       { Format: "dvdsub", Method: "Encode" },
