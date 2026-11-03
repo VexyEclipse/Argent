@@ -1,0 +1,213 @@
+.browse__count {
+  margin-top: 6px;
+  font-size: var(--fs-small);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-3) 0;
+  margin-bottom: var(--sp-4);
+  background: linear-gradient(180deg, var(--bg-0) 75%, transparent);
+}
+html[data-platform="mobile"] .toolbar {
+  top: calc(var(--nav-h) + env(safe-area-inset-top));
+}
+html[data-platform="tv"] .toolbar {
+  top: 0;
+}
+.toolbar__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  max-width: 340px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+  color: var(--text-3);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.toolbar__search:focus-within {
+  border-color: var(--line-3);
+}
+.toolbar__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  color: var(--text-1);
+  font-size: var(--fs-small);
+}
+.toolbar__input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.select--compact {
+  height: 38px;
+  width: auto;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  padding-left: 14px;
+}
+.flip {
+  transform: rotate(180deg);
+}
+.toolbar__density {
+  display: flex;
+  margin-left: auto;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+}
+.toolbar__density button {
+  width: 34px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+.toolbar__density button.is-active {
+  background: var(--bg-4);
+  color: var(--text-1);
+}
+.density-glyph {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+.density-glyph--compact {
+  width: 8px;
+  height: 11px;
+  box-shadow:
+    -5px 0 0 -1.5px currentColor,
+    5px 0 0 -1.5px currentColor;
+  border-width: 1.5px;
+}
+.density-glyph--comfortable {
+  width: 10px;
+  height: 14px;
+}
+.density-glyph--large {
+  width: 13px;
+  height: 18px;
+}
+html[data-platform="mobile"] .toolbar__density {
+  display: none;
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-6);
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-lg);
+  align-items: flex-start;
+}
+.filters__group {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: baseline;
+  width: 100%;
+}
+.filters__label {
+  flex: 0 0 72px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+html[data-platform="mobile"] .filters__group {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.browse__body.has-letters {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  gap: var(--sp-4);
+}
+.browse__body.has-letters .letters {
+  order: 2;
+}
+.letters {
+  position: sticky;
+  top: calc(var(--nav-h) + 72px);
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.letters button {
+  width: 28px;
+  height: 20px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-3);
+  border-radius: 4px;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.letters button:hover,
+.letters button.is-active {
+  color: var(--text-1);
+  background: rgb(255 255 255 / 0.06);
+}
+.browse__results {
+  min-width: 0;
+}
+.grid.is-stale {
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.grid .card {
+  content-visibility: auto;
+  contain-intrinsic-size: var(--poster-w) calc(var(--poster-w) * 1.5 + 48px);
+}
+.browse__sentinel {
+  min-height: 40px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-2);
+  border: 1px solid var(--line-1);
+}
+.tabs button,
+.tabs a {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+}
+.tabs .is-active {
+  background: var(--bg-4);
+  color: var(--text-1);
+}

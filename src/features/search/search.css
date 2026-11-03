@@ -1,0 +1,97 @@
+.search__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--line-2);
+  color: var(--text-3);
+  transition: border-color var(--dur) var(--ease-out);
+}
+.search__bar:focus-within {
+  border-color: var(--silver-300);
+  color: var(--text-1);
+}
+.search__input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.4vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+}
+.search__input::placeholder {
+  color: var(--text-3);
+}
+.search__input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.search__clear {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+.search__clear:hover {
+  color: var(--text-1);
+  background: rgb(255 255 255 / 0.06);
+}
+.search__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin: var(--sp-5) 0 var(--sp-8);
+  flex-wrap: wrap;
+}
+.search__filters {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.search__idle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+.search__heading {
+  font-size: var(--fs-h3);
+  margin-bottom: var(--sp-4);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.search__count {
+  font-family: var(--font-body);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--text-3);
+}
+.search__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.search__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-12);
+  transition: opacity var(--dur) var(--ease-out);
+}
+.search__results.is-stale {
+  opacity: 0.6;
+}
+.search__people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--person-w), 1fr));
+  gap: var(--sp-6) var(--sp-4);
+}
+.search__person .person__photo {
+  width: 100%;
+}

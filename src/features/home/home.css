@@ -1,0 +1,75 @@
+.home {
+  position: relative;
+  padding-bottom: calc(var(--sp-16) + var(--tabbar-h));
+}
+.home__rows {
+  position: relative;
+  z-index: 1;
+  /* No featured header (nothing to feature): clear the navigation instead. */
+  padding-top: var(--nav-h);
+}
+.mediabar + .home__rows {
+  padding-top: 0;
+  margin-top: calc(var(--section-gap) * -1.6);
+}
+html[data-platform="mobile"] .mediabar + .home__rows {
+  margin-top: 0;
+}
+.home__ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(60px) saturate(0.6) brightness(0.35);
+  transform: scale(1.2);
+  opacity: 0.6;
+  transition: background-image 1.2s var(--ease-in-out);
+  pointer-events: none;
+}
+.home > .mediabar {
+  z-index: 1;
+}
+
+/* Recommended row: slightly larger posters to lead the page. */
+.row--feature .card--poster {
+  width: calc(var(--poster-w) * 1.14);
+}
+.pick {
+  flex: 0 0 auto;
+  display: flex;
+}
+.pick--strong .card__caption {
+  color: var(--silver-200);
+}
+.pick--exploratory .card__caption {
+  color: var(--text-3);
+}
+
+/* Genre tiles */
+.row--genres {
+  --landscape-w: 260px;
+}
+html[data-platform="mobile"] .row--genres {
+  --landscape-w: 180px;
+}
+.genre-tile .card__media {
+  aspect-ratio: 16 / 8;
+}
+.genre-tile .artwork img {
+  filter: grayscale(0.35) brightness(0.8);
+}
+.genre-tile__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(9 9 10 / 0.82), rgb(9 9 10 / 0.25));
+}
+.genre-tile__name {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

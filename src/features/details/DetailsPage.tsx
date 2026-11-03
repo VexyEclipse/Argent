@@ -1,0 +1,295 @@
+import { useEffect, useMemo } from "react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getNextUp, getSeasons } from "@/api/jellyfin";
+import { landscapeImage } from "@/api/images";
+import { episodeCode, formatRuntime, progressOf } from "@/api/format";
+import type { BaseItem } from "@/api/types";
+import { Artwork } from "@/components/Artwork";
+import { Button } from "@/components/Button";
+import { Icon } from "@/components/Icon";
+import { MediaCard } from "@/components/MediaCard";
+import { ErrorState, Spinner } from "@/components/States";
+import { Hero } from "./Hero";
+import { CastRow, InfoTable, SimilarRow } from "./Sections";
+import { useTogglePlayed } from "./useItemActions";
+import "./details.css";
+
+export default function DetailsPage() {
+  const { id = "" } = useParams();
+  const item = useQuery({ queryKey: ["item", id], queryFn: () => getItemFull(id), staleTime: 30_000 });
+
+  if (item.isPending) return <Spinner />;
+  if (item.isError)
+    return (
+      <div className="page">
+        <ErrorState error={item.error} onRetry={() => item.refetch()} />
+      </div>
+    );
+  const data = item.data;
+
+  switch (data.Type) {
+    case "Series":
+      return <SeriesDetails item={data} />;
+    case "Season":
+      return <Navigate to={`/details/${data.SeriesId}?season=${data.Id}`} replace />;
+    case "Episode":
+      return <EpisodeDetails item={data} />;
+    case "BoxSet":
+      return <CollectionDetails item={data} />;
+    case "Person":
+      return <Navigate to={`/person/${data.Id}`} replace />;
+    default:
+      return <MovieDetails item={data} />;
+  }
+}
+
+function MovieDetails({ item }: { item: BaseItem }) {
+  return (
+    <div className="details">
+      <Hero item={item} />
+      <div className="details__body">
+        <CastRow people={item.People} />
+        <SimilarRow item={item} />
+        <InfoTable item={item} />
+      </div>
+    </div>
+  );
+}
+
+// ---- Series ---------------------------------------------------------------------
+
+function SeriesDetails({ item }: { item: BaseItem }) {
+  const [params, setParams] = useSearchParams();
+  const seasons = useQuery({ queryKey: ["seasons", item.Id], queryFn: () => getSeasons(item.Id).then((r) => r.Items), staleTime: 60_000 });
+  const nextUp = useQuery({
+    queryKey: ["nextup", item.Id],
+    // Rewatching enabled so a finished series still offers "play again from S1E1".
+    queryFn: () => getNextUp({ seriesId: item.Id, limit: 1, enableRewatching: true }).then((r) => r.Items[0] ?? null),
+    staleTime: 30_000,
+  });
+
+  const seasonList = seasons.data ?? [];
+  const selectedId = params.get("season") ?? nextUp.data?.SeasonId ?? seasonList.find((s) => (s.IndexNumber ?? 0) > 0)?.Id ?? seasonList[0]?.Id;
+
+  // Fallback when Next Up has nothing: the first episode of the first season.
+  const firstEpisode = useQuery({
+    queryKey: ["episodes", item.Id, "first"],
+    queryFn: () => getEpisodes(item.Id).then((r) => r.Items.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? r.Items[0] ?? null),
+    enabled: nextUp.isSuccess && !nextUp.data,
+    staleTime: 60_000,
+  });
+  const playTarget = nextUp.data ?? firstEpisode.data ?? null;
+  const started = (item.UserData?.PlayedPercentage ?? 0) > 0 || Boolean(playTarget && progressOf(playTarget) > 0);
+
+  return (
+    <div className="details">
+      <Hero
+        item={item}
+        playTarget={playTarget}
+        playLabel={
+          playTarget ? `${started ? (progressOf(playTarget) > 0 ? "Resume" : "Continue") : "Play"} ${episodeCode(playTarget).replace(" · ", "")}` : undefined
+        }
+      >
+        {playTarget && started && (
+          <p className="hero__next">
+            <span className="eyebrow">Up next</span> {episodeCode(playTarget)} — {playTarget.Name}
+          </p>
+        )}
+      </Hero>
+
+      <div className="details__body">
+        {seasonList.length > 0 && (
+          <section className="seasons">
+            <div className="seasons__tabs" role="tablist" aria-label="Seasons" data-nav-row>
+              {seasonList.map((s) => {
+                const watched = s.UserData?.Played;
+                return (
+                  <button
+                    key={s.Id}
+                    role="tab"
+                    aria-selected={s.Id === selectedId}
+                    className={`seasons__tab ${s.Id === selectedId ? "is-active" : ""}`}
+                    onClick={() => setParams({ season: s.Id }, { replace: true, preventScrollReset: true })}
+                  >
+                    {s.Name}
+                    {watched && <Icon name="check" size={13} />}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedId && <EpisodeList seriesId={item.Id} seasonId={selectedId} highlightId={nextUp.data?.Id} />}
+          </section>
+        )}
+        <CastRow people={item.People} />
+        <SimilarRow item={item} />
+        <InfoTable item={item} />
+      </div>
+    </div>
+  );
+}
+
+function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; seasonId: string; highlightId?: string }) {
+  const navigate = useNavigate();
+  const toggle = useTogglePlayed();
+  const episodes = useQuery({
+    queryKey: ["episodes", seriesId, seasonId],
+    queryFn: () => getEpisodes(seriesId, seasonId).then((r) => r.Items),
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!highlightId || !episodes.data) return;
+    document.getElementById(`ep-${highlightId}`)?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [highlightId, episodes.data]);
+
+  if (episodes.isPending) return <Spinner />;
+  if (!episodes.data?.length) return <p className="muted">No episodes in this season.</p>;
+
+  return (
+    <ol className="episodes">
+      {episodes.data.map((ep) => {
+        const progress = progressOf(ep);
+        const played = ep.UserData?.Played;
+        return (
+          <li key={ep.Id} id={`ep-${ep.Id}`} className={`episode ${ep.Id === highlightId ? "is-next" : ""}`}>
+            <button className="episode__thumb" onClick={() => navigate(`/play/${ep.Id}`)} aria-label={`Play ${ep.Name}`}>
+              <Artwork image={landscapeImage(ep, 480)} alt="" />
+              <span className="episode__play">
+                <Icon name="play" size={20} />
+              </span>
+              {progress > 0 && progress < 100 && (
+                <span className="card__progress">
+                  <span style={{ width: `${progress}%` }} />
+                </span>
+              )}
+            </button>
+            <div className="episode__text">
+              <div className="episode__head">
+                <Link to={`/details/${ep.Id}`} className="episode__title">
+                  <span className="episode__num">{ep.IndexNumber ?? "–"}</span>
+                  {ep.Name}
+                </Link>
+                <button
+                  className={`episode__watched ${played ? "is-on" : ""}`}
+                  onClick={() => toggle.mutate({ id: ep.Id, value: !played })}
+                  aria-label={played ? "Mark unwatched" : "Mark watched"}
+                  title={played ? "Watched" : "Mark watched"}
+                >
+                  <Icon name="check" size={15} />
+                </button>
+              </div>
+              <div className="episode__meta">
+                {[
+                  formatRuntime(ep.RunTimeTicks),
+                  ep.PremiereDate ? new Date(ep.PremiereDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : null,
+                ]
+                  .filter(Boolean)
+                  .join("  ·  ")}
+              </div>
+              {ep.Overview && <p className="episode__overview">{ep.Overview}</p>}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// ---- Episode --------------------------------------------------------------------
+
+function EpisodeDetails({ item }: { item: BaseItem }) {
+  const navigate = useNavigate();
+  const all = useQuery({
+    queryKey: ["episodes", item.SeriesId, "all"],
+    queryFn: () => getEpisodes(item.SeriesId!).then((r) => r.Items),
+    enabled: Boolean(item.SeriesId),
+    staleTime: 60_000,
+  });
+  const { prev, next } = useMemo(() => {
+    const list = all.data ?? [];
+    const i = list.findIndex((e) => e.Id === item.Id);
+    return { prev: i > 0 ? list[i - 1] : null, next: i >= 0 && i < list.length - 1 ? list[i + 1] : null };
+  }, [all.data, item.Id]);
+
+  return (
+    <div className="details">
+      <Hero
+        item={item}
+        showPoster={false}
+        eyebrow={
+          <>
+            <Link to={`/details/${item.SeriesId}`} className="link">
+              {item.SeriesName}
+            </Link>
+            {"  ·  "}
+            {episodeCode(item)}
+          </>
+        }
+        extraActions={
+          <>
+            {prev && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon="skipPrev"
+                onClick={() => navigate(`/details/${prev.Id}`)}
+                aria-label={`Previous episode: ${prev.Name}`}
+                title="Previous episode"
+              />
+            )}
+            {next && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon="skipNext"
+                onClick={() => navigate(`/details/${next.Id}`)}
+                aria-label={`Next episode: ${next.Name}`}
+                title="Next episode"
+              />
+            )}
+          </>
+        }
+      />
+      <div className="details__body">
+        <CastRow people={item.People?.filter((p) => p.Type === "GuestStar" || p.Type === "Director" || p.Type === "Writer")} title="Guest Stars & Crew" />
+        {item.SeasonId && item.SeriesId && (
+          <section className="seasons">
+            <h2 className="row__title seasons__heading">{item.SeasonName}</h2>
+            <EpisodeList seriesId={item.SeriesId} seasonId={item.SeasonId} highlightId={item.Id} />
+          </section>
+        )}
+        <InfoTable item={item} />
+      </div>
+    </div>
+  );
+}
+
+// ---- Collection -----------------------------------------------------------------
+
+function CollectionDetails({ item }: { item: BaseItem }) {
+  const children = useQuery({
+    queryKey: ["collection", item.Id],
+    queryFn: () =>
+      getItems({ parentId: item.Id, sortBy: ["PremiereDate", "ProductionYear", "SortName"], sortOrder: "Ascending", fields: CARD_FIELDS }).then((r) => r.Items),
+    staleTime: 60_000,
+  });
+  const firstUnwatched = children.data?.find((c) => !c.UserData?.Played) ?? children.data?.[0] ?? null;
+  return (
+    <div className="details">
+      <Hero item={item} playTarget={firstUnwatched} playLabel={firstUnwatched ? `Play ${firstUnwatched.Name}` : undefined} eyebrow="Collection" />
+      <div className="details__body details__body--padded">
+        <h2 className="row__title">{children.data ? `${children.data.length} titles` : "Titles"}</h2>
+        {children.isPending ? (
+          <Spinner />
+        ) : (
+          <div className="grid">
+            {children.data?.map((c) => (
+              <MediaCard key={c.Id} item={c} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

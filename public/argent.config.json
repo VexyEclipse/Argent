@@ -1,0 +1,8 @@
+{
+  "$comment": "Deployment defaults for Argent. Edit this file on the host that serves the built app; no rebuild needed.",
+  "defaultServerUrl": "",
+  "mediaBar": {
+    "$comment": "Server-wide MediaBar defaults, equivalent to window.SlideshowConfig in the MediaBar plugin. Any key from src/features/mediabar/config.ts is accepted. Keys in 'lock' cannot be changed by viewers.",
+    "lock": []
+  }
+}

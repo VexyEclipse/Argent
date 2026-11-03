@@ -1,0 +1,270 @@
+/* ---------- Desktop navigation ---------- */
+.nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: var(--z-nav);
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-10);
+  padding: 0 var(--gutter);
+  background: linear-gradient(180deg, rgb(9 9 10 / 0.75), transparent);
+  transition:
+    background-color var(--dur) var(--ease-out),
+    border-color var(--dur) var(--ease-out),
+    backdrop-filter var(--dur) var(--ease-out);
+  border-bottom: 1px solid transparent;
+}
+.nav.is-solid {
+  background: rgb(9 9 10 / 0.86);
+  backdrop-filter: blur(18px) saturate(1.1);
+  border-bottom-color: var(--line-1);
+}
+.nav__brand {
+  display: flex;
+  align-items: center;
+}
+.nav__links {
+  display: flex;
+  gap: var(--sp-2);
+}
+.nav__link {
+  position: relative;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text-2);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.nav__link:hover {
+  color: var(--text-1);
+}
+.nav__link.active {
+  color: var(--text-1);
+  background: rgb(255 255 255 / 0.08);
+}
+.nav__end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.nav__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-2);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.nav__icon:hover,
+.nav__icon.active {
+  color: var(--text-1);
+  background: rgb(255 255 255 / 0.08);
+}
+.nav__avatar {
+  border-radius: 50%;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(145deg, var(--bg-4), var(--bg-2));
+  border: 1px solid var(--line-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--silver-100);
+}
+
+/* ---------- Menu ---------- */
+.menu {
+  position: relative;
+}
+.menu__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 270px;
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  padding: 8px;
+  background: rgb(18 19 21 / 0.96);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(18px);
+  animation: fade-in var(--dur) var(--ease-out);
+  z-index: var(--z-overlay);
+}
+.menu__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 14px;
+  border-bottom: 1px solid var(--line-1);
+  margin-bottom: 6px;
+}
+.menu__name {
+  font-weight: 600;
+}
+.menu__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.menu__meta--inline {
+  margin-left: auto;
+}
+.menu__label {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 12px 10px 4px;
+}
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  text-align: left;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.menu__item:hover,
+.menu__item:focus-visible {
+  background: rgb(255 255 255 / 0.06);
+  color: var(--text-1);
+}
+.menu__ext {
+  margin-left: auto;
+  color: var(--text-3);
+}
+
+/* ---------- Mobile ---------- */
+.mnav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: var(--z-nav);
+  height: calc(var(--nav-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--gutter) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgb(9 9 10 / 0.85), rgb(9 9 10 / 0));
+}
+.tabbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: var(--z-nav);
+  height: var(--tabbar-h);
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  background: rgb(12 12 13 / 0.92);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--line-1);
+}
+.tabbar__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--text-3);
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar__item.active {
+  color: var(--silver-50);
+}
+
+/* ---------- TV rail ---------- */
+.shell--tv .shell__main {
+  padding-left: 96px;
+}
+.rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: var(--z-nav);
+  width: 96px;
+  padding: 36px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  background: linear-gradient(90deg, rgb(9 9 10 / 0.96) 60%, rgb(9 9 10 / 0));
+  transition: width var(--dur) var(--ease-out);
+  overflow: hidden;
+}
+.rail:focus-within {
+  width: 300px;
+  background: rgb(12 12 13 / 0.97);
+  box-shadow: var(--shadow-3);
+}
+.rail__brand {
+  display: flex;
+  justify-content: center;
+  width: 96px;
+  margin-bottom: 28px;
+}
+.rail__item {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 56px;
+  margin: 0 16px;
+  padding: 0 19px;
+  border-radius: var(--radius);
+  color: var(--text-3);
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.rail__item.active {
+  color: var(--text-1);
+}
+.rail__item:focus-visible {
+  box-shadow: none;
+  background: var(--silver-50);
+  color: var(--text-on-accent);
+}
+.rail__label {
+  font-size: 1rem;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.rail:focus-within .rail__label {
+  opacity: 1;
+}
+
+/* TV focus: scale the focused card, keep the ring. */
+html[data-platform="tv"] .card__link:focus-visible .card__media {
+  transform: scale(1.07);
+}
+html[data-platform="tv"] .btn:focus-visible {
+  background: var(--silver-50);
+  color: var(--text-on-accent);
+  border-color: transparent;
+}
+html[data-platform="tv"] .chip:focus-visible {
+  border-color: var(--silver-50);
+  color: var(--text-1);
+}

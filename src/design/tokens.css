@@ -1,0 +1,167 @@
+/* Argent design tokens.
+ * Palette: near-black primary, dark charcoal secondary, silver accent, white and
+ * silver-grey text, very subtle dark-grey/silver separators. No bright colours.
+ * Platform overrides at the bottom retune sizes, never the palette. */
+
+:root {
+  /* Surfaces */
+  --bg-0: #09090a; /* near-black, page */
+  --bg-1: #0f1011; /* raised page areas */
+  --bg-2: #16171a; /* charcoal panels, cards */
+  --bg-3: #1d1f23; /* hover / inputs */
+  --bg-4: #26282d; /* pressed / selected */
+  --scrim: rgb(9 9 10 / 0.72);
+
+  /* Silver accent ramp */
+  --silver-50: #f6f7f8;
+  --silver-100: #e6e8eb;
+  --silver-200: #d2d5da;
+  --silver-300: #b9bdc4;
+  --silver-400: #9a9fa7;
+  --silver-500: #7d828b;
+  --silver-600: #5f636b;
+  --accent: var(--silver-200);
+  --accent-strong: var(--silver-50);
+  --accent-gradient: linear-gradient(135deg, #f4f5f7 0%, #b9bdc4 55%, #7d828b 100%);
+
+  /* Text */
+  --text-1: #f5f6f7;
+  --text-2: #b4b8bf;
+  --text-3: #80858d;
+  --text-on-accent: #0b0b0c;
+
+  /* Lines */
+  --line-1: rgb(255 255 255 / 0.06);
+  --line-2: rgb(210 214 220 / 0.14);
+  --line-3: rgb(210 214 220 / 0.28);
+
+  /* State */
+  --danger: #d9a3a3; /* muted, used only for destructive confirmations */
+  --focus-ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--silver-100);
+
+  /* Typography */
+  --font-display: "Inter Tight", "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --fs-hero: clamp(2.4rem, 3.6vw + 1rem, 4.6rem);
+  --fs-display: clamp(1.9rem, 2.2vw + 0.9rem, 3rem);
+  --fs-h1: 1.75rem;
+  --fs-h2: 1.3rem;
+  --fs-h3: 1.05rem;
+  --fs-body: 0.95rem;
+  --fs-small: 0.82rem;
+  --fs-micro: 0.72rem;
+  --lh-tight: 1.1;
+  --lh-body: 1.55;
+  --tracking-caps: 0.14em;
+
+  /* Spacing (4px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+  --gutter: clamp(20px, 4vw, 64px);
+  --section-gap: clamp(28px, 3.2vw, 44px);
+
+  /* Media sizing */
+  --poster-w: 168px; /* overridden by density */
+  --poster-ratio: 2 / 3;
+  --landscape-w: 320px;
+  --landscape-ratio: 16 / 9;
+  --person-w: 128px;
+  --hero-h: min(86vh, 920px);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Elevation (soft, never glowing) */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 10px 30px -12px rgb(0 0 0 / 0.7);
+  --shadow-3: 0 24px 60px -20px rgb(0 0 0 / 0.85);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 600ms;
+  --dur-hero: 900ms;
+
+  /* Chrome */
+  --nav-h: 68px;
+  --tabbar-h: 0px;
+  --z-nav: 50;
+  --z-overlay: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+
+  color-scheme: dark;
+}
+
+/* Grid densities for library browsing */
+[data-density="compact"] {
+  --poster-w: 132px;
+}
+[data-density="comfortable"] {
+  --poster-w: 168px;
+}
+[data-density="large"] {
+  --poster-w: 216px;
+}
+
+/* ---- Platform tuning ---- */
+
+html[data-platform="mobile"] {
+  --fs-hero: clamp(1.9rem, 7vw, 2.6rem);
+  --fs-h1: 1.45rem;
+  --fs-h2: 1.12rem;
+  --fs-body: 0.92rem;
+  --gutter: 16px;
+  --section-gap: 26px;
+  --poster-w: 112px;
+  --landscape-w: 248px;
+  --person-w: 96px;
+  --hero-h: min(72vh, 640px);
+  --nav-h: 56px;
+  --tabbar-h: calc(60px + env(safe-area-inset-bottom));
+}
+html[data-platform="mobile"] [data-density="compact"] {
+  --poster-w: 96px;
+}
+html[data-platform="mobile"] [data-density="comfortable"] {
+  --poster-w: 112px;
+}
+html[data-platform="mobile"] [data-density="large"] {
+  --poster-w: 148px;
+}
+
+/* TV: 10-foot UI. Everything is sized for distance; focus is always visible. */
+html[data-platform="tv"] {
+  font-size: 20px;
+  --fs-hero: 3.6rem;
+  --fs-h1: 2rem;
+  --fs-h2: 1.4rem;
+  --gutter: 64px;
+  --section-gap: 40px;
+  --poster-w: 200px;
+  --landscape-w: 380px;
+  --person-w: 150px;
+  --hero-h: 78vh;
+  --nav-h: 0px;
+  --focus-ring: 0 0 0 3px var(--bg-0), 0 0 0 6px var(--silver-50);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+    --dur-hero: 0ms;
+  }
+}
