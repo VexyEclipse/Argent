@@ -199,9 +199,9 @@ export function HomePage() {
 
         {renderPersonal(0)}
 
-        {(movies.isPending || (movies.data?.length ?? 0) > 0) && (
-          <Row title="Your Movies" seeAllTo="/movies" loading={movies.isPending}>
-            {movies.data?.map((item) => (
+        {hasAnime && (anime.isPending || (anime.data?.length ?? 0) > 0) && (
+          <Row title="Your Anime" seeAllTo="/anime" loading={anime.isPending}>
+            {anime.data?.map((item) => (
               <MediaCard key={item.Id} item={item} />
             ))}
           </Row>
@@ -215,9 +215,9 @@ export function HomePage() {
           </Row>
         )}
 
-        {hasAnime && (anime.isPending || (anime.data?.length ?? 0) > 0) && (
-          <Row title="Your Anime" seeAllTo="/anime" loading={anime.isPending}>
-            {anime.data?.map((item) => (
+        {(movies.isPending || (movies.data?.length ?? 0) > 0) && (
+          <Row title="Your Movies" seeAllTo="/movies" loading={movies.isPending}>
+            {movies.data?.map((item) => (
               <MediaCard key={item.Id} item={item} />
             ))}
           </Row>
