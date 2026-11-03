@@ -2,7 +2,7 @@
 
 A premium, cinematic frontend for [Jellyfin](https://jellyfin.org). Argent replaces Jellyfin's presentation layer (home, browsing, details, search and playback) and keeps Jellyfin as the backend for everything else: media, metadata, users, authentication, permissions, playback sessions and library management.
 
-It is still Jellyfin. The name and logo stay; the logo is recoloured silver. The palette is near-black, charcoal and silver.
+The app is branded Argent throughout. Its mark is the Jellyfin logo shape recoloured silver (credited below, as its licence requires). The palette is near-black, charcoal and silver.
 
 ## What's in it
 
@@ -99,3 +99,16 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions.
 - MediaBar behaviour is modelled on the Jellyfin Media Bar by **MakD** (with IAmParadox27 & M0RPH3US), which builds on work by BobHasNoSoul, SethBacon and TedHinklater.
 - Fonts: Inter and Inter Tight (SIL OFL), loaded from Google Fonts.
 - Subtitle rendering: [JASSUB](https://github.com/ThaUnknown/jassub) and libass (LGPL-2.1+ and others; see the package's licence), used unmodified as a separate, dynamically loaded module.
+
+## Desktop app (Windows)
+
+Argent also runs as its own desktop app: an Electron shell around the same build, with the silver mark as its icon, a dark integrated title bar and a modern engine that plays H.264, HEVC and AV1.
+
+```bash
+npm run desktop        # build and open the app
+npm run desktop:dev    # open the app against the running dev server (npm run dev)
+npm run desktop:pack   # build release/Argent-Setup-<version>.exe (per-user installer)
+npm run icons          # regenerate build/icon.ico and build/icon.png from the logo
+```
+
+The installer adds Start menu and desktop shortcuts named Argent. Keys: F11 toggles full screen, Ctrl+R reloads, Ctrl+Shift+I opens developer tools.

@@ -94,7 +94,7 @@ export default function ProfilePage() {
       <div className="profile__grid">
         <section className="panel profile__section">
           <h2 className="profile__title">Playback</h2>
-          <p className="profile__desc">Stored on your Jellyfin account, so every app you use follows them.</p>
+          <p className="profile__desc">Stored on your server account, so every app you use follows them.</p>
           <label className="field">
             <span className="field__label">Preferred audio language</span>
             <select className="select" value={cfg.AudioLanguagePreference ?? ""} onChange={(e) => save({ AudioLanguagePreference: e.target.value })}>
@@ -226,7 +226,7 @@ export default function ProfilePage() {
       <footer className="profile__about">
         <JellyfinMark size={22} />
         <span>
-          Jellyfin {server.data?.Version ?? ""} · {server.data?.ServerName ?? account?.serverName} · Argent {APP_VERSION}
+          Argent {APP_VERSION} · {server.data?.ServerName ?? account?.serverName} · Server {server.data?.Version ?? ""}
         </span>
       </footer>
     </div>

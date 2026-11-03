@@ -10,6 +10,10 @@ import "@/design/base.css";
 import "@/design/components.css";
 import "@/design/layout.css";
 
+// Running inside the Argent desktop app (Electron): the CSS leaves room for the
+// native window buttons and makes the top bar draggable.
+if (navigator.userAgent.includes("Electron/")) document.documentElement.dataset.shell = "desktop-app";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

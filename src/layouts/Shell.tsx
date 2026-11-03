@@ -126,7 +126,7 @@ function DesktopNav() {
   }, []);
   return (
     <header className={`nav ${solid ? "is-solid" : ""}`}>
-      <Link to="/" className="nav__brand" aria-label="Jellyfin home">
+      <Link to="/" className="nav__brand" aria-label="Argent home">
         <JellyfinLogo size={26} />
       </Link>
       <nav className="nav__links" aria-label="Main">
@@ -151,7 +151,7 @@ function MobileNav() {
   return (
     <>
       <header className="mnav">
-        <Link to="/" aria-label="Jellyfin home">
+        <Link to="/" aria-label="Argent home">
           <JellyfinLogo size={24} />
         </Link>
         <ProfileMenu />

@@ -26,7 +26,7 @@ export function JellyfinLogo({ size = 26, showWordmark = true }: { size?: number
   return (
     <span className="jf-logo">
       <JellyfinMark size={size} />
-      {showWordmark && <span className="jf-logo__word">Jellyfin</span>}
+      {showWordmark && <span className="jf-logo__word">Argent</span>}
     </span>
   );
 }

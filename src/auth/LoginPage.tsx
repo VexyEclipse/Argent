@@ -104,7 +104,7 @@ function ServerStep({
       }
       onConnected(client, info);
     } catch {
-      setError("Couldn't reach a Jellyfin server at that address.");
+      setError("Couldn't reach a media server at that address.");
     } finally {
       setBusy(false);
     }
@@ -279,7 +279,7 @@ function UserStep({ client, info, onBack }: { client: JellyfinClient; info: Publ
       ) : (
         <div className="login__form">
           <h1 className="login__title">Quick Connect</h1>
-          <p className="muted">On a device where you're signed in, open Jellyfin's Quick Connect and enter this code.</p>
+          <p className="muted">On a device where you're already signed in to this server, open Quick Connect and enter this code.</p>
           <div className="login__code" aria-live="polite">
             {quick ? quick.code : "······"}
           </div>
