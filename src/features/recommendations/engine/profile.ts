@@ -78,7 +78,11 @@ export function engagementWeight(signal: HistorySignal, now: number): number {
   if (item.user.favorite) explicit *= 1.6;
   if (item.user.likes === true) explicit *= 1.4;
   if (item.user.likes === false) return -0.6 * recency;
-  if (typeof item.user.rating === "number") explicit *= 0.6 + item.user.rating / 12.5; // 0→0.6, 10→1.4
+  if (typeof item.user.rating === "number") {
+    // A low score is an explicit "not this": 4 → -0.15, 1 → -0.45.
+    if (item.user.rating <= 4) return -(0.15 + 0.1 * (4 - Math.max(1, item.user.rating))) * recency;
+    explicit *= 0.4 + item.user.rating / 10; // 5→0.9, 8→1.2, 10→1.4
+  }
 
   return base * recency * (base > 0 ? rewatch * explicit : 1);
 }

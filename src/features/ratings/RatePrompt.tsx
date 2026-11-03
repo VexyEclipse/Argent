@@ -8,27 +8,36 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey } from "@/platform/spatialNavigation";
-import { MAX_NOTE, type RateTarget, type RatingEntry } from "./logic";
+import { MAX_NOTE, QUICK_TAGS, type RateTarget } from "./logic";
+import { useRatings } from "./prefs";
 import { clearRatePrompt, readRatePrompt, subscribeRatePrompt } from "./prompt";
 import { pullRatingsFromServer, rate, removeRating, skipRating } from "./store";
 import "./ratings.css";
 
+const TYPE_LABEL = { Movie: "Movie", Series: "Series", Season: "Season" } as const;
+const fmtDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
 interface DialogProps {
   target: RateTarget;
-  /** Editing an existing rating rather than the post-watch prompt. */
-  initial?: RatingEntry;
+  /** "prompt" after playback (Skip remembers the choice); "edit" from the profile or a details page. */
+  mode: "prompt" | "edit";
   onClose: (result?: { stars: number } | "removed") => void;
 }
 
 /** Full-screen "What would you rate X?" over the title's blurred backdrop. */
-export function RateDialog({ target, initial, onClose }: DialogProps) {
+export function RateDialog({ target, mode, onClose }: DialogProps) {
   const { user } = useAuth();
   const platform = usePlatform();
-  const [stars, setStars] = useState(initial?.stars ?? 0);
+  const ratings = useRatings();
+  // Read once: the dialog edits a snapshot, not a value that changes under it.
+  const [existing] = useState(() => ratings.ratings[target.id]);
+  const [stars, setStars] = useState(existing?.stars ?? 0);
   const [hover, setHover] = useState(0);
-  const [note, setNote] = useState(initial?.note ?? "");
+  const [note, setNote] = useState(existing?.note ?? "");
+  const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
+  const [spoiler, setSpoiler] = useState(Boolean(existing?.spoiler));
   const firstStar = useRef<HTMLButtonElement>(null);
-  const editing = Boolean(initial);
+  const rewatch = mode === "prompt" && Boolean(existing);
 
   const art = useQuery({
     queryKey: ["rate-target", target.id],
@@ -39,20 +48,23 @@ export function RateDialog({ target, initial, onClose }: DialogProps) {
   const backdrop = item ? backdropImage(item, 1280) : null;
   const logo = item ? logoImage(item, 640) : null;
   const poster = item ? posterImage(item, 240) : null;
+  const tagOptions = [...QUICK_TAGS, ...tags.filter((t) => !QUICK_TAGS.includes(t))];
 
   const save = () => {
     if (!user || !stars) return;
-    rate(user.Id, target, stars, note);
+    rate(user.Id, target, { stars, note, tags, spoiler });
     onClose({ stars });
   };
   const dismiss = () => {
-    if (user && !editing) skipRating(user.Id, target.id);
+    // A skipped rewatch keeps the old rating and may ask again next time.
+    if (user && mode === "prompt" && !existing) skipRating(user.Id, target.id);
     onClose();
   };
   const remove = () => {
     if (user) removeRating(user.Id, target.id);
     onClose("removed");
   };
+  const toggleTag = (t: string) => setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
   // Keep the latest handlers for the window listener without re-binding it.
   const keys = useRef({ dismiss, save });
@@ -79,6 +91,7 @@ export function RateDialog({ target, initial, onClose }: DialogProps) {
   }, [platform]);
 
   const shown = hover || stars;
+  const eyebrow = mode === "edit" ? (existing ? "Your rating" : `Rate this ${TYPE_LABEL[target.type].toLowerCase()}`) : `Finished · ${TYPE_LABEL[target.type]}`;
 
   return (
     <div className="rate" role="dialog" aria-modal="true" aria-label={`Rate ${target.name}`} data-nav-trap>
@@ -87,11 +100,17 @@ export function RateDialog({ target, initial, onClose }: DialogProps) {
       <div className="rate__panel fade-in">
         <div className="rate__head">
           {poster && !logo && <Artwork image={poster} className="rate__poster" />}
-          <span className="eyebrow">{editing ? "Your rating" : `Finished · ${target.type === "Series" ? "Series" : "Movie"}`}</span>
+          <span className="eyebrow">{eyebrow}</span>
           {logo ? <img className="rate__logo" src={logo.url} alt={target.name} /> : null}
           <h2 className="rate__title">
-            What would you rate <strong>{target.name}</strong>?
+            {rewatch ? "Watched again: what would you rate " : "What would you rate "}
+            <strong>{target.name}</strong>?
           </h2>
+          {rewatch && existing && (
+            <p className="rate__previous">
+              You gave it {existing.stars}/10 on {fmtDate(existing.ratedAt)}. Your old score is kept in your diary.
+            </p>
+          )}
         </div>
 
         <div className="rate__stars" role="radiogroup" aria-label="Score out of 10" onMouseLeave={() => setHover(0)}>
@@ -124,6 +143,20 @@ export function RateDialog({ target, initial, onClose }: DialogProps) {
           )}
         </div>
 
+        <div className="rate__tags" role="group" aria-label="Quick tags">
+          {tagOptions.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`chip ${tags.includes(t) ? "is-active" : ""}`}
+              aria-pressed={tags.includes(t)}
+              onClick={() => toggleTag(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
         <label className="field rate__note">
           <span className="field__label">Why? (optional)</span>
           <textarea
@@ -136,19 +169,32 @@ export function RateDialog({ target, initial, onClose }: DialogProps) {
           />
           {note.length > MAX_NOTE * 0.8 && <span className="rate__count">{MAX_NOTE - note.length} left</span>}
         </label>
+        <div className="rate__spoiler">
+          <span>
+            <Icon name="eye" size={16} /> Contains spoilers
+          </span>
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={spoiler}
+            aria-label="Note contains spoilers"
+            disabled={!note.trim()}
+            onClick={() => setSpoiler((v) => !v)}
+          />
+        </div>
 
         <div className="rate__actions">
-          {editing && (
+          {mode === "edit" && existing && (
             <Button variant="ghost" icon="close" onClick={remove} className="rate__remove">
               Remove rating
             </Button>
           )}
           <span className="rate__spacer" />
           <Button variant="ghost" onClick={dismiss}>
-            {editing ? "Cancel" : "Skip"}
+            {mode === "edit" ? "Cancel" : rewatch ? "Keep old score" : "Skip"}
           </Button>
           <Button variant="primary" icon="star" disabled={!stars} onClick={save}>
-            {editing ? "Save" : "Save rating"}
+            {mode === "edit" ? "Save" : "Save rating"}
           </Button>
         </div>
       </div>
@@ -178,6 +224,7 @@ export function RatePromptHost() {
         <RateDialog
           key={target.id}
           target={target}
+          mode="prompt"
           onClose={(result) => {
             clearRatePrompt();
             if (result && result !== "removed") setToast(`Rated ${target.name} ${result.stars}/10`);
@@ -191,4 +238,11 @@ export function RatePromptHost() {
       )}
     </>
   );
+}
+
+/** "Rate" button plus dialog, for details pages and lists. */
+export function useRateDialog() {
+  const [target, setTarget] = useState<RateTarget | null>(null);
+  const dialog = target ? <RateDialog key={target.id} target={target} mode="edit" onClose={() => setTarget(null)} /> : null;
+  return { open: setTarget, dialog };
 }

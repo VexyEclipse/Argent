@@ -1,0 +1,547 @@
+/* Media profile extras: showcase, year in review entry, to rate, taste, tags,
+ * spoilers, diary, backup, and the year in review overlay. */
+
+/* ---------- Showcase ---------- */
+.mp-showcase {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-2);
+  background: var(--bg-1);
+  margin-bottom: var(--sp-5);
+}
+.mp-showcase__bg {
+  position: absolute;
+  inset: -30px;
+  width: calc(100% + 60px);
+  height: calc(100% + 60px);
+  object-fit: cover;
+  filter: blur(26px) brightness(0.38);
+}
+.mp-showcase__inner {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+  background: linear-gradient(90deg, rgb(9 9 10 / 0.6), rgb(9 9 10 / 0.1));
+}
+.mp-showcase__text {
+  flex: 1 1 200px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.mp-showcase__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-display);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+.mp-showcase__grid {
+  display: flex;
+  gap: var(--sp-4);
+}
+.mp-showcase__pick {
+  position: relative;
+  width: clamp(110px, 12vw, 170px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.mp-showcase__pick .artwork {
+  aspect-ratio: var(--poster-ratio);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-3);
+  transition: transform var(--dur) var(--ease-out);
+}
+.mp-showcase__pick:hover .artwork,
+.mp-showcase__pick:focus-visible .artwork {
+  transform: translateY(-4px);
+}
+.mp-showcase__score {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: rgb(10 10 11 / 0.75);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+}
+.mp-showcase__name {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Year in review entry ---------- */
+.mp-review {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--radius);
+  text-align: left;
+  background: linear-gradient(110deg, rgb(230 232 235 / 0.1), rgb(230 232 235 / 0.02));
+  border: 1px solid var(--line-2);
+  color: var(--silver-100);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.mp-review:hover,
+.mp-review:focus-visible {
+  border-color: var(--line-3);
+}
+.mp-review__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mp-review__text strong {
+  color: var(--text-1);
+}
+.mp-review__go {
+  margin-left: auto;
+}
+
+/* ---------- To rate ---------- */
+.mp-todo {
+  flex: 0 0 calc(var(--poster-w) * 0.82);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mp-todo__poster {
+  position: relative;
+  aspect-ratio: var(--poster-ratio);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.mp-todo__poster .artwork {
+  width: 100%;
+  height: 100%;
+}
+.mp-todo__cta {
+  position: absolute;
+  inset: auto 8px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: rgb(10 10 11 / 0.72);
+  border: 1px solid var(--line-2);
+  backdrop-filter: blur(8px);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.mp-todo__poster:hover .mp-todo__cta,
+.mp-todo__poster:focus-visible .mp-todo__cta {
+  background: var(--silver-100);
+  color: var(--text-on-accent);
+}
+.mp-todo__poster:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.mp-todo__title {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mp-todo__sub {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/* ---------- Taste ---------- */
+.mp-insights {
+  margin-top: var(--section-gap);
+}
+.mp-insights__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--sp-8);
+}
+.mp-people {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.mp-people li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-small);
+}
+.mp-diff {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-3);
+}
+.mp-diff.is-up {
+  color: var(--silver-50);
+}
+.mp-diff.is-down {
+  color: var(--danger);
+}
+
+/* ---------- Tags, spoilers, diary ---------- */
+.mp-tagfilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-4);
+}
+.mp-tagfilter .chip {
+  height: 30px;
+  font-size: var(--fs-micro);
+}
+.mp-tagfilter__n {
+  opacity: 0.6;
+}
+.mp-entry__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mp-tag {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+.mp-entry__note.is-spoiler {
+  position: relative;
+  display: block;
+  cursor: pointer;
+}
+.mp-entry__blur {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  filter: blur(6px);
+  user-select: none;
+}
+.mp-entry__reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--text-1);
+}
+.mp-entry__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mp-diary__toggle {
+  align-self: flex-start;
+  font-size: var(--fs-micro);
+  color: var(--silver-300);
+  font-variant-numeric: tabular-nums;
+}
+.mp-diary__toggle:hover {
+  color: var(--text-1);
+}
+.mp-diary__list {
+  list-style: none;
+  padding: var(--sp-2) 0 0 var(--sp-3);
+  margin: var(--sp-1) 0 0;
+  border-left: 1px solid var(--line-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+}
+.mp-diary__note {
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  margin-top: 2px;
+}
+
+/* ---------- Backup ---------- */
+.mp-backup {
+  margin-top: var(--section-gap);
+  gap: var(--sp-4);
+}
+.mp-backup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.mp-backup__status {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.mp-backup__unmatched {
+  font-size: var(--fs-micro);
+}
+
+html[data-platform="mobile"] .mp-entry__actions {
+  grid-column: 2;
+}
+html[data-platform="mobile"] .mp-showcase__inner {
+  padding: var(--sp-5);
+}
+html[data-platform="mobile"] .mp-showcase__grid {
+  width: 100%;
+  gap: var(--sp-2);
+}
+html[data-platform="mobile"] .mp-showcase__pick {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+/* ---------- Year in review ---------- */
+.yir {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+  animation: fade-in var(--dur-slow) var(--ease-out);
+}
+.yir__bg {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  filter: blur(32px) brightness(0.35);
+}
+.yir__scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 20%, rgb(230 232 235 / 0.08), transparent 60%), linear-gradient(180deg, rgb(9 9 10 / 0.3), rgb(9 9 10 / 0.85));
+}
+.yir__top,
+.yir__stage,
+.yir__nav {
+  position: relative;
+}
+.yir__top {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--gutter) 0;
+}
+.yir__progress {
+  display: flex;
+  gap: 6px;
+}
+.yir__progress span {
+  flex: 1;
+  height: 3px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.15);
+  transition: background var(--dur) var(--ease-out);
+}
+.yir__progress .is-done {
+  background: var(--silver-100);
+}
+.yir__controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.yir__stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6) var(--gutter);
+  cursor: pointer;
+  overflow: auto;
+}
+.yir__slide {
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  cursor: default;
+}
+.yir__headline {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw + 1rem, 4.2rem);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+.yir__accent {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.yir__big {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw + 1rem, 7.5rem);
+  font-weight: 700;
+  line-height: 1;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.yir__lead {
+  font-size: clamp(1rem, 0.6vw + 0.9rem, 1.3rem);
+  color: var(--text-2);
+}
+.yir__lead strong {
+  color: var(--text-1);
+}
+.yir__counts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-6);
+}
+.yir__counts div {
+  display: flex;
+  flex-direction: column;
+}
+.yir__counts strong {
+  font-family: var(--font-display);
+  font-size: clamp(2.6rem, 6vw, 5.5rem);
+  line-height: 1;
+}
+.yir__counts span {
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-size: var(--fs-small);
+}
+.yir__bars {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.yir__bars li {
+  display: grid;
+  grid-template-columns: minmax(90px, 180px) 1fr 70px;
+  align-items: center;
+  gap: var(--sp-4);
+  font-size: 1.05rem;
+}
+.yir__track {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.08);
+  overflow: hidden;
+}
+.yir__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-gradient);
+}
+.yir__val {
+  text-align: right;
+  color: var(--text-3);
+}
+.yir__binge {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+}
+.yir__poster {
+  flex: 0 0 clamp(120px, 18vw, 220px);
+  aspect-ratio: var(--poster-ratio);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-3);
+}
+.yir__posters {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-4);
+}
+.yir__pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.yir__pick .artwork {
+  aspect-ratio: var(--poster-ratio);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-3);
+}
+.yir__rank {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(10 10 11 / 0.8);
+  font-weight: 700;
+  font-size: var(--fs-small);
+}
+.yir__pick-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+}
+.yir__pick-name {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yir__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--gutter) calc(var(--sp-6) + env(safe-area-inset-bottom));
+}
+.yir__count {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+html[data-platform="mobile"] .yir__posters {
+  grid-template-columns: repeat(3, 1fr);
+}
+html[data-platform="mobile"] .yir__binge {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+html[data-platform="mobile"] .yir__counts {
+  gap: var(--sp-3);
+}

@@ -10,6 +10,7 @@ import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { clearDismissed, readFeedback, subscribeFeedback } from "@/features/recommendations/feedback";
 import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
+import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { MediaProfile } from "./MediaProfile";
 import "./profile.css";
 
@@ -55,6 +56,7 @@ export default function ProfilePage() {
   const [platform, setPlatform] = useState<Platform | "auto">(getPlatformOverride);
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "media";
+  const ratingPrefs = useRatingPrefs();
   const server = useQuery({ queryKey: ["server-info"], queryFn: () => getPublicInfo(client()), staleTime: 10 * 60_000 });
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
   const cfg = user?.Configuration ?? {};
@@ -208,6 +210,23 @@ export default function ProfilePage() {
               hint="Account setting"
               checked={Boolean(cfg.HidePlayedInLatest)}
               onChange={(v) => save({ HidePlayedInLatest: v })}
+            />
+          </section>
+
+          <section className="panel profile__section">
+            <h2 className="profile__title">Ratings</h2>
+            <p className="profile__desc">This device only. Your ratings themselves sync with your account.</p>
+            <Toggle
+              label="Ask to rate each season"
+              hint="After a season's last episode, not only when a series ends"
+              checked={ratingPrefs.rateSeasons}
+              onChange={(v) => setRatingPref("rateSeasons", v)}
+            />
+            <Toggle
+              label="Show my scores on posters"
+              hint="A small star badge on titles you've rated"
+              checked={ratingPrefs.posterScores}
+              onChange={(v) => setRatingPref("posterScores", v)}
             />
           </section>
 

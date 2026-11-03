@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import type { BaseItem } from "@/api/types";
 import { landscapeImage, posterImage } from "@/api/images";
 import { cardSubtitle, progressOf } from "@/api/format";
+import { usePosterScore } from "@/features/ratings/prefs";
 import { Artwork } from "./Artwork";
 import { Icon } from "./Icon";
 
@@ -30,8 +31,20 @@ export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
   return `/details/${item.Id}`;
 }
 
-export const MediaCard = memo(function MediaCard({ item, variant = "poster", subtitle, caption, showProgress = true, playOnClick, onDismiss, eager, rating }: Props) {
+export const MediaCard = memo(function MediaCard({
+  item,
+  variant = "poster",
+  subtitle,
+  caption,
+  showProgress = true,
+  playOnClick,
+  onDismiss,
+  eager,
+  rating,
+}: Props) {
   const navigate = useNavigate();
+  const myScore = usePosterScore(item.Id);
+  const score = rating ?? myScore;
   const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
   const progress = showProgress ? progressOf(item) : 0;
   const played = item.UserData?.Played;
@@ -66,9 +79,9 @@ export const MediaCard = memo(function MediaCard({ item, variant = "poster", sub
             </span>
           )}
           {!played && unplayed ? <span className="card__badge">{unplayed}</span> : null}
-          {rating ? (
-            <span className="card__badge card__badge--rating" aria-label={`Your rating ${rating} out of 10`}>
-              <Icon name="star" size={11} /> {rating}
+          {score ? (
+            <span className="card__badge card__badge--rating" aria-label={`Your rating ${score} out of 10`}>
+              <Icon name="star" size={11} /> {score}
             </span>
           ) : null}
           {progress > 0 && progress < 100 && (

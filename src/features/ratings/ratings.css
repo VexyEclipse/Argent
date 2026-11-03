@@ -162,3 +162,38 @@ html[data-platform="mobile"] .rate__title {
 html[data-platform="tv"] .rate__panel {
   width: min(820px, 100%);
 }
+
+.rate__previous {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+.rate__tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 560px;
+}
+.rate__tags .chip {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-micro);
+}
+.rate__spoiler {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: calc(var(--sp-3) * -1);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.rate__spoiler span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rate__spoiler .switch:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

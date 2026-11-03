@@ -3,7 +3,7 @@
 // to Jellyfin's own UserData.Rating so other clients see it.
 
 import { client, setUserRating } from "@/api/jellyfin";
-import { MAX_NOTE, clampStars, emptyRatings, mergeCustomPrefs, toCustomPrefs, type RateTarget, type RatingsState } from "./logic";
+import { emptyRatings, mergeCustomPrefs, mergeStates, nextEntry, normalise, toCustomPrefs, toggleShowcase, type RateTarget, type RatingsState } from "./logic";
 
 const PREFS_ID = "argent-ratings";
 const PREFS_CLIENT = "Argent";
@@ -36,8 +36,7 @@ export function readRatings(userId: string): RatingsState {
   if (raw === cache.raw) return cache.state;
   let state = emptyRatings();
   try {
-    const parsed = JSON.parse(raw || "null");
-    if (parsed?.ratings) state = { ...state, ...parsed };
+    state = normalise(JSON.parse(raw || "null"));
   } catch {
     /* ignore */
   }
@@ -94,15 +93,13 @@ export async function pullRatingsFromServer(userId: string) {
   }
 }
 
-export function rate(userId: string, target: RateTarget, stars: number, note?: string) {
+export function rate(userId: string, target: RateTarget, input: { stars: number; note?: string; tags?: string[]; spoiler?: boolean }) {
   const s = readRatings(userId);
-  const value = clampStars(stars);
-  const trimmed = note?.trim().slice(0, MAX_NOTE);
-  const ratings = { ...s.ratings, [target.id]: { stars: value, note: trimmed || undefined, ratedAt: Date.now(), name: target.name, type: target.type } };
+  const entry = nextEntry(s.ratings[target.id], target, input);
   const removed = { ...s.removed };
   delete removed[target.id];
-  write(userId, { ...s, ratings, removed });
-  setUserRating(target.id, value).catch(() => {});
+  write(userId, { ...s, ratings: { ...s.ratings, [target.id]: entry }, removed });
+  setUserRating(target.id, entry.stars).catch(() => {});
 }
 
 export function skipRating(userId: string, itemId: string) {
@@ -116,6 +113,19 @@ export function removeRating(userId: string, itemId: string) {
   delete ratings[itemId];
   write(userId, { ...s, ratings, removed: { ...s.removed, [itemId]: Date.now() } });
   setUserRating(itemId, null).catch(() => {});
+}
+
+export function togglePinned(userId: string, itemId: string) {
+  write(userId, toggleShowcase(readRatings(userId), itemId));
+}
+
+/** Folds imported ratings in; a newer rating already here is kept. Returns how many changed. */
+export function importRatings(userId: string, incoming: RatingsState): number {
+  const before = readRatings(userId);
+  const merged = mergeStates(before, incoming);
+  const changed = Object.keys(merged.ratings).filter((id) => merged.ratings[id] !== before.ratings[id]).length;
+  write(userId, merged);
+  return changed;
 }
 
 export function resetRatingListeners() {

@@ -11,6 +11,7 @@ import { Artwork } from "@/components/Artwork";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { isFinished, ratingTarget, shouldPrompt } from "@/features/ratings/logic";
+import { readRatingPrefs } from "@/features/ratings/prefs";
 import { queueRatePrompt } from "@/features/ratings/prompt";
 import { readRatings } from "@/features/ratings/store";
 import { usePlatform } from "@/platform/platform";
@@ -563,7 +564,7 @@ function Player({ id }: { id: string }) {
   const rateCheck = useRef(() => {});
   rateCheck.current = () => {
     if (!item || !user) return;
-    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined);
+    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined, { seasons: readRatingPrefs().rateSeasons });
     const position = Math.max(live.current.current, startSeconds.current);
     if (isFinished(position, duration, outro && outro.StartTicks / TICKS_PER_SECOND) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
   };

@@ -172,6 +172,8 @@ const PATHS = {
   external: <path d="M14 4.5h5.5V10M19.5 4.5 11 13M18 14v4.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1H10" />,
   swap: <path d="M7 4.5 4 7.5l3 3M4 7.5h12M17 13.5l3 3-3 3M20 16.5H8" />,
   download: <path d="M12 4.5v11M7.5 11l4.5 4.5 4.5-4.5M5 19.5h14" />,
+  upload: <path d="M12 19.5v-11M7.5 13 12 8.5l4.5 4.5M5 4.5h14" />,
+  pin: <path d="M9 4.5h6M10 4.5v5.5l-3 3.5h10l-3-3.5V4.5M12 14v6" />,
   copy: (
     <>
       <rect x="9" y="9" width="10.5" height="10.5" rx="2" />

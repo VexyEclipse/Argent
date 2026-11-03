@@ -11,6 +11,9 @@ import { Icon } from "@/components/Icon";
 import { MediaCard } from "@/components/MediaCard";
 import { ErrorState, Spinner } from "@/components/States";
 import { seriesPlayTarget } from "@/features/player/playback";
+import type { RateTarget } from "@/features/ratings/logic";
+import { useRatings } from "@/features/ratings/prefs";
+import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { Hero } from "./Hero";
 import { CastRow, InfoTable, SimilarRow } from "./Sections";
 import { useTogglePlayed } from "./useItemActions";
@@ -68,6 +71,17 @@ function SeriesDetails({ item }: { item: BaseItem }) {
   const seasonList = seasons.data ?? [];
   const selectedId = params.get("season") ?? nextUp.data?.SeasonId ?? seasonList.find((s) => (s.IndexNumber ?? 0) > 0)?.Id ?? seasonList[0]?.Id;
 
+  const ratings = useRatings();
+  const rateDialog = useRateDialog();
+  const seasonTarget = (s: BaseItem): RateTarget => ({
+    id: s.Id,
+    name: `${item.Name} · ${s.Name}`,
+    type: "Season",
+    seriesId: item.Id,
+    seasonNumber: s.IndexNumber,
+  });
+  const selectedSeason = seasonList.find((s) => s.Id === selectedId);
+
   const playTarget = nextUp.data ?? null;
   const started = (item.UserData?.PlayedPercentage ?? 0) > 0 || Boolean(playTarget && progressOf(playTarget) > 0);
 
@@ -88,11 +102,13 @@ function SeriesDetails({ item }: { item: BaseItem }) {
       </Hero>
 
       <div className="details__body">
+        <SeasonScores series={item} seasons={seasonList} onRate={(s) => rateDialog.open(seasonTarget(s))} />
         {seasonList.length > 0 && (
           <section className="seasons">
             <div className="seasons__tabs" role="tablist" aria-label="Seasons" data-nav-row>
               {seasonList.map((s) => {
                 const watched = s.UserData?.Played;
+                const score = ratings.ratings[s.Id]?.stars;
                 return (
                   <button
                     key={s.Id}
@@ -102,10 +118,23 @@ function SeriesDetails({ item }: { item: BaseItem }) {
                     onClick={() => setParams({ season: s.Id }, { replace: true, preventScrollReset: true })}
                   >
                     {s.Name}
-                    {watched && <Icon name="check" size={13} />}
+                    {score ? (
+                      <span className="seasons__score">
+                        <Icon name="star" size={11} />
+                        {score}
+                      </span>
+                    ) : (
+                      watched && <Icon name="check" size={13} />
+                    )}
                   </button>
                 );
               })}
+              {selectedSeason && (selectedSeason.IndexNumber ?? 0) > 0 && (
+                <button className="seasons__tab seasons__rate" onClick={() => rateDialog.open(seasonTarget(selectedSeason))}>
+                  <Icon name="star" size={14} />
+                  {ratings.ratings[selectedSeason.Id] ? "Change season score" : "Rate this season"}
+                </button>
+              )}
             </div>
             {selectedId && <EpisodeList seriesId={item.Id} seasonId={selectedId} highlightId={nextUp.data?.Id} />}
           </section>
@@ -114,7 +143,47 @@ function SeriesDetails({ item }: { item: BaseItem }) {
         <SimilarRow item={item} />
         <InfoTable item={item} />
       </div>
+      {rateDialog.dialog}
     </div>
+  );
+}
+
+/** Your series score and a bar per season, once you've rated any of them. */
+function SeasonScores({ series, seasons, onRate }: { series: BaseItem; seasons: BaseItem[]; onRate: (season: BaseItem) => void }) {
+  const ratings = useRatings();
+  const real = seasons.filter((s) => (s.IndexNumber ?? 0) > 0);
+  const scored = real.filter((s) => ratings.ratings[s.Id]);
+  const own = ratings.ratings[series.Id];
+  if (!scored.length) return null;
+  const average = scored.reduce((sum, s) => sum + ratings.ratings[s.Id].stars, 0) / scored.length;
+  return (
+    <section className="season-scores">
+      <header className="season-scores__head">
+        <h2 className="row__title">Your scores</h2>
+        <span className="season-scores__summary">
+          {own ? (
+            <>
+              Series <strong>{own.stars}</strong>/10 ·{" "}
+            </>
+          ) : null}
+          Season average <strong>{average.toFixed(1)}</strong>
+        </span>
+      </header>
+      <div className="season-scores__chart" data-nav-row>
+        {real.map((s) => {
+          const score = ratings.ratings[s.Id]?.stars;
+          return (
+            <button key={s.Id} className="season-scores__col" onClick={() => onRate(s)} aria-label={`${s.Name}: ${score ? `${score} out of 10` : "not rated"}`}>
+              <span className="season-scores__value">{score ?? "–"}</span>
+              <span className="season-scores__track">
+                <span className="season-scores__bar" style={{ height: `${(score ?? 0) * 10}%` }} />
+              </span>
+              <span className="season-scores__label">S{s.IndexNumber}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

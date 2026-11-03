@@ -167,3 +167,23 @@ describe("scoring", () => {
     expect(r.recommended.every((s) => s.strength === "exploratory")).toBe(true);
   });
 });
+
+describe("your ratings", () => {
+  const rated = (rating: number) =>
+    engagementWeight(
+      { item: item({ type: "Movie", user: { played: true, playCount: 1, progress: 1, favorite: false, rating } }), completion: 1, plays: 1, lastPlayed: NOW },
+      NOW,
+    );
+  it("a high score counts for more than an unrated watch", () => {
+    const plain = engagementWeight(
+      { item: item({ type: "Movie", user: { played: true, playCount: 1, progress: 1, favorite: false } }), completion: 1, plays: 1, lastPlayed: NOW },
+      NOW,
+    );
+    expect(rated(10)).toBeGreaterThan(plain);
+    expect(rated(8)).toBeGreaterThan(plain);
+  });
+  it("a low score becomes a negative signal", () => {
+    expect(rated(4)).toBeLessThan(0);
+    expect(rated(1)).toBeLessThan(rated(4));
+  });
+});

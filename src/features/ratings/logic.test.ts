@@ -1,10 +1,35 @@
 import { describe, expect, it } from "vitest";
 import type { BaseItem } from "@/api/types";
-import { emptyRatings, isFinished, mergeCustomPrefs, ratingStats, ratingTarget, shouldPrompt, sortRatings, toCustomPrefs, type RatingEntry } from "./logic";
+import {
+  emptyRatings,
+  isFinished,
+  mergeCustomPrefs,
+  mergeStates,
+  nextEntry,
+  normalise,
+  ratingStats,
+  ratingTarget,
+  shouldPrompt,
+  sortRatings,
+  toCustomPrefs,
+  toggleShowcase,
+  type RatingEntry,
+} from "./logic";
 
 const movie = { Id: "m1", Name: "Heat", Type: "Movie" } as BaseItem;
-const episode = { Id: "e9", Name: "Finale", Type: "Episode", SeriesId: "s1", SeriesName: "Dark" } as BaseItem;
-const nextEp = { Id: "e10", Name: "Next", Type: "Episode" } as BaseItem;
+const episode = {
+  Id: "e9",
+  Name: "Finale",
+  Type: "Episode",
+  SeriesId: "s1",
+  SeriesName: "Dark",
+  SeasonId: "x1",
+  SeasonName: "Season 1",
+  ParentIndexNumber: 1,
+} as BaseItem;
+const nextEp = { Id: "e10", Name: "Next", Type: "Episode", SeasonId: "x1" } as BaseItem;
+const nextSeason = { Id: "e11", Name: "S2E1", Type: "Episode", SeasonId: "x2" } as BaseItem;
+const DAY = 86_400_000;
 const entry = (stars: number, ratedAt: number, name = "X"): RatingEntry => ({ stars, ratedAt, name, type: "Movie" });
 
 describe("ratingTarget", () => {
@@ -15,8 +40,19 @@ describe("ratingTarget", () => {
     expect(ratingTarget(episode, null)).toEqual({ id: "s1", name: "Dark", type: "Series" });
   });
   it("asks nothing mid-season or while the episode list is loading", () => {
-    expect(ratingTarget(episode, nextEp)).toBeNull();
-    expect(ratingTarget(episode, undefined)).toBeNull();
+    expect(ratingTarget(episode, nextEp, { seasons: true })).toBeNull();
+    expect(ratingTarget(episode, undefined, { seasons: true })).toBeNull();
+  });
+  it("rates the season after its last episode when season ratings are on", () => {
+    expect(ratingTarget(episode, nextSeason, { seasons: true })).toEqual({
+      id: "x1",
+      name: "Dark · Season 1",
+      type: "Season",
+      seriesId: "s1",
+      seasonNumber: 1,
+    });
+    expect(ratingTarget(episode, nextSeason)).toBeNull();
+    expect(ratingTarget({ ...episode, ParentIndexNumber: 0 }, nextSeason, { seasons: true })).toBeNull();
   });
 });
 
@@ -39,18 +75,67 @@ describe("isFinished", () => {
 
 describe("shouldPrompt", () => {
   const target = { id: "m1", name: "Heat", type: "Movie" as const };
-  it("asks once, then never after a rating or a skip", () => {
-    expect(shouldPrompt(target, emptyRatings())).toBe(true);
-    expect(shouldPrompt(target, { ...emptyRatings(), ratings: { m1: entry(8, 1) } })).toBe(false);
-    expect(shouldPrompt(target, { ...emptyRatings(), skipped: { m1: 1 } })).toBe(false);
-    expect(shouldPrompt(null, emptyRatings())).toBe(false);
+  const now = 100 * DAY;
+  it("asks once, then not again after a recent rating or a skip", () => {
+    expect(shouldPrompt(target, emptyRatings(), now)).toBe(true);
+    expect(shouldPrompt(target, { ...emptyRatings(), ratings: { m1: entry(8, now - DAY) } }, now)).toBe(false);
+    expect(shouldPrompt(target, { ...emptyRatings(), skipped: { m1: 1 } }, now)).toBe(false);
+    expect(shouldPrompt(null, emptyRatings(), now)).toBe(false);
+  });
+  it("asks again on a rewatch long after the last rating", () => {
+    expect(shouldPrompt(target, { ...emptyRatings(), ratings: { m1: entry(8, now - 40 * DAY) } }, now)).toBe(true);
+  });
+});
+
+describe("nextEntry", () => {
+  const target = { id: "m1", name: "Heat", type: "Movie" as const };
+  it("moves the old score into the diary on a rewatch", () => {
+    const first = nextEntry(undefined, target, { stars: 9, note: "Great" }, 10 * DAY);
+    const second = nextEntry(first, target, { stars: 7 }, 50 * DAY);
+    expect(second.stars).toBe(7);
+    expect(second.history).toEqual([{ stars: 9, note: "Great", ratedAt: 10 * DAY }]);
+  });
+  it("doesn't log a same-day edit that keeps the score", () => {
+    const first = nextEntry(undefined, target, { stars: 9 }, 10 * DAY);
+    expect(nextEntry(first, target, { stars: 9, note: "typo fixed" }, 10 * DAY + 60_000).history).toBeUndefined();
+  });
+  it("keeps tags, and the spoiler flag only with a note", () => {
+    expect(nextEntry(undefined, target, { stars: 8, tags: ["Funny", "Funny"], spoiler: true }).tags).toEqual(["Funny"]);
+    expect(nextEntry(undefined, target, { stars: 8, spoiler: true }).spoiler).toBeUndefined();
+    expect(nextEntry(undefined, target, { stars: 8, note: "He dies", spoiler: true }).spoiler).toBe(true);
+  });
+});
+
+describe("showcase", () => {
+  it("pins up to four and unpins on a second toggle", () => {
+    let s = emptyRatings();
+    for (const id of ["a", "b", "c", "d", "e"]) s = toggleShowcase(s, id, 1);
+    expect(s.showcase.ids).toEqual(["b", "c", "d", "e"]);
+    expect(toggleShowcase(s, "c", 2).showcase.ids).toEqual(["b", "d", "e"]);
   });
 });
 
 describe("server mirror", () => {
-  it("round-trips ratings, skips and removals", () => {
-    const state = { ratings: { a: entry(9, 10) }, skipped: { b: 5 }, removed: { c: 7 } };
+  it("round-trips ratings, skips, removals and the showcase", () => {
+    const rich: RatingEntry = {
+      ...entry(9, 10),
+      tags: ["Funny"],
+      spoiler: true,
+      note: "x",
+      history: [{ stars: 7, ratedAt: 5 }],
+      type: "Season",
+      seriesId: "s",
+      seasonNumber: 2,
+    };
+    const state = { ratings: { a: rich }, skipped: { b: 5 }, removed: { c: 7 }, showcase: { ids: ["a"], at: 3 } };
     expect(mergeCustomPrefs(emptyRatings(), toCustomPrefs(state))).toEqual(state);
+  });
+  it("upgrades states saved before newer fields existed", () => {
+    expect(normalise({ ratings: {} } as never)).toEqual(emptyRatings());
+  });
+  it("imports merge the same way", () => {
+    const local = { ...emptyRatings(), ratings: { a: entry(6, 20) } };
+    expect(mergeStates(local, { ...emptyRatings(), ratings: { a: entry(2, 10), b: entry(8, 5) } }).ratings).toEqual({ a: entry(6, 20), b: entry(8, 5) });
   });
   it("keeps whichever change is newer", () => {
     const local = { ...emptyRatings(), ratings: { a: entry(6, 20) } };

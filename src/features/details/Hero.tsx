@@ -7,6 +7,8 @@ import { Artwork } from "@/components/Artwork";
 import { blurHashToDataUrl } from "@/components/blurhash";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
+import { useRatings } from "@/features/ratings/prefs";
+import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { TrailerModal, useTrailer } from "./Trailer";
 import { useItemActions } from "./useItemActions";
 
@@ -42,6 +44,10 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const actions = useItemActions(item);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const trailer = useTrailer(item);
+  const ratings = useRatings();
+  const rateDialog = useRateDialog();
+  const rateable = item.Type === "Movie" || item.Type === "Series";
+  const mine = rateable ? ratings.ratings[item.Id] : undefined;
   const backdrop = backdropImage(item, 1920);
   const logo = logoImage(item, 700);
   const poster = posterImage(item, 400);
@@ -62,6 +68,12 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
     meta.push(
       <span className="hero__rating">
         <Icon name="star" size={13} /> {item.CommunityRating.toFixed(1)}
+      </span>,
+    );
+  if (mine)
+    meta.push(
+      <span className="hero__rating hero__rating--mine" title="Your rating">
+        <Icon name="star" size={13} /> {mine.stars}/10 yours
       </span>,
     );
   if (typeof item.CriticRating === "number") meta.push(<span className="hero__rating">{item.CriticRating}% critics</span>);
@@ -141,6 +153,17 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
               aria-label={actions.isFavorite ? "Remove from favourites" : "Add to favourites"}
               title="Favourite"
             />
+            {rateable && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon="star"
+                active={Boolean(mine)}
+                onClick={() => rateDialog.open({ id: item.Id, name: item.Name, type: item.Type === "Series" ? "Series" : "Movie" })}
+                aria-label={mine ? `Your rating: ${mine.stars} out of 10. Change it` : "Rate"}
+                title={mine ? `Your rating: ${mine.stars}/10` : "Rate"}
+              />
+            )}
             {extraActions}
           </div>
           {canResume && (
@@ -152,6 +175,7 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
         </div>
       </div>
       {trailerOpen && trailer && <TrailerModal trailer={trailer} title={item.Name} onClose={() => setTrailerOpen(false)} />}
+      {rateDialog.dialog}
     </section>
   );
 }

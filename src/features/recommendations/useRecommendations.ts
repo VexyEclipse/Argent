@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
-import { recommend, type Reason, type ScoredItem, type Strength } from "./engine";
+import { readRatings, subscribeRatings } from "@/features/ratings/store";
+import { recommend, type EngineItem, type HistorySignal, type Reason, type ScoredItem, type Strength } from "./engine";
 import { fetchHistory, fetchLibrary, fetchSignals, toEngineItem } from "./data";
 import { dismiss, pullFromServer, readFeedback, subscribeFeedback } from "./feedback";
 
@@ -72,6 +73,7 @@ export function useRecommendations() {
   const [snapshot] = useState(() => (userId ? readSnapshot(userId) : null));
 
   const feedbackVersion = useSyncExternalStore(subscribeFeedback, () => JSON.stringify(readFeedback(userId).dismissed));
+  const myRatings = useSyncExternalStore(subscribeRatings, () => readRatings(userId)).ratings;
 
   useEffect(() => {
     if (userId) pullFromServer(userId);
@@ -91,12 +93,25 @@ export function useRecommendations() {
     if (!library.data || !history.data || !signals.data) return null;
     const feedback = readFeedback(userId);
     const byId = new Map(library.data.map((i) => [i.Id, i]));
+    // Your own scores override the server's, and a rated title counts as seen.
+    const withRating = (e: EngineItem): EngineItem => {
+      const r = myRatings[e.id];
+      return r && r.type !== "Season" ? { ...e, user: { ...e.user, rating: r.stars, played: true } } : e;
+    };
     const engineLibrary = library.data.map((item) => {
-      const e = toEngineItem(item);
+      const e = withRating(toEngineItem(item));
       if (history.data.startedSeries.has(item.Id)) e.episodesWatched = Math.max(1, e.episodesWatched ?? 0);
       return e;
     });
-    const raw = recommend({ library: engineLibrary, history: history.data.signals, signals: signals.data, feedback });
+    const historySignals: HistorySignal[] = history.data.signals.map((s) => ({ ...s, item: withRating(s.item) }));
+    // Titles rated here but watched elsewhere still say something about your taste.
+    const inHistory = new Set(historySignals.map((s) => s.item.id));
+    for (const e of engineLibrary) {
+      const r = myRatings[e.id];
+      if (r && !inHistory.has(e.id))
+        historySignals.push({ item: e, completion: 1, plays: 1, lastPlayed: r.ratedAt, episodes: e.type === "Series" ? 8 : undefined });
+    }
+    const raw = recommend({ library: engineLibrary, history: historySignals, signals: signals.data, feedback });
     const ui = (list: ScoredItem[]) =>
       list.flatMap((s) => {
         const item = byId.get(s.item.id);
@@ -116,9 +131,9 @@ export function useRecommendations() {
         return m;
       }, new Map<string, number>()),
     };
-    // feedbackVersion re-scores after a dismissal.
+    // feedbackVersion re-scores after a dismissal, myRatings after a rating.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [library.data, history.data, signals.data, userId, feedbackVersion]);
+  }, [library.data, history.data, signals.data, userId, feedbackVersion, myRatings]);
 
   useEffect(() => {
     if (result && userId) saveSnapshot(userId, result);

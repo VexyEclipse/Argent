@@ -546,3 +546,84 @@ html[data-platform="tv"] .seasons__tab:focus-visible,
 html[data-platform="tv"] .episode__thumb:focus-visible {
   box-shadow: var(--focus-ring);
 }
+
+/* ---- your scores ---- */
+.hero__rating--mine {
+  color: var(--silver-50);
+  font-weight: 600;
+}
+.seasons__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+}
+.seasons__rate {
+  margin-left: auto;
+  flex: none;
+  border: 1px dashed var(--line-3);
+}
+.season-scores {
+  padding: 0 var(--gutter);
+  margin-top: var(--sp-6);
+}
+.season-scores__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.season-scores__summary {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+.season-scores__summary strong {
+  color: var(--text-1);
+  font-size: 1.05rem;
+}
+.season-scores__chart {
+  display: flex;
+  gap: var(--sp-3);
+  overflow-x: auto;
+  padding: 4px 2px var(--sp-2);
+}
+.season-scores__col {
+  flex: 0 0 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  padding: 4px 0;
+}
+.season-scores__col:hover .season-scores__bar,
+.season-scores__col:focus-visible .season-scores__bar {
+  filter: brightness(1.15);
+}
+.season-scores__value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text-1);
+}
+.season-scores__track {
+  width: 28px;
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.season-scores__bar {
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+  background: var(--accent-gradient);
+  transition: height var(--dur) var(--ease-out);
+}
+.season-scores__label {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
