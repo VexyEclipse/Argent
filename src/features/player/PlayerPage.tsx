@@ -10,6 +10,9 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Artwork } from "@/components/Artwork";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
+import { isFinished, ratingTarget, shouldPrompt } from "@/features/ratings/logic";
+import { queueRatePrompt } from "@/features/ratings/prompt";
+import { readRatings } from "@/features/ratings/store";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey, moveFocus } from "@/platform/spatialNavigation";
 import { QUALITY_OPTIONS } from "./deviceProfile";
@@ -553,6 +556,18 @@ function Player({ id }: { id: string }) {
     el.addEventListener("ended", onEnded);
     return () => el.removeEventListener("ended", onEnded);
   }, [next, autoplay, autoplayNext, exit, stillWatching]);
+
+  // ---- rating prompt --------------------------------------------------------------
+  // Leaving a film or a series finale after the credits start asks for a rating on the
+  // page playback returns to. Checked on unmount so every way out counts.
+  const rateCheck = useRef(() => {});
+  rateCheck.current = () => {
+    if (!item || !user) return;
+    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined);
+    const position = Math.max(live.current.current, startSeconds.current);
+    if (isFinished(position, duration, outro && outro.StartTicks / TICKS_PER_SECOND) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
+  };
+  useEffect(() => () => rateCheck.current(), []);
 
   // ---- keyboard & remote ----------------------------------------------------------
   useEffect(() => {

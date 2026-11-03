@@ -171,6 +171,19 @@ const PATHS = {
   list: <path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />,
   external: <path d="M14 4.5h5.5V10M19.5 4.5 11 13M18 14v4.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1H10" />,
   swap: <path d="M7 4.5 4 7.5l3 3M4 7.5h12M17 13.5l3 3-3 3M20 16.5H8" />,
+  download: <path d="M12 4.5v11M7.5 11l4.5 4.5 4.5-4.5M5 19.5h14" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="10.5" height="10.5" rx="2" />
+      <path d="M15 9V6a1.5 1.5 0 0 0-1.5-1.5h-7.5A1.5 1.5 0 0 0 4.5 6v7.5A1.5 1.5 0 0 0 6 15h3" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+      <path d="m4.5 16.5 4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5M15 9.5h.01" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

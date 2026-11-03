@@ -1,0 +1,164 @@
+/* ---- "What would you rate X?" ---- */
+.rate {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6);
+  overflow: auto;
+  background: rgb(9 9 10 / 0.55);
+  backdrop-filter: blur(24px) saturate(1.1);
+  animation: fade-in var(--dur-slow) var(--ease-out);
+}
+.rate__bg {
+  position: absolute;
+  inset: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  filter: blur(28px) brightness(0.42) saturate(1.05);
+  pointer-events: none;
+}
+.rate__scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgb(9 9 10 / 0.15) 0%, rgb(9 9 10 / 0.7) 75%), linear-gradient(180deg, rgb(9 9 10 / 0.2), rgb(9 9 10 / 0.6));
+  pointer-events: none;
+}
+.rate__panel {
+  position: relative;
+  width: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-10) var(--sp-8) var(--sp-8);
+  text-align: center;
+  background: rgb(16 17 19 / 0.72);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(18px);
+}
+.rate__head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rate__poster {
+  width: 96px;
+  aspect-ratio: var(--poster-ratio);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-3);
+}
+.rate__logo {
+  max-width: min(320px, 70%);
+  max-height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 20px rgb(0 0 0 / 0.6));
+}
+.rate__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  color: var(--text-2);
+  max-width: 28ch;
+}
+.rate__title strong {
+  color: var(--text-1);
+  font-weight: 650;
+}
+.rate__stars {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+.rate__star {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--bg-4);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.rate__star svg path {
+  stroke: var(--line-3);
+  stroke-width: 1;
+}
+.rate__star.is-on {
+  color: var(--silver-100);
+}
+.rate__star.is-preview {
+  color: var(--silver-300);
+}
+.rate__star:hover,
+.rate__star:focus-visible {
+  transform: scale(1.12);
+}
+.rate__star:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.rate__score {
+  min-height: 30px;
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+.rate__score strong {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  color: var(--text-1);
+}
+.rate__note {
+  width: 100%;
+  text-align: left;
+}
+.rate__textarea {
+  height: auto;
+  min-height: 84px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: var(--lh-body);
+}
+.rate__count {
+  align-self: flex-end;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.rate__actions {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.rate__spacer {
+  flex: 1;
+}
+.rate__remove {
+  color: var(--danger);
+}
+.rate__hint {
+  line-height: 30px;
+}
+
+html[data-platform="mobile"] .rate {
+  padding: var(--sp-3);
+  align-items: end;
+}
+html[data-platform="mobile"] .rate__panel {
+  padding: var(--sp-6) var(--sp-4) var(--sp-4);
+}
+html[data-platform="mobile"] .rate__title {
+  font-size: var(--fs-h2);
+}
+html[data-platform="tv"] .rate__panel {
+  width: min(820px, 100%);
+}

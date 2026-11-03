@@ -20,6 +20,8 @@ interface Props {
   playOnClick?: boolean;
   onDismiss?: (item: BaseItem) => void;
   eager?: boolean;
+  /** Your own 1–10 score, shown as a corner badge. */
+  rating?: number;
 }
 
 export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
@@ -28,7 +30,7 @@ export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
   return `/details/${item.Id}`;
 }
 
-export const MediaCard = memo(function MediaCard({ item, variant = "poster", subtitle, caption, showProgress = true, playOnClick, onDismiss, eager }: Props) {
+export const MediaCard = memo(function MediaCard({ item, variant = "poster", subtitle, caption, showProgress = true, playOnClick, onDismiss, eager, rating }: Props) {
   const navigate = useNavigate();
   const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
   const progress = showProgress ? progressOf(item) : 0;
@@ -64,6 +66,11 @@ export const MediaCard = memo(function MediaCard({ item, variant = "poster", sub
             </span>
           )}
           {!played && unplayed ? <span className="card__badge">{unplayed}</span> : null}
+          {rating ? (
+            <span className="card__badge card__badge--rating" aria-label={`Your rating ${rating} out of 10`}>
+              <Icon name="star" size={11} /> {rating}
+            </span>
+          ) : null}
           {progress > 0 && progress < 100 && (
             <span className="card__progress" aria-label={`${Math.round(progress)}% watched`}>
               <span style={{ width: `${progress}%` }} />

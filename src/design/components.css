@@ -215,6 +215,13 @@
   place-items: center;
   backdrop-filter: blur(8px);
 }
+.card__badge--rating {
+  right: auto;
+  left: 8px;
+  display: inline-flex;
+  gap: 3px;
+  color: var(--silver-50);
+}
 .card__badge--played {
   background: var(--silver-100);
   color: var(--text-on-accent);

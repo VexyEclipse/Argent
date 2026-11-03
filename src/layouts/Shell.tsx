@@ -6,6 +6,7 @@ import { isAnimeLibrary, useLibraryGroups } from "@/api/libraries";
 import { useAuth } from "@/auth/AuthProvider";
 import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
+import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
 
@@ -221,6 +222,7 @@ export function Shell() {
       <main className="shell__main" id="main">
         <Outlet />
       </main>
+      <RatePromptHost />
     </div>
   );
 }

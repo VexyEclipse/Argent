@@ -280,6 +280,14 @@ export const setPlayed = (id: string, played: boolean) =>
     query: { userId: uid() },
   });
 
+/** Your own 0–10 score, shared with other Jellyfin clients. */
+export const setUserRating = (id: string, rating: number | null) =>
+  client().request<UserItemData>(`/UserItems/${id}/UserData`, {
+    method: "POST",
+    query: { userId: uid() },
+    body: { Rating: rating },
+  });
+
 // ---- Playback -------------------------------------------------------------------
 
 export const getPlaybackInfo = (id: string, body: Record<string, unknown>) =>
