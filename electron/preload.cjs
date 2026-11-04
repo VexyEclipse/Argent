@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   onUpdateStatus: (fn) => subscribe("update:status", fn),
+  /** Brings the window forward (e.g. when a notification is clicked). */
+  showWindow: () => ipcRenderer.invoke("app:show"),
   /** What's playing, for the tray; null when playback ends. */
   setNowPlaying: (info) => ipcRenderer.send("now-playing", info),
   /** "toggle" | "pause" | "next" | "previous", from the tray menu and window. */

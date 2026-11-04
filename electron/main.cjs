@@ -108,6 +108,7 @@ ipcMain.handle("settings:set", (_e, key, value) => {
   return next;
 });
 
+ipcMain.handle("app:show", () => showWindow());
 ipcMain.handle("update:check", () => updater.check());
 ipcMain.handle("update:install", () => {
   quitting = true;

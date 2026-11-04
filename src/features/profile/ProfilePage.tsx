@@ -9,6 +9,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { clearDismissed, readFeedback, subscribeFeedback } from "@/features/recommendations/feedback";
+import { refreshUpcoming, setUpcomingPref, useUpcomingEntries, useUpcomingPrefs } from "@/features/upcoming/store";
 import { desktop, useDesktopInfo, type DesktopInfo, type UpdateStatus } from "@/platform/desktop";
 import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
@@ -67,6 +68,49 @@ function updateLabel(status: UpdateStatus): string {
     default:
       return "Updates download in the background";
   }
+}
+
+/** The daily TVmaze check behind the Coming Up row. */
+function ComingUpSection({ userId }: { userId: string }) {
+  const prefs = useUpcomingPrefs();
+  const { entries, checkedAt, checking } = useUpcomingEntries();
+  const last = checkedAt
+    ? `Last checked ${new Date(checkedAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })} · ${entries.length} upcoming`
+    : "Not checked yet";
+  return (
+    <section className="panel profile__section">
+      <h2 className="profile__title">Coming Up</h2>
+      <p className="profile__desc">
+        Once a day Argent asks TVmaze about the shows you follow (started, favourited or on your watchlist). Only each show's TVDB or IMDb id is sent, so
+        TVmaze can see which shows are looked up, but never your server address, your account or your watch history. This device only.
+      </p>
+      <Toggle
+        label="Check for new episodes and seasons"
+        hint="Adds announced seasons and episodes Jellyfin doesn't know about yet"
+        checked={prefs.tvmaze}
+        onChange={(v) => setUpcomingPref("tvmaze", v)}
+      />
+      {prefs.tvmaze && (
+        <div className="setting">
+          <div className="setting__text">
+            <span className="setting__label">Schedule</span>
+            <span className="setting__hint">{checking ? "Checking your shows…" : last}</span>
+          </div>
+          <Button variant="secondary" size="sm" disabled={checking} onClick={() => refreshUpcoming(userId, true)}>
+            Check now
+          </Button>
+        </div>
+      )}
+      {desktop && prefs.tvmaze && (
+        <Toggle
+          label="Notify me"
+          hint="When an episode of your show airs today, or a new season is announced"
+          checked={prefs.notify}
+          onChange={(v) => setUpcomingPref("notify", v)}
+        />
+      )}
+    </section>
+  );
 }
 
 /** Settings that only exist in the Argent desktop app. */
@@ -272,6 +316,8 @@ export default function ProfilePage() {
               onChange={(v) => save({ HidePlayedInLatest: v })}
             />
           </section>
+
+          <ComingUpSection userId={user.Id} />
 
           {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} />}
 

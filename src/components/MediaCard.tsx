@@ -24,6 +24,8 @@ interface Props {
   eager?: boolean;
   /** Your own 1–10 score, shown as a corner badge. */
   rating?: number;
+  /** No play button (the card is about something that hasn't aired yet). */
+  noPlay?: boolean;
 }
 
 export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
@@ -42,6 +44,7 @@ export const MediaCard = memo(function MediaCard({
   onDismiss,
   eager,
   rating,
+  noPlay,
 }: Props) {
   const navigate = useNavigate();
   const myScore = usePosterScore(item.Id);
@@ -56,7 +59,7 @@ export const MediaCard = memo(function MediaCard({
   const to = playOnClick ? `/play/${item.Id}` : detailsPath(item);
   // Series and collections resolve to the right episode or film in the player.
   // Virtual items (upcoming or missing episodes) have nothing to play yet.
-  const playable = item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
+  const playable = !noPlay && item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
 
   const dismiss = (event: MouseEvent) => {
     event.preventDefault();

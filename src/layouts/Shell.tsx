@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { client, getViews } from "@/api/jellyfin";
@@ -9,6 +9,7 @@ import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
+import { useUpcomingSync } from "@/features/upcoming/store";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
 
@@ -218,6 +219,9 @@ export function useTvNavigation() {
 export function Shell() {
   const platform = usePlatform();
   const location = useLocation();
+  const navigate = useNavigate();
+  const openSeries = useCallback((id: string) => navigate(`/details/${id}`), [navigate]);
+  useUpcomingSync(openSeries);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });

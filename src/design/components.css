@@ -459,6 +459,16 @@ html[data-platform="mobile"] .card__sub {
 .row__viewport {
   position: relative;
 }
+/* Data-source credit at the end of a row header (e.g. TVmaze, whose licence asks for it). */
+.row__credit {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.row__credit:hover {
+  color: var(--text-1);
+}
 .row__track {
   display: flex;
   gap: var(--sp-4);

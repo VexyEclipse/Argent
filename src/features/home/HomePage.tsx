@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CARD_FIELDS, getItems, getNextUp, getResume, getUpcoming } from "@/api/jellyfin";
-import { airDateLabel, episodeCode, joinDots } from "@/api/format";
+import { CARD_FIELDS, getItems, getNextUp, getResume } from "@/api/jellyfin";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
 import { MediaCard } from "@/components/MediaCard";
@@ -11,6 +10,7 @@ import { useRecommendations, type UiPick } from "@/features/recommendations/useR
 import { recordImpressions, recordOpen } from "@/features/recommendations/feedback";
 import { useLibraryGroups } from "@/api/libraries";
 import { interleave } from "@/features/mediabar/logic";
+import { useComingUp } from "@/features/upcoming/useComingUp";
 import { isFinished, useWatchlistItems } from "@/features/watchlist/useWatchlistItems";
 import { GenreRow } from "./GenreRow";
 import "./home.css";
@@ -92,31 +92,6 @@ function useCollections() {
   });
 }
 
-/**
- * Episodes airing soon across your TV libraries, one per show (the next to air). Needs
- * the server to know future air dates, which it does once metadata lists them.
- */
-function useUpcoming() {
-  return useQuery({
-    queryKey: ["home", "upcoming"],
-    queryFn: async () => {
-      const items = (await getUpcoming(60)).Items;
-      const seen = new Set<string>();
-      return items
-        .filter((i) => i.PremiereDate)
-        .sort((a, b) => Date.parse(a.PremiereDate!) - Date.parse(b.PremiereDate!))
-        .filter((i) => {
-          const key = i.SeriesId ?? i.Id;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        })
-        .slice(0, 20);
-    },
-    staleTime: 30 * 60_000,
-  });
-}
-
 /** Records which recommendations were actually seen, to rotate stale ones out. */
 function useImpressions(picks: UiPick[] | undefined) {
   const { user } = useAuth();
@@ -153,7 +128,7 @@ export function HomePage() {
   );
   const collections = useCollections();
   const recs = useRecommendations();
-  const upcoming = useUpcoming();
+  const comingUp = useComingUp();
   const watchlist = useWatchlistItems();
   const watchlistToWatch = useMemo(() => (watchlist.data ?? []).filter((i) => !isFinished(i)).slice(0, 24), [watchlist.data]);
 
@@ -235,10 +210,20 @@ export function HomePage() {
           </Row>
         )}
 
-        {(upcoming.data?.length ?? 0) > 0 && (
-          <Row title="Coming Up" eyebrow="New episodes airing soon">
-            {upcoming.data?.map((item) => (
-              <MediaCard key={item.Id} item={item} subtitle={joinDots([airDateLabel(item.PremiereDate), episodeCode(item)])} />
+        {comingUp.cards.length > 0 && (
+          <Row
+            title="Coming Up"
+            eyebrow="New episodes and seasons"
+            actions={
+              comingUp.usesTvmaze && (
+                <a className="row__credit" href="https://www.tvmaze.com" target="_blank" rel="noreferrer noopener">
+                  Schedules from TVmaze
+                </a>
+              )
+            }
+          >
+            {comingUp.cards.map((c) => (
+              <MediaCard key={c.key} item={c.item} subtitle={c.subtitle} noPlay={c.external} />
             ))}
           </Row>
         )}
