@@ -1,0 +1,26 @@
+.watchlist__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-6);
+}
+.watchlist__done {
+  padding: var(--sp-6) 0;
+}
+.watchlist__watched {
+  margin-top: var(--sp-12);
+}
+.watchlist__watched-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.watchlist__watched .card {
+  opacity: 0.72;
+}
+.watchlist__watched .card:hover,
+.watchlist__watched .card:focus-within {
+  opacity: 1;
+}

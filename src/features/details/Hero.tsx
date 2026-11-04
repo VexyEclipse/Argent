@@ -9,6 +9,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
+import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { TrailerModal, useTrailer } from "./Trailer";
 import { useItemActions } from "./useItemActions";
 
@@ -42,6 +43,7 @@ interface HeroProps {
 export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, extraActions, children }: HeroProps) {
   const navigate = useNavigate();
   const actions = useItemActions(item);
+  const watchlist = useWatchlistToggle(item);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const trailer = useTrailer(item);
   const ratings = useRatings();
@@ -144,6 +146,17 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
               aria-label={actions.isPlayed ? "Mark unwatched" : "Mark watched"}
               title={actions.isPlayed ? "Watched" : "Mark watched"}
             />
+            {canWatchlist(item) && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon={watchlist.on ? "bookmarkFilled" : "bookmark"}
+                active={watchlist.on}
+                onClick={watchlist.toggle}
+                aria-label={watchlist.on ? "Remove from watchlist" : "Add to watchlist"}
+                title={watchlist.on ? "On your watchlist" : "Add to watchlist"}
+              />
+            )}
             <Button
               variant="icon"
               size="lg"

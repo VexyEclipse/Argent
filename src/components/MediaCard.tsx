@@ -4,6 +4,7 @@ import type { BaseItem } from "@/api/types";
 import { landscapeImage, posterImage } from "@/api/images";
 import { cardSubtitle, progressOf } from "@/api/format";
 import { usePosterScore } from "@/features/ratings/prefs";
+import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { Artwork } from "./Artwork";
 import { Icon } from "./Icon";
 
@@ -44,6 +45,7 @@ export const MediaCard = memo(function MediaCard({
 }: Props) {
   const navigate = useNavigate();
   const myScore = usePosterScore(item.Id);
+  const watchlist = useWatchlistToggle(item);
   const score = rating ?? myScore;
   const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
   const progress = showProgress ? progressOf(item) : 0;
@@ -53,12 +55,19 @@ export const MediaCard = memo(function MediaCard({
   const sub = subtitle ?? (item.Type === "Episode" && variant === "poster" ? item.Name : cardSubtitle(item));
   const to = playOnClick ? `/play/${item.Id}` : detailsPath(item);
   // Series and collections resolve to the right episode or film in the player.
-  const playable = item.Type !== "Person" && item.Type !== "Genre";
+  // Virtual items (upcoming or missing episodes) have nothing to play yet.
+  const playable = item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
 
   const dismiss = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     onDismiss?.(item);
+  };
+
+  const toggleWatchlist = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    watchlist.toggle();
   };
 
   const play = (event: MouseEvent) => {
@@ -101,6 +110,17 @@ export const MediaCard = memo(function MediaCard({
         {playable && (
           <button className="card__play" onClick={play} aria-label={`Play ${item.Name}`} title="Play" tabIndex={-1}>
             <Icon name="play" size={18} />
+          </button>
+        )}
+        {canWatchlist(item) && (
+          <button
+            className={`card__watch ${watchlist.on ? "is-on" : ""}`}
+            onClick={toggleWatchlist}
+            aria-label={watchlist.on ? `Remove ${item.Name} from watchlist` : `Add ${item.Name} to watchlist`}
+            title={watchlist.on ? "On your watchlist" : "Add to watchlist"}
+            tabIndex={-1}
+          >
+            <Icon name={watchlist.on ? "bookmarkFilled" : "bookmark"} size={watchlist.on ? 15 : 16} />
           </button>
         )}
         {onDismiss && (

@@ -14,6 +14,7 @@ import { isFinished, ratingTarget, shouldPrompt } from "@/features/ratings/logic
 import { readRatingPrefs } from "@/features/ratings/prefs";
 import { queueRatePrompt } from "@/features/ratings/prompt";
 import { readRatings } from "@/features/ratings/store";
+import { desktop } from "@/platform/desktop";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey, moveFocus } from "@/platform/spatialNavigation";
 import { QUALITY_OPTIONS } from "./deviceProfile";
@@ -695,6 +696,38 @@ function Player({ id }: { id: string }) {
       navigator.mediaSession.metadata = null;
     };
   }, [item, next, prev, seekBy, seekTo, playItem]);
+
+  // ---- desktop app: tray controls -------------------------------------------------------
+  useEffect(() => {
+    const el = video.current;
+    if (!desktop || !item || !el) return;
+    const send = () =>
+      desktop?.setNowPlaying({
+        title: item.Type === "Episode" ? (item.SeriesName ?? item.Name) : item.Name,
+        subtitle: item.Type === "Episode" ? [episodeCode(item), item.Name].filter(Boolean).join(" — ") : item.ProductionYear?.toString(),
+        paused: el.paused,
+        position: el.currentTime,
+        duration,
+        hasNext: Boolean(next),
+        hasPrevious: Boolean(prev),
+      });
+    send();
+    // The tray shows play/pause state; plain progress doesn't need reporting.
+    const events = ["play", "pause", "loadedmetadata"];
+    events.forEach((e) => el.addEventListener(e, send));
+    return () => events.forEach((e) => el.removeEventListener(e, send));
+  }, [item, next, prev, duration, error]);
+  useEffect(() => () => desktop?.setNowPlaying(null), []);
+  useEffect(
+    () =>
+      desktop?.onPlayerCommand((command) => {
+        if (command === "toggle") togglePlay();
+        else if (command === "pause") video.current?.pause();
+        else if (command === "next") playItem(next);
+        else if (command === "previous") playItem(prev);
+      }),
+    [togglePlay, playItem, next, prev],
+  );
 
   useEffect(() => {
     if (!toast) return;

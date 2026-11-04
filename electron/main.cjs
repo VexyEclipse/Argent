@@ -3,10 +3,13 @@
 // work), keeps a dark integrated title bar, and opens outside links in the browser.
 // All media, auth and playback still go to the user's Jellyfin server.
 
-const { app, BrowserWindow, Menu, net, protocol, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, net, protocol, screen, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const settings = require("./settings.cjs");
+const updater = require("./updater.cjs");
+const tray = require("./tray.cjs");
 
 // `npm run desktop:dev` loads the Vite dev server instead of the built files.
 const DEV_URL = process.argv.includes("--dev") ? process.env.ARGENT_DEV_URL || "http://localhost:5173" : null;
@@ -63,6 +66,59 @@ function serveDist() {
   });
 }
 
+// ---- now playing, tray --------------------------------------------------------------------
+
+const ICON = path.join(__dirname, "..", "build", "icon.png");
+let nowPlaying = null;
+let quitting = false;
+
+function refreshTray() {
+  tray.update({
+    icon: ICON,
+    nowPlaying,
+    onShow: showWindow,
+    onCommand: (command) => mainWindow?.webContents.send("player:command", command),
+    onCheckUpdates: () => {
+      showWindow();
+      updater.check();
+    },
+    onQuit: () => {
+      quitting = true;
+      app.quit();
+    },
+  });
+}
+
+function showWindow() {
+  if (!mainWindow) return createWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+ipcMain.handle("app:info", () => ({
+  version: app.getVersion(),
+  settings: settings.read(),
+  update: updater.status(),
+}));
+
+ipcMain.handle("settings:set", (_e, key, value) => {
+  const next = settings.set(key, value);
+  if (key === "autoUpdate") updater.setEnabled(next.autoUpdate);
+  return next;
+});
+
+ipcMain.handle("update:check", () => updater.check());
+ipcMain.handle("update:install", () => {
+  quitting = true;
+  updater.install();
+});
+
+ipcMain.on("now-playing", (_e, info) => {
+  nowPlaying = info && typeof info.title === "string" ? info : null;
+  refreshTray();
+});
+
 // ---- window ---------------------------------------------------------------------------
 
 let mainWindow = null;
@@ -87,6 +143,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
       spellcheck: false,
       backgroundThrottling: false,
     },
@@ -95,7 +152,18 @@ function createWindow() {
   if (saved?.maximized) win.maximize();
 
   win.once("ready-to-show", () => win.show());
-  win.on("close", () => saveBounds(win));
+  win.on("close", (e) => {
+    saveBounds(win);
+    // "Close to tray": keep running in the tray, with playback paused.
+    if (!quitting && settings.read().closeToTray) {
+      e.preventDefault();
+      win.webContents.send("player:command", "pause");
+      win.hide();
+    }
+  });
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
 
   // Keep the page title fixed to the product name.
   win.on("page-title-updated", (e) => e.preventDefault());
@@ -130,16 +198,18 @@ function createWindow() {
   win.loadURL(DEV_URL || `${ORIGIN}/`);
 }
 
-app.on("second-instance", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
-});
+app.on("second-instance", showWindow);
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   if (!DEV_URL) serveDist();
   createWindow();
+  refreshTray();
+  updater.start(settings.read().autoUpdate, (status) => mainWindow?.webContents.send("update:status", status));
+});
+
+app.on("before-quit", () => {
+  quitting = true;
 });
 
 app.on("window-all-closed", () => app.quit());

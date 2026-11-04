@@ -9,6 +9,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { clearDismissed, readFeedback, subscribeFeedback } from "@/features/recommendations/feedback";
+import { desktop, useDesktopInfo, type DesktopInfo, type UpdateStatus } from "@/platform/desktop";
 import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { MediaProfile } from "./MediaProfile";
@@ -49,6 +50,64 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
   );
 }
 
+function updateLabel(status: UpdateStatus): string {
+  switch (status.state) {
+    case "checking":
+      return "Checking for updates…";
+    case "current":
+      return "You're on the latest version";
+    case "downloading":
+      return `Downloading ${status.version ?? "update"}… ${status.percent}%`;
+    case "ready":
+      return `Version ${status.version} is ready to install`;
+    case "error":
+      return `Couldn't check for updates: ${status.message}`;
+    case "unsupported":
+      return "Updates are available in the installed app";
+    default:
+      return "Updates download in the background";
+  }
+}
+
+/** Settings that only exist in the Argent desktop app. */
+function DesktopSection({ info, setSetting }: { info: DesktopInfo; setSetting: ReturnType<typeof useDesktopInfo>["setSetting"] }) {
+  const { settings, update } = info;
+  const busy = update.state === "checking" || update.state === "downloading";
+  return (
+    <section className="panel profile__section">
+      <h2 className="profile__title">Desktop app</h2>
+      <p className="profile__desc">This computer only.</p>
+      <div className="setting">
+        <div className="setting__text">
+          <span className="setting__label">Argent {info.version}</span>
+          <span className="setting__hint">{updateLabel(update)}</span>
+        </div>
+        {update.state === "ready" ? (
+          <Button variant="primary" size="sm" onClick={() => desktop?.installUpdate()}>
+            Restart to update
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" disabled={busy || update.state === "unsupported"} onClick={() => desktop?.checkForUpdates()}>
+            Check now
+          </Button>
+        )}
+      </div>
+      <Toggle
+        label="Update automatically"
+        hint="Downloads in the background and installs when you quit"
+        checked={settings.autoUpdate}
+        onChange={(v) => setSetting("autoUpdate", v)}
+      />
+      <Toggle
+        label="Keep running in the tray when closed"
+        hint="Closing the window pauses playback; quit from the tray icon"
+        checked={settings.closeToTray}
+        onChange={(v) => setSetting("closeToTray", v)}
+      />
+    </section>
+  );
+}
+
 export default function ProfilePage() {
   const { user, account, isAdmin, refreshUser, signOut, addAccount } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -57,6 +116,7 @@ export default function ProfilePage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "media";
   const ratingPrefs = useRatingPrefs();
+  const desktopApp = useDesktopInfo();
   const server = useQuery({ queryKey: ["server-info"], queryFn: () => getPublicInfo(client()), staleTime: 10 * 60_000 });
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
   const cfg = user?.Configuration ?? {};
@@ -212,6 +272,8 @@ export default function ProfilePage() {
               onChange={(v) => save({ HidePlayedInLatest: v })}
             />
           </section>
+
+          {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} />}
 
           <section className="panel profile__section">
             <h2 className="profile__title">Ratings</h2>

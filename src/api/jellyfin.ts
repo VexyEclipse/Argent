@@ -220,6 +220,22 @@ export const getEpisodes = (seriesId: string, seasonId?: string) =>
 
 export const getLocalTrailers = (id: string) => client().request<BaseItem[]>(`/Items/${id}/LocalTrailers`, { query: { userId: uid() } });
 
+/** Behind the scenes, deleted scenes, featurettes, interviews… */
+export const getSpecialFeatures = (id: string) => client().request<BaseItem[]>(`/Items/${id}/SpecialFeatures`, { query: { userId: uid() } });
+
+/** Episodes airing soon (future premiere dates the server knows about). */
+export const getUpcoming = (limit = 24) =>
+  client().request<ItemsResult>("/Shows/Upcoming", {
+    query: {
+      userId: uid(),
+      limit,
+      fields: [...CARD_FIELDS, "PremiereDate"],
+      enableImageTypes: IMAGE_TYPES,
+      imageTypeLimit: 1,
+      enableUserData: true,
+    },
+  });
+
 export const getGenres = (opts: { parentId?: string; includeItemTypes?: string[] } = {}) =>
   client().request<ItemsResult>("/Genres", {
     query: {

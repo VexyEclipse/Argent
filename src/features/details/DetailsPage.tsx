@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getSeasons } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, formatRuntime, progressOf } from "@/api/format";
@@ -15,8 +15,9 @@ import type { RateTarget } from "@/features/ratings/logic";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { Hero } from "./Hero";
-import { CastRow, InfoTable, SimilarRow } from "./Sections";
-import { useTogglePlayed } from "./useItemActions";
+import { CastRow, ExtrasRow, InfoTable, SimilarRow } from "./Sections";
+import { earlierUnwatched } from "./episodes";
+import { useBulkPlayed, useTogglePlayed } from "./useItemActions";
 import "./details.css";
 
 export default function DetailsPage() {
@@ -54,6 +55,7 @@ function MovieDetails({ item }: { item: BaseItem }) {
       <Hero item={item} />
       <div className="details__body">
         <CastRow people={item.People} />
+        <ExtrasRow item={item} />
         <SimilarRow item={item} />
         <InfoTable item={item} />
       </div>
@@ -73,6 +75,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
 
   const ratings = useRatings();
   const rateDialog = useRateDialog();
+  const bulk = useBulkPlayed();
   const seasonTarget = (s: BaseItem): RateTarget => ({
     id: s.Id,
     name: `${item.Name} · ${s.Name}`,
@@ -129,6 +132,16 @@ function SeriesDetails({ item }: { item: BaseItem }) {
                   </button>
                 );
               })}
+              {selectedSeason && (
+                <button
+                  className="seasons__tab seasons__action"
+                  onClick={() => bulk.mutate({ ids: [selectedSeason.Id], value: !selectedSeason.UserData?.Played })}
+                  disabled={bulk.isPending}
+                >
+                  <Icon name={selectedSeason.UserData?.Played ? "eye" : "checkAll"} size={15} />
+                  {selectedSeason.UserData?.Played ? "Mark season unwatched" : "Mark season watched"}
+                </button>
+              )}
               {selectedSeason && (selectedSeason.IndexNumber ?? 0) > 0 && (
                 <button className="seasons__tab seasons__rate" onClick={() => rateDialog.open(seasonTarget(selectedSeason))}>
                   <Icon name="star" size={14} />
@@ -140,6 +153,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
           </section>
         )}
         <CastRow people={item.People} />
+        <ExtrasRow item={item} />
         <SimilarRow item={item} />
         <InfoTable item={item} />
       </div>
@@ -189,12 +203,28 @@ function SeasonScores({ series, seasons, onRate }: { series: BaseItem; seasons: 
 
 function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; seasonId: string; highlightId?: string }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const toggle = useTogglePlayed();
+  const bulk = useBulkPlayed();
+  // After marking one episode watched: offer to mark the unwatched ones before it too.
+  const [offer, setOffer] = useState<{ episodeId: string; ids: string[] } | null>(null);
   const episodes = useQuery({
     queryKey: ["episodes", seriesId, seasonId],
     queryFn: () => getEpisodes(seriesId, seasonId).then((r) => r.Items),
     staleTime: 30_000,
   });
+
+  const toggleEpisode = async (ep: BaseItem) => {
+    const value = !ep.UserData?.Played;
+    toggle.mutate({ id: ep.Id, value });
+    setOffer(null);
+    if (!value) return;
+    const all = await qc
+      .fetchQuery({ queryKey: ["episodes", seriesId, "all"], queryFn: () => getEpisodes(seriesId).then((r) => r.Items), staleTime: 60_000 })
+      .catch(() => [] as BaseItem[]);
+    const earlier = earlierUnwatched(all, ep.Id);
+    if (earlier.length) setOffer({ episodeId: ep.Id, ids: earlier.map((e) => e.Id) });
+  };
 
   if (episodes.isPending) return <Spinner />;
   if (!episodes.data?.length) return <p className="muted">No episodes in this season.</p>;
@@ -225,7 +255,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
                 </Link>
                 <button
                   className={`episode__watched ${played ? "is-on" : ""}`}
-                  onClick={() => toggle.mutate({ id: ep.Id, value: !played })}
+                  onClick={() => toggleEpisode(ep)}
                   aria-label={played ? "Mark unwatched" : "Mark watched"}
                   title={played ? "Watched" : "Mark watched"}
                 >
@@ -241,6 +271,27 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
                   .join("  ·  ")}
               </div>
               {ep.Overview && <p className="episode__overview">{ep.Overview}</p>}
+              {offer?.episodeId === ep.Id && (
+                <div className="episode__offer" role="status">
+                  <span>
+                    Mark the {offer.ids.length === 1 ? "earlier episode" : `${offer.ids.length} earlier episodes`} watched too?
+                  </span>
+                  <div className="episode__offer-actions">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon="checkAll"
+                      disabled={bulk.isPending}
+                      onClick={() => bulk.mutate({ ids: offer.ids, value: true }, { onSettled: () => setOffer(null) })}
+                    >
+                      Mark watched
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setOffer(null)}>
+                      No thanks
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </li>
         );

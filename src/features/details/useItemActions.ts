@@ -45,6 +45,35 @@ export function useItemActions(item: BaseItem | undefined) {
   };
 }
 
+/** Marks several items at once (a few requests in flight at a time). */
+async function setPlayedMany(ids: string[], value: boolean) {
+  const queue = [...ids];
+  const worker = async () => {
+    for (let id = queue.shift(); id; id = queue.shift()) await setPlayed(id, value);
+  };
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+}
+
+/**
+ * Watched state for many items: a whole season (Jellyfin marks its episodes), or a
+ * list of episodes ("everything before this one").
+ */
+export function useBulkPlayed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, value }: { ids: string[]; value: boolean }) => setPlayedMany(ids, value),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["item"] });
+      qc.invalidateQueries({ queryKey: ["episodes"] });
+      qc.invalidateQueries({ queryKey: ["seasons"] });
+      qc.invalidateQueries({ queryKey: ["nextup"] });
+      qc.invalidateQueries({ queryKey: ["home"] });
+      qc.invalidateQueries({ queryKey: ["browse"] });
+      qc.invalidateQueries({ queryKey: ["rec", "history"] });
+    },
+  });
+}
+
 /** Lightweight toggle for list rows (episodes) without a dedicated item cache. */
 export function useTogglePlayed() {
   const qc = useQueryClient();

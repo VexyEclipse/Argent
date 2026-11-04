@@ -564,6 +564,35 @@ html[data-platform="tv"] .episode__thumb:focus-visible {
   flex: none;
   border: 1px dashed var(--line-3);
 }
+.seasons__action {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--line-2);
+}
+.seasons__action:disabled {
+  opacity: 0.6;
+}
+.seasons__action + .seasons__rate {
+  margin-left: 0;
+}
+.episode__offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-small);
+  color: var(--text-1);
+}
+.episode__offer-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
 .season-scores {
   padding: 0 var(--gutter);
   margin-top: var(--sp-6);

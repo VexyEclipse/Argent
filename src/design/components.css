@@ -299,6 +299,50 @@ html[data-platform="mobile"] .card__play svg {
 html[data-platform="mobile"] .card:has(.card__progress) .card__play {
   bottom: 16px;
 }
+/* Watchlist toggle: bottom-right on hover, and always shown once the title is on the list. */
+.card__watch {
+  position: absolute;
+  right: 12px;
+  bottom: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 11 / 0.72);
+  border: 1px solid var(--line-2);
+  color: var(--text-1);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.card__watch:hover {
+  background: rgb(10 10 11 / 0.9);
+}
+.card__watch.is-on {
+  color: var(--silver-100);
+}
+.card:hover .card__watch,
+.card__link:focus-visible + .card__overlay .card__watch,
+.card__watch.is-on {
+  opacity: 1;
+  transform: none;
+}
+.card:has(.card__progress) .card__watch {
+  bottom: 22px;
+}
+html[data-platform="mobile"] .card__watch {
+  width: 28px;
+  height: 28px;
+  right: 8px;
+  bottom: 12px;
+}
+html[data-platform="mobile"] .card__watch:not(.is-on),
+html[data-platform="tv"] .card__watch:not(.is-on) {
+  display: none;
+}
 .card__dismiss {
   position: absolute;
   top: 8px;
@@ -691,6 +735,58 @@ html[data-platform="tv"] .row__arrow {
   max-width: 44ch;
   font-size: var(--fs-small);
   margin-bottom: var(--sp-2);
+}
+/* Desktop app: update downloaded */
+.update-prompt {
+  position: fixed;
+  right: var(--sp-6);
+  bottom: var(--sp-6);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-small);
+  color: var(--text-1);
+}
+
+/* Error boundary fallback */
+.crash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: calc(var(--sp-16) * 1.5) var(--sp-6) var(--sp-16);
+  color: var(--text-2);
+}
+.crash--full {
+  position: fixed;
+  inset: 0;
+  justify-content: center;
+  background: var(--bg-0);
+  z-index: 100;
+}
+.crash__title {
+  font-size: var(--fs-h2);
+  color: var(--text-1);
+  margin-top: var(--sp-2);
+}
+.crash__body {
+  max-width: 52ch;
+  font-size: var(--fs-small);
+  overflow-wrap: anywhere;
+}
+.crash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
 }
 .spinner {
   display: grid;

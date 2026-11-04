@@ -79,3 +79,17 @@ export function seasonCountLabel(count?: number): string {
 export function joinDots(parts: (string | number | undefined | null | false)[]): string {
   return parts.filter((p) => p !== undefined && p !== null && p !== false && p !== "").join("  ·  ");
 }
+
+/** "Today", "Tomorrow", a weekday within the week, else a short date. Local time. */
+export function airDateLabel(iso: string | undefined, now = new Date()): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(date) - startOf(now)) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  if (days > 1 && days < 7) return date.toLocaleDateString(undefined, { weekday: "long" });
+  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: date.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+}

@@ -176,6 +176,8 @@ export interface BaseItem {
   LocationType?: string;
   Chapters?: { StartPositionTicks: number; Name?: string; ImageTag?: string }[];
   ProductionLocations?: string[];
+  /** Special features: "BehindTheScenes", "DeletedScene", "Featurette", "Interview"… */
+  ExtraType?: string;
 }
 
 export interface ItemsResult<T = BaseItem> {

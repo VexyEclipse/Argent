@@ -4,13 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { client, getViews } from "@/api/jellyfin";
 import { isAnimeLibrary, useLibraryGroups } from "@/api/libraries";
 import { useAuth } from "@/auth/AuthProvider";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
+import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
 
-type NavItem = { to: string; label: string; icon: IconName; end?: boolean };
+type NavItem = { to: string; label: string; icon: IconName; end?: boolean; /** Left out of the mobile tab bar (it's in the account menu there). */ tabbar?: false };
 
 /** Main sections. Anime appears only when the user has an anime library. */
 function useNav(): NavItem[] {
@@ -21,6 +23,7 @@ function useNav(): NavItem[] {
     { to: "/series", label: "Series", icon: "tv" },
     ...(anime.length ? [{ to: "/anime", label: "Anime", icon: "sparkle" as IconName }] : []),
     { to: "/collections", label: "Collections", icon: "stack" },
+    { to: "/watchlist", label: "Watchlist", icon: "bookmark", tabbar: false },
   ];
 }
 
@@ -50,6 +53,7 @@ function ProfileMenu() {
   const ref = useRef<HTMLDivElement>(null);
   const others = useOtherLibraries();
   const location = useLocation();
+  const platform = usePlatform();
 
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
@@ -83,6 +87,11 @@ function ProfileMenu() {
           <Link className="menu__item" to="/profile" role="menuitem">
             <Icon name="gear" size={18} /> Profile & settings
           </Link>
+          {platform === "mobile" && (
+            <Link className="menu__item" to="/watchlist" role="menuitem">
+              <Icon name="bookmark" size={18} /> Watchlist
+            </Link>
+          )}
           {others.length > 0 && <div className="menu__label">Libraries</div>}
           {others.map((v) => (
             <Link key={v.Id} className="menu__item" to={`/library/${v.Id}`} role="menuitem">
@@ -148,7 +157,7 @@ function DesktopNav() {
 }
 
 function MobileNav() {
-  const nav = useNav();
+  const nav = useNav().filter((n) => n.tabbar !== false);
   return (
     <>
       <header className="mnav">
@@ -220,9 +229,13 @@ export function Shell() {
       {platform === "mobile" && <MobileNav />}
       {platform === "tv" && <TvRail />}
       <main className="shell__main" id="main">
-        <Outlet />
+        {/* A broken screen keeps the navigation, so the rest of the app stays usable. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
       <RatePromptHost />
+      <UpdatePrompt />
     </div>
   );
 }

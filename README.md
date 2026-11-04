@@ -6,12 +6,13 @@ The app is branded Argent throughout. Its mark is the Jellyfin logo shape recolo
 
 ## What's in it
 
-- **Homepage.** A full-bleed featured header (MediaBar), then Continue Watching, Next Up, Recommended For You, Recently Added, Your Movies, Your Series, Your Anime, Collections, Discover, Genres, and up to three personalised sections ("Because you watched…", "From the director…", your favourite genre pairing or decade).
+- **Homepage.** A full-bleed featured header (MediaBar), then Continue Watching, Next Up, Your Watchlist, Recommended For You, Recently Added, Coming Up (episodes airing soon), Your Movies, Your Series, Your Anime, Collections, Discover, Genres, and up to three personalised sections ("Because you watched…", "From the director…", your favourite genre pairing or decade).
 - **MediaBar.** Re-implements the [Jellyfin Media Bar](https://github.com/MakD/Jellyfin-Media-Bar) plugin's behaviour without needing the plugin at runtime. See [MediaBar parity](#mediabar-parity).
 - **Recommendation engine.** Weighted, per-user scoring over your real viewing history. It only recommends titles in your library. See [docs/RECOMMENDATIONS.md](docs/RECOMMENDATIONS.md).
 - **Anime.** Libraries whose name contains "Anime" get their own section (top navigation, mobile tab bar, TV rail) and a homepage row. Series then means your other TV libraries. Jellyfin has no anime library type, so the name is what marks one.
 - **Library browsing.** Separate Movies, Series and Anime views with library tabs, sorting, genre/decade/status/favourite filters, a title filter, A–Z jump, three poster densities and infinite scroll.
-- **Details pages.** Movies, series (seasons and episodes, next-episode targeting), episodes (previous/next), collections and people. Cast and crew, media info, trailers, favourite and watched toggles.
+- **Watchlist.** Save films and shows for later from any poster or details page. The list syncs through your Jellyfin account (DisplayPreferences), so it follows you to every device; titles you finish move to a Watched section.
+- **Details pages.** Movies, series (seasons and episodes, next-episode targeting), episodes (previous/next), collections and people. Cast and crew, media info, trailers, extras (behind the scenes, deleted scenes, featurettes), favourite and watched toggles. Mark a whole season watched in one click, and marking an episode watched offers to mark the unwatched ones before it too.
 - **Search.** Movies, series, episodes, actors, directors and writers, genres and collections. Debounced and cancellable, with type filters and sorting.
 - **Player.** Direct Play, Direct Stream and Transcoding (HLS via hls.js), chosen by a device profile built from what the browser can decode. Also: audio and subtitle selection, subtitle sync offset, quality and speed, fullscreen, picture-in-picture, volume, seeking with trickplay thumbnails and chapter marks, resume, skip intro/recap (media segments), previous/next episode, Up Next with autoplay (it pauses to ask "Are you still watching?" after three unattended episodes), progress reporting to the server, Media Session keys, and keyboard and remote control. Every card has a play button; on a series it plays the episode in progress, otherwise the next one.
 - **Three interfaces, one design system.** Desktop (top navigation), mobile (bottom tab bar, touch layouts, double-tap seeking) and TV (focus rail, D-pad spatial navigation, 10-foot sizing). The platform is detected automatically and can be overridden in Profile → Display, or with `?platform=tv|mobile|desktop|auto`.
@@ -112,3 +113,10 @@ npm run icons          # regenerate build/icon.ico and build/icon.png from the l
 ```
 
 The installer adds Start menu and desktop shortcuts named Argent. Keys: F11 toggles full screen, Ctrl+R reloads, Ctrl+Shift+I opens developer tools.
+
+Desktop-only features, set in Profile → Settings → Desktop app:
+
+- **Automatic updates.** The installed app checks the GitHub releases of `VexyEclipse/Argent` every six hours, downloads new versions in the background and installs them on quit (or straight away with "Restart now"). Publish a release with `GH_TOKEN=<token> npm run desktop:release`, which uploads the installer and the `latest.yml` the updater reads. The repository's releases must be public for installed apps to see them.
+- **System tray.** What's playing, play/pause and next/previous episode, and "Check for updates". Optionally keep Argent running in the tray when the window is closed (playback pauses).
+
+The web libraries are bundled into `dist/` by Vite, so they're listed as dev dependencies; `dependencies` holds only what the Electron shell needs at runtime (`electron-updater`), which keeps the installer small.

@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { getSimilar } from "@/api/jellyfin";
+import { getLocalTrailers, getSimilar, getSpecialFeatures } from "@/api/jellyfin";
+import { formatRuntime, joinDots } from "@/api/format";
 import { personImage } from "@/api/images";
 import type { BaseItem, BaseItemPerson, MediaStream } from "@/api/types";
 import { MediaCard } from "@/components/MediaCard";
@@ -48,6 +49,50 @@ export function SimilarRow({ item }: { item: BaseItem }) {
     <Row title="More Like This" loading={similar.isPending}>
       {similar.data?.map((i) => (
         <MediaCard key={i.Id} item={i} />
+      ))}
+    </Row>
+  );
+}
+
+const EXTRA_LABELS: Record<string, string> = {
+  Trailer: "Trailer",
+  BehindTheScenes: "Behind the scenes",
+  DeletedScene: "Deleted scene",
+  Featurette: "Featurette",
+  Interview: "Interview",
+  Scene: "Scene",
+  Sample: "Sample",
+  Clip: "Clip",
+  ThemeVideo: "Theme video",
+  Short: "Short",
+  Unknown: "Extra",
+};
+
+/** Local trailers and special features (behind the scenes, deleted scenes…). */
+export function ExtrasRow({ item }: { item: BaseItem }) {
+  const hasTrailers = (item.LocalTrailerCount ?? 0) > 0;
+  const extras = useQuery({
+    queryKey: ["extras", item.Id],
+    queryFn: async () => {
+      const [trailers, features] = await Promise.all([
+        hasTrailers ? getLocalTrailers(item.Id).catch(() => []) : Promise.resolve([]),
+        getSpecialFeatures(item.Id).catch(() => []),
+      ]);
+      return [...trailers.map((t) => ({ ...t, ExtraType: t.ExtraType ?? "Trailer" })), ...features];
+    },
+    staleTime: 30 * 60_000,
+  });
+  if (!extras.data?.length) return null;
+  return (
+    <Row title="Extras" variant="landscape">
+      {extras.data.map((x) => (
+        <MediaCard
+          key={x.Id}
+          item={x}
+          variant="landscape"
+          playOnClick
+          subtitle={joinDots([EXTRA_LABELS[x.ExtraType ?? ""] ?? "Extra", formatRuntime(x.RunTimeTicks)])}
+        />
       ))}
     </Row>
   );
