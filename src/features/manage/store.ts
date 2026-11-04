@@ -5,7 +5,7 @@
 import { useSyncExternalStore } from "react";
 import type { BaseItem } from "@/api/types";
 
-export type DialogKind = "delete" | "refresh" | "collection" | "playlist" | "info" | "metadata" | "images" | "subtitles";
+export type DialogKind = "delete" | "refresh" | "collection" | "playlist" | "info" | "metadata" | "identify" | "images" | "subtitles";
 
 export interface MenuState {
   item: BaseItem;

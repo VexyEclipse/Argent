@@ -30,6 +30,52 @@ export async function updateItemMetadata(id: string, changes: Partial<BaseItem> 
   await client().request<void>(`/Items/${id}`, { method: "POST", body: { ...rest, ...changes } });
 }
 
+// ---- identify (fix a wrong match) --------------------------------------------------------------
+
+/** Item types Jellyfin can re-identify, mapped to its search endpoint. */
+const IDENTIFY_TYPES: Record<string, string> = { Movie: "Movie", Series: "Series", BoxSet: "BoxSet", MusicVideo: "MusicVideo", Trailer: "Trailer" };
+
+export const canIdentify = (item: Pick<BaseItem, "Type">) => item.Type in IDENTIFY_TYPES;
+
+export interface RemoteSearchResult {
+  Name?: string;
+  ProviderIds?: Record<string, string>;
+  ProductionYear?: number;
+  PremiereDate?: string;
+  ImageUrl?: string;
+  SearchProviderName?: string;
+  Overview?: string;
+  [k: string]: unknown;
+}
+
+export interface IdentifyQuery {
+  name: string;
+  year?: number;
+  providerIds: Record<string, string>;
+}
+
+/** The request body for a provider search; empty ids and a missing year are left out. */
+export function identifyBody(itemId: string, q: IdentifyQuery) {
+  const providerIds = Object.fromEntries(Object.entries(q.providerIds).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim()]));
+  return {
+    ItemId: itemId,
+    // Like Jellyfin's own Identify: ask every provider, enabled for this library or not.
+    IncludeDisabledProviders: true,
+    SearchInfo: { Name: q.name.trim(), Year: q.year && Number.isFinite(q.year) ? q.year : undefined, ProviderIds: providerIds },
+  };
+}
+
+/** Searches metadata providers for the title an item should be. */
+export function searchForMatch(item: Pick<BaseItem, "Id" | "Type">, q: IdentifyQuery) {
+  const type = IDENTIFY_TYPES[item.Type];
+  if (!type) throw new Error("This kind of item can't be identified.");
+  return client().request<RemoteSearchResult[]>(`/Items/RemoteSearch/${type}`, { method: "POST", body: identifyBody(item.Id, q) });
+}
+
+/** Re-identifies the item as the chosen result; the server then refreshes its metadata. */
+export const applyMatch = (id: string, result: RemoteSearchResult, replaceImages: boolean) =>
+  client().request<void>(`/Items/RemoteSearch/Apply/${id}`, { method: "POST", query: { replaceAllImages: replaceImages }, body: result });
+
 // ---- refresh & delete ----------------------------------------------------------------------
 
 export type RefreshMode = "scan" | "missing" | "replace";

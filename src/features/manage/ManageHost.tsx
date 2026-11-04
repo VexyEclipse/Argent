@@ -8,6 +8,7 @@ import { Button } from "@/components/Button";
 import { showToast } from "@/components/Toast";
 import { ContextMenu } from "./ContextMenu";
 import { AddToListDialog, DeleteDialog, MediaInfoDialog, RefreshDialog } from "./dialogs";
+import { IdentifyDialog } from "./IdentifyDialog";
 import { ImageEditor } from "./ImageEditor";
 import { MetadataEditor } from "./MetadataEditor";
 import { SubtitleEditor } from "./SubtitleEditor";
@@ -91,6 +92,7 @@ export function ManageHost() {
       {dialog?.kind === "playlist" && <AddToListDialog items={items} kind="playlist" />}
       {dialog?.kind === "info" && <MediaInfoDialog item={items[0]} />}
       {dialog?.kind === "metadata" && <MetadataEditor item={items[0]} />}
+      {dialog?.kind === "identify" && <IdentifyDialog item={items[0]} />}
       {dialog?.kind === "images" && <ImageEditor item={items[0]} />}
       {dialog?.kind === "subtitles" && <SubtitleEditor item={items[0]} />}
     </>

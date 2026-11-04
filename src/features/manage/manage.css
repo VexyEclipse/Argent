@@ -747,3 +747,124 @@ html[data-platform="mobile"] .selbar .btn__label {
   color: var(--silver-300);
   white-space: nowrap;
 }
+
+/* ---------- Identify ---------- */
+.meta-form__identify {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  background: rgb(255 255 255 / 0.03);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.meta-form__identify strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+.meta-form__identify .btn {
+  flex: none;
+}
+.mident__intro {
+  font-size: var(--fs-small);
+}
+.mident__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-3);
+  align-items: end;
+}
+.mident__name {
+  grid-column: span 2;
+}
+.mident__go {
+  height: 44px;
+}
+.mident__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+.mident__result {
+  width: 100%;
+  padding: var(--sp-3);
+  border-radius: var(--radius);
+  border: 1px solid var(--line-1);
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.mident__result:hover,
+.mident__result:focus-visible {
+  border-color: var(--line-3);
+  background: rgb(255 255 255 / 0.04);
+}
+.mident__card {
+  display: flex;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+.mident__poster {
+  flex: none;
+  width: 64px;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--bg-3);
+  color: var(--text-3);
+}
+.mident__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mident__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.mident__title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-1);
+}
+.mident__year-tag {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.mident__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.mident__overview {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+  line-height: var(--lh-body);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mident__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.mident__confirm .mident__poster {
+  width: 96px;
+}
+.mident__confirm .mident__overview {
+  -webkit-line-clamp: 5;
+}
+.mident__images {
+  margin-right: auto;
+}

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getItemFull, setFavorite, setPlayed } from "@/api/jellyfin";
 import { landscapeImage, posterImage } from "@/api/images";
 import { cardSubtitle, progressOf } from "@/api/format";
-import { downloadUrl, streamUrl } from "@/api/manage";
+import { canIdentify, downloadUrl, streamUrl } from "@/api/manage";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
 import { Icon, type IconName } from "@/components/Icon";
@@ -107,8 +107,10 @@ function useActions(item: BaseItem): Action[][] {
 
   const manage: Action[] = [
     { id: "metadata", label: "Edit metadata", icon: "pencil", run: () => openDialog("metadata", [item]) },
-    { id: "images", label: "Edit images", icon: "image", run: () => openDialog("images", [item]) },
   ];
+  // Fix a wrong match (e.g. it picked up another show's metadata).
+  if (canIdentify(item)) manage.push({ id: "identify", label: "Identify", icon: "search", run: () => openDialog("identify", [item]) });
+  manage.push({ id: "images", label: "Edit images", icon: "image", run: () => openDialog("images", [item]) });
   if (isFile) {
     manage.push({ id: "subtitles", label: "Edit subtitles", icon: "subtitles", run: () => openDialog("subtitles", [item]) });
     manage.push({ id: "info", label: "Media info", icon: "info", run: () => openDialog("info", [item]) });

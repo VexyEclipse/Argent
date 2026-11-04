@@ -1,14 +1,14 @@
 import { useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getItemFull } from "@/api/jellyfin";
-import { getMetadataEditorInfo, updateItemMetadata } from "@/api/manage";
+import { canIdentify, getMetadataEditorInfo, updateItemMetadata } from "@/api/manage";
 import type { BaseItem } from "@/api/types";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { Spinner } from "@/components/States";
 import { showToast } from "@/components/Toast";
 import { Dialog } from "./Dialog";
-import { closeDialog } from "./store";
+import { closeDialog, openDialog } from "./store";
 
 type Full = BaseItem & Record<string, unknown>;
 
@@ -226,6 +226,16 @@ function MetadataForm({ item: loaded, ratings }: { item: Full; ratings: string[]
       }
     >
       <div className="meta-form">
+        {canIdentify(item) && (
+          <div className="meta-form__identify">
+            <span>
+              <strong>Wrong title?</strong> If this picked up another {item.Type === "Series" ? "show" : item.Type === "BoxSet" ? "collection" : "movie"}'s details, search for the right one.
+            </span>
+            <Button variant="secondary" size="sm" icon="search" onClick={() => openDialog("identify", [item])} disabled={busy}>
+              Identify
+            </Button>
+          </div>
+        )}
         <div className="meta-form__grid">
           {text("Name", "Title", { required: true, maxLength: 300 })}
           {text("OriginalTitle", "Original title", { maxLength: 300 })}
