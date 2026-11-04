@@ -272,10 +272,15 @@ html[data-platform="tv"] .chip:focus-visible {
 }
 
 /* ---------- Desktop app (Electron) ---------- */
-/* Native window buttons are drawn over the top-right corner (see electron/main.cjs). */
+/* Native window buttons are drawn over the top-right corner (see electron/main.cjs).
+   Their real width comes from the title bar area Chromium reports, which is 0 when the
+   buttons are hidden (full screen), so nothing is pushed left of empty space. */
 html[data-shell="desktop-app"] {
   --titlebar-h: 40px;
-  --window-controls-w: 144px;
+  --window-controls-w: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+}
+html[data-shell="desktop-app"]:has(:fullscreen) {
+  --window-controls-w: 0px;
 }
 /* An invisible strip along the top lets the window be dragged from any page. */
 html[data-shell="desktop-app"] body::before {
@@ -289,11 +294,12 @@ html[data-shell="desktop-app"] body::before {
 }
 html[data-shell="desktop-app"] .nav {
   -webkit-app-region: drag;
-  padding-right: calc(var(--gutter) + var(--window-controls-w) - 24px);
+  /* Line up with the page's right edge, or sit just left of the window buttons. */
+  padding-right: max(var(--gutter), calc(var(--window-controls-w) + var(--sp-3)));
 }
 html[data-shell="desktop-app"] .pc--top {
   -webkit-app-region: drag;
-  padding-right: calc(clamp(16px, 3vw, 48px) + var(--window-controls-w));
+  padding-right: max(clamp(16px, 3vw, 48px), calc(var(--window-controls-w) + var(--sp-3)));
 }
 html[data-shell="desktop-app"] :is(a, button, input, select, textarea, [role="button"], [role="slider"], .menu__panel, .mb-settings, .pmenu, .pinfo) {
   -webkit-app-region: no-drag;
