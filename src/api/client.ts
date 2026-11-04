@@ -29,15 +29,21 @@ export interface RequestOptions {
 
 const DEVICE_ID_KEY = "argent.deviceId";
 
+/** 32 random hex characters. Not crypto.randomUUID, which only exists on https and localhost
+ *  pages: the web version is often served over plain http on a home network. */
+export function randomId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function readDeviceId(): string {
   try {
     const existing = localStorage.getItem(DEVICE_ID_KEY);
     if (existing) return existing;
-    const id = crypto.randomUUID().replace(/-/g, "");
+    const id = randomId();
     localStorage.setItem(DEVICE_ID_KEY, id);
     return id;
   } catch {
-    return crypto.randomUUID().replace(/-/g, "");
+    return randomId();
   }
 }
 
