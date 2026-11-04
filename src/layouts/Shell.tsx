@@ -12,6 +12,7 @@ import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { ManageHost } from "@/features/manage/ManageHost";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { useUpcomingSync } from "@/features/upcoming/store";
+import { androidApp } from "@/platform/android";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
 
@@ -62,7 +63,11 @@ function ProfileMenu() {
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+    };
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", esc);
     return () => {
@@ -213,7 +218,10 @@ export function useTvNavigation() {
   useEffect(() => {
     if (platform !== "tv") return;
     return installSpatialNavigation(() => {
-      if (location.pathname !== "/") navigate(-1);
+      // In the Android app, Back on the home screen (or the first page opened) leaves the app.
+      const atStart = location.pathname === "/" || window.history.state?.idx === 0;
+      if (atStart && androidApp) androidApp.exit();
+      else if (location.pathname !== "/") navigate(-1);
     });
   }, [platform, navigate, location.pathname]);
 }

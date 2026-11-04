@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type TouchEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type TouchEvent } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { setFavorite } from "@/api/jellyfin";
@@ -130,6 +130,27 @@ export function MediaBar({ onBackdropChange }: Props) {
   useEffect(() => {
     if (data && config.rememberOrderForSession) persistIndex(index, config);
   }, [index, data, config]);
+
+  // ---- focus across slides ----------------------------------------------------------
+  // The outgoing slide goes inert, which drops focus from its buttons. With a remote that
+  // strands you on the page, so the same button on the incoming slide takes focus over.
+  const focusedAction = useRef<number | null>(null);
+  const onFocusIn = (e: FocusEvent<HTMLElement>) => {
+    const row = (e.target as HTMLElement).closest(".mb-actions");
+    focusedAction.current = row ? [...row.children].indexOf(e.target as HTMLElement) : null;
+  };
+  const onFocusOut = (e: FocusEvent<HTMLElement>) => {
+    // Inert removes focus with no new target; anything else is the user moving on.
+    if (e.relatedTarget) focusedAction.current = null;
+  };
+  useLayoutEffect(() => {
+    const at = focusedAction.current;
+    const active = document.activeElement;
+    const stranded = !active || active === document.body || active.closest(".mb-slide:not(.is-active)");
+    if (at === null || !stranded) return;
+    const button = root.current?.querySelectorAll<HTMLElement>(".mb-slide.is-active .mb-actions > *")[at];
+    button?.focus({ preventScroll: true });
+  }, [index]);
 
   // ---- visibility -------------------------------------------------------------------
   useEffect(() => {
@@ -387,6 +408,8 @@ export function MediaBar({ onBackdropChange }: Props) {
       aria-label="Featured"
       tabIndex={-1}
       onKeyDown={onKeyDown}
+      onFocus={onFocusIn}
+      onBlur={onFocusOut}
       onMouseDown={(e) => {
         if (!(e.target as HTMLElement).closest("button, a, input, select")) root.current?.focus({ preventScroll: true });
       }}

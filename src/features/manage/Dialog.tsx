@@ -18,6 +18,7 @@ export function Dialog({ title, subtitle, children, footer, wide, busy }: Props)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) {
+        e.preventDefault();
         e.stopPropagation();
         closeDialog();
       }

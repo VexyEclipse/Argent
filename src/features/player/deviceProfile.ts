@@ -24,7 +24,10 @@ const isWebOS = /Web0S|webOS/i.test(ua);
 export interface Capabilities {
   h264: boolean;
   hevc: boolean;
+  /** 10-bit HEVC (Main 10): common on newer files, and missing where only 8-bit decodes. */
+  hevc10: boolean;
   av1: boolean;
+  av1_10: boolean;
   vp9: boolean;
   aac: boolean;
   mp3: boolean;
@@ -43,7 +46,9 @@ export function capabilities(): Capabilities {
   return {
     h264: anyOf('video/mp4; codecs="avc1.640029"', 'video/mp4; codecs="avc1.42E01E"'),
     hevc: anyOf('video/mp4; codecs="hvc1.1.6.L120.90"', 'video/mp4; codecs="hev1.1.6.L120.90"', 'video/mp4; codecs="hvc1.2.4.L153.B0"'),
+    hevc10: anyOf('video/mp4; codecs="hvc1.2.4.L153.B0"', 'video/mp4; codecs="hev1.2.4.L153.B0"'),
     av1: anyOf('video/mp4; codecs="av01.0.05M.08"', 'video/mp4; codecs="av01.0.08M.10"'),
+    av1_10: anyOf('video/mp4; codecs="av01.0.08M.10"'),
     vp9: anyOf('video/webm; codecs="vp9"', 'video/mp4; codecs="vp09.00.10.08"'),
     aac: anyOf('audio/mp4; codecs="mp4a.40.2"'),
     mp3: anyOf("audio/mpeg", 'audio/mp4; codecs="mp3"'),
@@ -108,6 +113,21 @@ export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boole
           { Condition: "LessThanEqual", Property: "VideoLevel", Value: "52", IsRequired: false },
           { Condition: "LessThanEqual", Property: "VideoBitDepth", Value: "8", IsRequired: false },
         ],
+      },
+      // A 10-bit stream this device can't decode would load and never start, so the server
+      // converts it instead.
+      {
+        Type: "Video",
+        Codec: "hevc",
+        Conditions: [
+          { Condition: "EqualsAny", Property: "VideoProfile", Value: c.hevc10 ? "main|main 10" : "main", IsRequired: false },
+          { Condition: "LessThanEqual", Property: "VideoBitDepth", Value: c.hevc10 ? "10" : "8", IsRequired: false },
+        ],
+      },
+      {
+        Type: "Video",
+        Codec: "av1",
+        Conditions: [{ Condition: "LessThanEqual", Property: "VideoBitDepth", Value: c.av1_10 ? "10" : "8", IsRequired: false }],
       },
     ],
     // Text subtitles are delivered as WebVTT tracks; image formats burn in.

@@ -78,7 +78,11 @@ export function SettingsPanel({ mb, onClose }: { mb: MB; onClose: () => void }) 
       if (panel.current?.contains(target) || target.closest("[aria-label='Featured settings']")) return;
       onClose();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onClose();
+    };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     panel.current?.querySelector<HTMLElement>("button, input")?.focus();

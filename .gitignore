@@ -11,3 +11,14 @@ Thumbs.db
 .idea/
 coverage/
 release/
+
+# Android app
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/keystore.properties
+*.jks
+*.keystore

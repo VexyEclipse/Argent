@@ -22,7 +22,8 @@ function readOverride(): Platform | null {
 }
 
 export function isTvUserAgent(ua = navigator.userAgent): boolean {
-  return /Tizen|Web0S|webOS|SMART-TV|SmartTV|HbbTV|AFT[A-Z]|Android TV|GoogleTV|CrKey|BRAVIA|Xbox|PlayStation/i.test(ua);
+  // ArgentTV: the Argent Android app running on a TV (it only adds the token there).
+  return /Tizen|Web0S|webOS|SMART-TV|SmartTV|HbbTV|AFT[A-Z]|Android TV|GoogleTV|CrKey|BRAVIA|Xbox|PlayStation|ArgentTV/i.test(ua);
 }
 
 export function detectPlatform(): Platform {

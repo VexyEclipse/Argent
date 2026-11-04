@@ -27,6 +27,11 @@ img {
   max-width: 100%;
 }
 
+/* Icons keep their size in a crowded flex row. Older Chromium (TV WebViews) shrinks them to nothing otherwise. */
+svg {
+  flex-shrink: 0;
+}
+
 button,
 input,
 select,

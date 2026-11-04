@@ -48,6 +48,5 @@ See [RECOMMENDATIONS.md](RECOMMENDATIONS.md).
 
 ## Where to extend
 
-- **More platforms.** The TV shell runs in Tizen and webOS browsers as-is. A packaged TV app only needs a wrapper that loads the built `dist/`.
+- **More platforms.** The TV shell runs in Tizen and webOS browsers as-is, and `android/` packages it for Android TV, Google TV and Fire TV (see the README). A packaged Tizen or webOS app would be the same kind of wrapper around the built `dist/`, with the remote's Back key already handled.
 - **Tuning recommendations.** Change `DEFAULT_WEIGHTS` in `features/recommendations/engine/score.ts`. The engine has no UI dependencies, and `engine.test.ts` covers the intended behaviours.
-- **ASS/SSA subtitles.** These are currently burned in by the server. A client renderer such as libass-wasm could be added behind `subtitleIsText`.

@@ -4,6 +4,53 @@ A premium, cinematic frontend for [Jellyfin](https://jellyfin.org). Argent repla
 
 The app is branded Argent throughout. Its mark is the Jellyfin logo shape recoloured silver (credited below, as its licence requires). The palette is near-black, charcoal and silver.
 
+## Install
+
+**You need a Jellyfin server** (version 10.10 or newer) and its address, for example `http://192.168.1.20:8096`. Argent is only the app you watch on: your films, shows and accounts stay on the server. If you don't have a server yet, set one up first with [Jellyfin's guide](https://jellyfin.org/docs/general/installation/).
+
+Downloads are on the [Releases page](https://github.com/VexyEclipse/Argent/releases/latest).
+
+| Device                                   | How                                        |
+| ---------------------------------------- | ------------------------------------------ |
+| Windows PC                               | Install app (`Argent-Setup-<version>.exe`) |
+| Android TV, Google TV, Fire TV           | Install app (`Argent-<version>.apk`)       |
+| Android phone or tablet                  | Install app (`Argent-<version>.apk`)       |
+| iPhone, iPad, Mac, Linux                 | In a web browser                           |
+| Samsung (Tizen) and LG (webOS) smart TVs | In the TV's web browser                    |
+
+The browser options need the web version hosted somewhere, usually by whoever runs the server: see [Hosting the web version](#hosting-the-web-version).
+
+### Windows
+
+1. Download `Argent-Setup-<version>.exe` from the Releases page and open it.
+2. Windows may warn that the app is from an unknown publisher (the installer isn't code-signed). Choose **More info → Run anyway**.
+3. Argent installs and opens. It's in the Start menu and on the desktop, and updates itself from then on.
+
+### Android TV, Google TV and Fire TV
+
+TV apps that aren't from the Play Store are installed with the free **Downloader** app by AFTVnews:
+
+1. On the TV, install **Downloader** from the Play Store (on Fire TV, from the Amazon Appstore).
+2. Allow it to install apps. Google TV: **Settings → Apps → Security & restrictions → Unknown sources → Downloader** (older Android TV: **Settings → Device Preferences → Security & restrictions**). Fire TV: **Settings → My Fire TV → Developer options → Install unknown apps → Downloader** (if Developer options is hidden, open **Settings → My Fire TV → About** and click the device name seven times).
+3. Open Downloader, enter the link to `Argent-<version>.apk` from the Releases page, and choose **Install** when it has downloaded.
+4. Argent appears on the home screen (Google TV: under **Apps**, or **Your apps → See all**).
+
+From a computer with [adb](https://developer.android.com/tools/adb) instead: turn on **Developer options → USB/network debugging** on the TV, then `adb connect <tv-ip>` and `adb install Argent-<version>.apk`.
+
+The remote works throughout: the arrows move, OK selects and Back goes back (on the home screen it closes Argent). The TV needs an up-to-date **Android System WebView**, which Google TV and Android TV update through the Play Store.
+
+### Android phones and tablets
+
+Open the Releases page on the phone, download `Argent-<version>.apk` and open it. Android asks once to allow installs from your browser; allow it, then tap **Install**. The app uses the touch layout.
+
+### In a browser
+
+Open the address of your Argent web version (ask whoever runs your server) in any modern browser: Chrome, Edge, Firefox or Safari. On an iPhone or iPad you can choose **Share → Add to Home Screen** for an icon. Samsung and LG TVs switch to the remote-friendly TV layout by themselves.
+
+### Signing in
+
+Enter your server address, then your Jellyfin username and password. Or use **Quick Connect**, which is easier with a remote: Argent shows a code, and you approve it from any device where you're already signed in to Jellyfin (in Jellyfin's own app: your user menu → Quick Connect). Several accounts and servers can be saved and switched between (Profile → Switch user).
+
 ## What's in it
 
 - **Homepage.** A full-bleed featured header (MediaBar), then Continue Watching, Next Up, Your Watchlist, Recommended For You, Recently Added, Coming Up (new episodes and announced seasons, see below), Your Movies, Your Series, Your Anime, Collections, Discover, Genres, and up to three personalised sections ("Because you watched…", "From the director…", your favourite genre pairing or decade).
@@ -12,38 +59,49 @@ The app is branded Argent throughout. Its mark is the Jellyfin logo shape recolo
 - **Anime.** Libraries whose name contains "Anime" get their own section (top navigation, mobile tab bar, TV rail) and a homepage row. Series then means your other TV libraries. Jellyfin has no anime library type, so the name is what marks one.
 - **Library browsing.** Separate Movies, Series and Anime views with library tabs, sorting, genre/decade/status/favourite filters, a title filter, A–Z jump, three poster densities and infinite scroll.
 - **Watchlist.** Save films and shows for later from any poster or details page. The list syncs through your Jellyfin account (DisplayPreferences), so it follows you to every device; titles you finish move to a Watched section.
+- **Ratings.** Score anything 1–10 with an optional note; notes that give the plot away stay blurred until clicked. When you finish a film or series, Argent asks what you'd rate it (optionally after every season too), and your score can show as a badge on posters. Rewatches keep a diary of earlier scores. Ratings sync through your Jellyfin account and are also saved as Jellyfin's own rating, so other clients see them.
+- **Letterboxd import and export.** Back up your ratings as JSON (everything) or as a CSV that Letterboxd's importer reads. Letterboxd's own exports (ratings.csv, reviews.csv, diary.csv) can be imported, with their 0.5–5 stars converted to 1–10.
+- **Your profile.** All-time favourites, estimated watch time, top genres by hours, how you score, your most-watched title, and "Your taste": the genres you score highest, the actors and directors you keep rating, and the titles where you disagree most with everyone else. **Year in Review** tells one year as a story (hours watched, genres, your biggest binge, your best). **Export image** draws your top-rated titles as a poster grid to copy or save.
 - **Coming Up.** New episodes and announced seasons of the shows you follow (started, favourited or on your watchlist). Episodes Jellyfin already knows about come from the server; once a day Argent also checks [TVmaze](https://www.tvmaze.com/api) for everything else, so a "Season 3 announced" appears without a metadata refresh. Only each show's TVDB or IMDb id is sent (no cookies, token or referrer), results are cached on the device, and nothing is written to Jellyfin. It can be turned off in Profile → Settings → Coming Up. The desktop app can also notify you when an episode airs today or a new season is announced.
 - **Details pages.** Movies, series (seasons and episodes, next-episode targeting), episodes (previous/next), collections and people. Cast and crew, media info, trailers, extras (behind the scenes, deleted scenes, featurettes), favourite and watched toggles. Mark a whole season watched in one click, and marking an episode watched offers to mark the unwatched ones before it too.
 - **Library management (administrators).** Right-click any poster, episode or details page (or use the ⋯ button, which also works on TV and touch) for: play, mark watched, favourite, watchlist, select several, add to a collection or playlist, download, copy the stream URL, edit metadata, identify (fix a wrong match by searching providers by title, year or IMDb/TMDb/TVDB id, then applying the right one), edit images (upload, search providers, remove), edit subtitles (search providers, upload, delete), media info, refresh metadata, and delete. Saving metadata starts from the item's full current data, so anything the editor doesn't show (cast, other provider ids, locked fields) is kept. Deleting a series, a season or several titles asks you to type "delete". Other users don't see any of it.
 - **Search.** Movies, series, episodes, actors, directors and writers, genres and collections. Debounced and cancellable, with type filters and sorting.
 - **Player.** Direct Play, Direct Stream and Transcoding (HLS via hls.js), chosen by a device profile built from what the browser can decode. Also: audio and subtitle selection, subtitle sync offset, quality and speed, fullscreen, picture-in-picture, volume, seeking with trickplay thumbnails and chapter marks, resume, skip intro/recap (media segments), previous/next episode, Up Next with autoplay (it pauses to ask "Are you still watching?" after three unattended episodes), progress reporting to the server, Media Session keys, and keyboard and remote control. Every card has a play button; on a series it plays the episode in progress, otherwise the next one.
-- **Three interfaces, one design system.** Desktop (top navigation), mobile (bottom tab bar, touch layouts, double-tap seeking) and TV (focus rail, D-pad spatial navigation, 10-foot sizing). The platform is detected automatically and can be overridden in Profile → Display, or with `?platform=tv|mobile|desktop|auto`.
+- **Three interfaces, one design system.** Desktop (top navigation), mobile (bottom tab bar, touch layouts, double-tap seeking) and TV (focus rail, D-pad spatial navigation, 10-foot sizing). The platform is detected automatically and can be overridden in Profile → Display, or with `?platform=tv|mobile|desktop|auto`. Apps for Windows and Android (TV and phone) wrap the same build.
+- **Settings.** In Profile → Settings: autoplay of the next episode, default audio track, remembering audio and subtitle choices, the interface, hiding watched titles from Recently Added, Coming Up, ratings prompts and poster badges, and restoring titles you marked "Not interested" in recommendations. Also links to the server dashboard (administrators), your Jellyfin password and profile picture, and Quick Connect.
 
-## Running it
+## Hosting the web version
 
-Requirements: Node 20+ and a Jellyfin 10.10+ server (developed against 10.11.6).
+For people who run a Jellyfin server and want their users to open Argent in a browser. The web version is a static site: it doesn't need a database or its own backend, and it runs alongside Jellyfin's own web app without changing it.
 
-```bash
-npm install
-npm run dev        # http://localhost:5173
-```
+1. Install [Node.js](https://nodejs.org) 20 or newer.
+2. Download the source (the **Source code (zip)** on the Releases page, or `git clone`), open a terminal in that folder and build it:
 
-Sign in with the server address and your Jellyfin username and password, or use **Quick Connect**: approve the code from any signed-in Jellyfin client.
+   ```bash
+   npm install
+   npm run build
+   ```
 
-```bash
-npm test           # recommendation engine + MediaBar logic
-npm run build      # type-check and build to dist/
-```
+3. Serve the `dist/` folder. On the Jellyfin machine, the simplest way is:
 
-### Deploying
+   ```bash
+   npx serve -s dist -l 8090
+   ```
 
-`dist/` is a static site; any web server can host it. Jellyfin allows cross-origin API calls, so Argent can be served from a different host or port than the server. To pre-fill the server address for users, edit `dist/argent.config.json` (no rebuild needed):
+   Argent is then at `http://<server-ip>:8090`. To use a web server you already run instead, copy `dist/` to it and send unknown paths to `index.html`, since Argent's pages are client-side routes. With nginx that's `try_files $uri /index.html;`, and with Caddy it's `try_files {path} /index.html`.
 
-```json
-{ "defaultServerUrl": "https://jellyfin.example.com", "mediaBar": { "lock": [] } }
-```
+4. Optional: to fill in the server address for your users, edit `dist/argent.config.json` (no rebuild needed):
 
-If you serve it under a sub-path, build with `npx vite build --base=/argent/`.
+   ```json
+   { "defaultServerUrl": "http://192.168.1.20:8096", "mediaBar": { "lock": [] } }
+   ```
+
+Things to know:
+
+- **HTTPS.** If Argent is served over `https://`, the Jellyfin address must be `https://` too, because browsers block plain-http requests from secure pages. Serve both the same way.
+- **Another host or port.** Jellyfin allows cross-origin API calls, so Argent can be on a different host or port than the server.
+- **A sub-path.** To serve it under a path such as `/argent/`, build with `npx vite build --base=/argent/`.
+- **Updating.** Download the new source, build again and replace `dist/` (keep your `argent.config.json`).
 
 ## Playback notes
 
@@ -85,13 +143,16 @@ src/
   auth/           Sign-in (password, Quick Connect), saved accounts, user switching
   design/         Tokens (colour, type, spacing, sizing, motion), base, components, layout
   components/     Artwork, MediaCard, Row (carousel), Button, Icon, Jellyfin logo, states
-  platform/       Desktop/mobile/TV detection, D-pad spatial navigation
+  platform/       Desktop/mobile/TV detection, D-pad spatial navigation, app bridges
   layouts/        Shell with per-platform navigation
   features/
     mediabar/         MediaBar: config model, pure logic, data loading, trailers, UI
     recommendations/  engine/ (pure, tested), data loading, feedback, React hook
     home/ library/ details/ search/ player/ profile/
 docs/             Architecture and recommendation engine notes
+electron/         Windows desktop app shell (window, tray, updates)
+android/          Android TV and phone app shell (WebView)
+scripts/          Icon rendering, Android packaging
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions.
@@ -103,7 +164,20 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions.
 - Fonts: Inter and Inter Tight (SIL OFL), loaded from Google Fonts.
 - Subtitle rendering: [JASSUB](https://github.com/ThaUnknown/jassub) and libass (LGPL-2.1+ and others; see the package's licence), used unmodified as a separate, dynamically loaded module.
 
-## Desktop app (Windows)
+## Building from source
+
+### Development
+
+Requirements: Node 20+ and a Jellyfin 10.10+ server (developed against 10.11.6).
+
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # recommendation engine, MediaBar, ratings, watchlist and other logic
+npm run build      # type-check and build to dist/
+```
+
+### Desktop app (Windows)
 
 Argent also runs as its own desktop app: an Electron shell around the same build, with the silver mark as its icon, a dark integrated title bar and a modern engine that plays H.264, HEVC and AV1.
 
@@ -111,7 +185,7 @@ Argent also runs as its own desktop app: an Electron shell around the same build
 npm run desktop        # build and open the app
 npm run desktop:dev    # open the app against the running dev server (npm run dev)
 npm run desktop:pack   # build release/Argent-Setup-<version>.exe (per-user installer)
-npm run icons          # regenerate build/icon.ico and build/icon.png from the logo
+npm run icons          # regenerate the desktop and Android icons from the logo
 ```
 
 The installer adds Start menu and desktop shortcuts named Argent. Keys: F11 toggles full screen, Ctrl+R reloads, Ctrl+Shift+I opens developer tools.
@@ -122,3 +196,34 @@ Desktop-only features, set in Profile → Settings → Desktop app:
 - **System tray.** What's playing, play/pause and next/previous episode, and "Check for updates". Optionally keep Argent running in the tray when the window is closed (playback pauses).
 
 The web libraries are bundled into `dist/` by Vite, so they're listed as dev dependencies; `dependencies` holds only what the Electron shell needs at runtime (`electron-updater`), which keeps the installer small.
+
+### Android app (TV and phone)
+
+`android/` is a small native app: the built `dist/` is bundled into the APK and shown in a full-screen WebView, served as `http://localhost` straight from the APK. Being plain http (but still a secure context) lets it show images and video from http servers on the home network, which an https page could not. One APK covers Android TV, Google TV, Fire TV, phones and tablets. On a TV it adds `ArgentTV` to the user agent so the web app picks the TV interface. The remote's Back button is passed to the page as Escape, which closes whatever is open and otherwise goes back a page; on the home screen it closes the app (`window.argentAndroid.exit()`, see `src/platform/android.ts`).
+
+Requirements: [Android Studio](https://developer.android.com/studio), or JDK 17–24 with the Android SDK command-line tools (with `platforms;android-36` and `build-tools;35.0.0` installed, and `ANDROID_HOME` or `android/local.properties` pointing at the SDK). Gradle downloads itself on the first build.
+
+```bash
+npm run android:pack   # build dist/, then release/Argent-<version>.apk
+```
+
+Or open `android/` in Android Studio and run it on a TV emulator or device (run `npm run build` first, since the app bundles `dist/`). The version comes from `package.json`.
+
+**Signing.** Android only installs an update signed with the same key as the installed version. To sign releases with your own key, create one once:
+
+```bash
+keytool -genkeypair -v -keystore android/argent.jks -alias argent -keyalg RSA -keysize 4096 -validity 10000
+```
+
+and add `android/keystore.properties` (both files are ignored by git, so keep a backup):
+
+```properties
+storeFile=argent.jks
+storePassword=<password>
+keyAlias=argent
+keyPassword=<password>
+```
+
+Without it, release builds are signed with your machine's debug key, which is fine for trying it on your own TV.
+
+Attach the APK to the same GitHub release as the desktop installer. Android installs don't update themselves: users install the new APK over the old one, and their sign-in is kept.
