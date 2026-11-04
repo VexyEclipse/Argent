@@ -1,0 +1,22 @@
+/** ISO 639-2 codes Jellyfin uses for audio/subtitle preferences and subtitle search. */
+export const LANGUAGES: [string, string][] = [
+  ["eng", "English"],
+  ["spa", "Spanish"],
+  ["fre", "French"],
+  ["ger", "German"],
+  ["ita", "Italian"],
+  ["por", "Portuguese"],
+  ["dut", "Dutch"],
+  ["swe", "Swedish"],
+  ["nor", "Norwegian"],
+  ["dan", "Danish"],
+  ["fin", "Finnish"],
+  ["pol", "Polish"],
+  ["rus", "Russian"],
+  ["jpn", "Japanese"],
+  ["kor", "Korean"],
+  ["chi", "Chinese"],
+  ["hin", "Hindi"],
+  ["ara", "Arabic"],
+  ["tur", "Turkish"],
+];

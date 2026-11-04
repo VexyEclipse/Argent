@@ -41,6 +41,7 @@ interface DesktopBridge {
   installUpdate(): Promise<void>;
   onUpdateStatus(fn: (status: UpdateStatus) => void): () => void;
   showWindow(): Promise<void>;
+  download(url: string): Promise<void>;
   setNowPlaying(info: NowPlaying | null): void;
   onPlayerCommand(fn: (command: PlayerCommand) => void): () => void;
 }

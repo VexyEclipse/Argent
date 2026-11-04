@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router";
 import type { BaseItem } from "@/api/types";
 import { landscapeImage, posterImage } from "@/api/images";
 import { cardSubtitle, progressOf } from "@/api/format";
+import { useAuth } from "@/auth/AuthProvider";
+import { openMenu, toggleSelected, useIsSelected, useSelecting } from "@/features/manage/store";
 import { usePosterScore } from "@/features/ratings/prefs";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { Artwork } from "./Artwork";
@@ -60,6 +62,26 @@ export const MediaCard = memo(function MediaCard({
   // Series and collections resolve to the right episode or film in the player.
   // Virtual items (upcoming or missing episodes) have nothing to play yet.
   const playable = !noPlay && item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
+  // Administrators: right-click for the management menu, and multi-select.
+  const { isAdmin } = useAuth();
+  const manageable = isAdmin && item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
+  const selecting = useSelecting() && manageable;
+  const selected = useIsSelected(item.Id);
+
+  const onContextMenu = (event: MouseEvent) => {
+    if (!manageable) return;
+    event.preventDefault();
+    if (selecting) toggleSelected(item);
+    else openMenu(item, { x: event.clientX, y: event.clientY });
+  };
+
+  // While selecting, a click picks the card instead of opening it.
+  const onClickCapture = (event: MouseEvent) => {
+    if (!selecting) return;
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSelected(item);
+  };
 
   const dismiss = (event: MouseEvent) => {
     event.preventDefault();
@@ -80,9 +102,18 @@ export const MediaCard = memo(function MediaCard({
   };
 
   return (
-    <div className={`card card--${variant}`}>
-      <Link to={to} className="card__link" title={item.Name}>
+    <div
+      className={`card card--${variant} ${selecting ? "is-selectable" : ""} ${selecting && selected ? "is-selected" : ""}`}
+      onContextMenu={onContextMenu}
+      onClickCapture={onClickCapture}
+    >
+      <Link to={to} className="card__link" title={item.Name} aria-pressed={selecting ? selected : undefined}>
         <div className="card__media">
+          {selecting && (
+            <span className="card__select" aria-hidden="true">
+              <Icon name="check" size={15} />
+            </span>
+          )}
           <Artwork image={image} alt="" fallbackLabel={item.Name} eager={eager} />
           <div className="card__veil" />
           {played && (

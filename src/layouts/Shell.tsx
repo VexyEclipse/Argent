@@ -7,7 +7,9 @@ import { useAuth } from "@/auth/AuthProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
+import { ToastHost } from "@/components/Toast";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
+import { ManageHost } from "@/features/manage/ManageHost";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { useUpcomingSync } from "@/features/upcoming/store";
 import { usePlatform } from "@/platform/platform";
@@ -240,6 +242,8 @@ export function Shell() {
       </main>
       <RatePromptHost />
       <UpdatePrompt />
+      <ManageHost />
+      <ToastHost />
     </div>
   );
 }

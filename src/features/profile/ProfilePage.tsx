@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { APP_VERSION } from "@/api/client";
+import { LANGUAGES as LANGUAGE_LIST } from "@/api/languages";
 import { client, getPublicInfo, updateUserConfiguration } from "@/api/jellyfin";
 import type { UserConfiguration } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
@@ -16,28 +17,7 @@ import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { MediaProfile } from "./MediaProfile";
 import "./profile.css";
 
-const LANGUAGES: [string, string][] = [
-  ["", "Any / server default"],
-  ["eng", "English"],
-  ["spa", "Spanish"],
-  ["fre", "French"],
-  ["ger", "German"],
-  ["ita", "Italian"],
-  ["por", "Portuguese"],
-  ["dut", "Dutch"],
-  ["swe", "Swedish"],
-  ["nor", "Norwegian"],
-  ["dan", "Danish"],
-  ["fin", "Finnish"],
-  ["pol", "Polish"],
-  ["rus", "Russian"],
-  ["jpn", "Japanese"],
-  ["kor", "Korean"],
-  ["chi", "Chinese"],
-  ["hin", "Hindi"],
-  ["ara", "Arabic"],
-  ["tur", "Turkish"],
-];
+const LANGUAGES: [string, string][] = [["", "Any / server default"], ...LANGUAGE_LIST];
 
 function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (

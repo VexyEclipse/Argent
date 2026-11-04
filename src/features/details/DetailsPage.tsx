@@ -14,6 +14,8 @@ import { seriesPlayTarget } from "@/features/player/playback";
 import type { RateTarget } from "@/features/ratings/logic";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
+import { openMenu } from "@/features/manage/store";
+import { useAuth } from "@/auth/AuthProvider";
 import { Hero } from "./Hero";
 import { CastRow, ExtrasRow, InfoTable, SimilarRow } from "./Sections";
 import { earlierUnwatched } from "./episodes";
@@ -203,6 +205,7 @@ function SeasonScores({ series, seasons, onRate }: { series: BaseItem; seasons: 
 
 function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; seasonId: string; highlightId?: string }) {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const toggle = useTogglePlayed();
   const bulk = useBulkPlayed();
@@ -235,7 +238,19 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
         const progress = progressOf(ep);
         const played = ep.UserData?.Played;
         return (
-          <li key={ep.Id} id={`ep-${ep.Id}`} className={`episode ${ep.Id === highlightId ? "is-next" : ""}`}>
+          <li
+            key={ep.Id}
+            id={`ep-${ep.Id}`}
+            className={`episode ${ep.Id === highlightId ? "is-next" : ""}`}
+            onContextMenu={
+              isAdmin
+                ? (e) => {
+                    e.preventDefault();
+                    openMenu(ep, { x: e.clientX, y: e.clientY });
+                  }
+                : undefined
+            }
+          >
             <button className="episode__thumb" onClick={() => navigate(`/play/${ep.Id}`)} aria-label={`Play ${ep.Name}`}>
               <Artwork image={landscapeImage(ep, 480)} alt="" />
               <span className="episode__play">

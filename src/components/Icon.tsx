@@ -188,7 +188,18 @@ const PATHS = {
       <path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" />
     </>
   ),
-  checkAll: <path d="m2.5 12.5 4.5 4.5 9.5-9.5M11.5 16.5l.5.5 9.5-9.5" />,
+  more: <path d="M6 12h.01M12 12h.01M18 12h.01" strokeWidth={3} />,
+  pencil: <path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-3-3l-10 10v3ZM13.5 8.5l2 2" />,
+  trash: <path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7M10.5 11v5M13.5 11v5" />,
+  refresh: <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" />,
+  select: (
+    <>
+      <rect x="4.5" y="4.5" width="15" height="15" rx="3" />
+      <path d="m8.5 12 2.5 2.5 4.5-5" />
+    </>
+  ),
+  link: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
+  checkAll:<path d="m2.5 12.5 4.5 4.5 9.5-9.5M11.5 16.5l.5.5 9.5-9.5" />,
   image: (
     <>
       <rect x="4" y="5" width="16" height="14" rx="2" />

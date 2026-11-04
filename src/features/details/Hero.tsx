@@ -7,6 +7,8 @@ import { Artwork } from "@/components/Artwork";
 import { blurHashToDataUrl } from "@/components/blurhash";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
+import { useAuth } from "@/auth/AuthProvider";
+import { openMenu } from "@/features/manage/store";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
@@ -44,6 +46,7 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const navigate = useNavigate();
   const actions = useItemActions(item);
   const watchlist = useWatchlistToggle(item);
+  const { isAdmin } = useAuth();
   const [trailerOpen, setTrailerOpen] = useState(false);
   const trailer = useTrailer(item);
   const ratings = useRatings();
@@ -84,7 +87,19 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const badges = videoBadge(streams);
 
   return (
-    <section className="hero">
+    <section
+      className="hero"
+      onContextMenu={
+        isAdmin
+          ? (e) => {
+              // Right-clicking the page header manages the title itself.
+              if ((e.target as HTMLElement).closest("a, input, textarea")) return;
+              e.preventDefault();
+              openMenu(item, { x: e.clientX, y: e.clientY });
+            }
+          : undefined
+      }
+    >
       <div className="hero__backdrop" style={placeholder ? { backgroundImage: `url("${placeholder}")` } : undefined}>
         {backdrop && <img src={backdrop.url} alt="" />}
       </div>
@@ -178,6 +193,20 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
               />
             )}
             {extraActions}
+            {isAdmin && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon="more"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  openMenu(item, { x: r.left, y: r.bottom + 8 }, true);
+                }}
+                aria-label="More actions"
+                aria-haspopup="menu"
+                title="More"
+              />
+            )}
           </div>
           {canResume && (
             <div className="hero__progress" aria-label={`${Math.round(progress)}% watched`}>

@@ -109,6 +109,12 @@ ipcMain.handle("settings:set", (_e, key, value) => {
 });
 
 ipcMain.handle("app:show", () => showWindow());
+// Admin "Download": save the original file via the normal Save dialog. Only http(s) URLs,
+// and only when asked by Argent's own window.
+ipcMain.handle("download", (e, url) => {
+  if (!mainWindow || e.sender !== mainWindow.webContents || typeof url !== "string" || !/^https?:\/\//i.test(url)) return;
+  mainWindow.webContents.downloadURL(url);
+});
 ipcMain.handle("update:check", () => updater.check());
 ipcMain.handle("update:install", () => {
   quitting = true;

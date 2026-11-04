@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   onUpdateStatus: (fn) => subscribe("update:status", fn),
   /** Brings the window forward (e.g. when a notification is clicked). */
   showWindow: () => ipcRenderer.invoke("app:show"),
+  /** Saves a file from the server through the Save dialog. */
+  download: (url) => ipcRenderer.invoke("download", url),
   /** What's playing, for the tray; null when playback ends. */
   setNowPlaying: (info) => ipcRenderer.send("now-playing", info),
   /** "toggle" | "pause" | "next" | "previous", from the tray menu and window. */
