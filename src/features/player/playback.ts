@@ -16,6 +16,8 @@ export interface StreamOptions {
   disableDirectPlay?: boolean;
   /** Burn ASS/SSA in on the server (when the in-browser renderer can't run). */
   burnInSubtitles?: boolean;
+  /** Set after a stream played without sound: the server converts the audio to AAC. */
+  compatibleAudio?: boolean;
 }
 
 export interface StreamInfo {
@@ -109,7 +111,7 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
   const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;
   const info = await getPlaybackInfo(item.Id, {
     MediaSourceId: mediaSourceId,
-    DeviceProfile: buildDeviceProfile(opts.maxBitrate, { burnInAss: opts.burnInSubtitles }),
+    DeviceProfile: buildDeviceProfile(opts.maxBitrate, { burnInAss: opts.burnInSubtitles, compatibleAudio: opts.compatibleAudio }),
     MaxStreamingBitrate: opts.maxBitrate,
     StartTimeTicks: opts.startTicks,
     AudioStreamIndex: opts.audioIndex,

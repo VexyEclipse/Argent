@@ -17,7 +17,7 @@ import { readRatings } from "@/features/ratings/store";
 import { desktop } from "@/platform/desktop";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey, moveFocus } from "@/platform/spatialNavigation";
-import { QUALITY_OPTIONS } from "./deviceProfile";
+import { isChromium, isFirefox, QUALITY_OPTIONS } from "./deviceProfile";
 import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, streamsOfType, subtitleIsText, type StreamInfo, type StreamOptions } from "./playback";
 import { createAssRenderer, type AssRenderer } from "./assRenderer";
 import { PlayerMenu } from "./PlayerMenu";
@@ -26,6 +26,7 @@ import { Seekbar } from "./Seekbar";
 import "./player.css";
 
 type Menu = "audio" | "subtitles" | "quality" | "speed" | "info" | null;
+type IosVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const VOLUME_KEY = "argent.volume";
@@ -123,6 +124,8 @@ function Player({ id }: { id: string }) {
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
   const [fullscreen, setFullscreen] = useState(false);
+  /** In the iPhone's own full-screen player (see toggleFullscreen). */
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [visible, setVisible] = useState(true);
   const [menu, setMenu] = useState<Menu>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -348,6 +351,44 @@ function Player({ id }: { id: string }) {
     };
   }, [stream, reporter, reload]);
 
+  // ---- silent audio / blank picture ------------------------------------------------
+  // A browser can accept a file yet drop a track it can't decode, playing the picture in
+  // silence (or the sound over black) without an error. A few seconds in, check that both
+  // are being decoded and otherwise ask the server for a stream that converts them.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    const el = video.current;
+    if (!el || !stream || !opts) return;
+    const hasAudio = streamsOfType(stream.source, "Audio").length > 0;
+    let played = 0;
+    let last = el.currentTime;
+    const check = () => {
+      const step = el.currentTime - last;
+      last = el.currentTime;
+      // Count real playback only, not jumps to the resume point.
+      if (el.paused || step <= 0 || step > 1) return;
+      played += step;
+      if (played < 4) return;
+      el.removeEventListener("timeupdate", check);
+      const media = el as HTMLVideoElement & { webkitAudioDecodedByteCount?: number; mozHasAudio?: boolean };
+      // Safari's native player always reports 0 decoded bytes, so only trust these where they're real.
+      const silent = hasAudio && ((isChromium && media.webkitAudioDecodedByteCount === 0) || (isFirefox && media.mozHasAudio === false));
+      const blank = stream.method === "DirectPlay" && document.visibilityState === "visible" && el.getVideoPlaybackQuality?.().totalVideoFrames === 0;
+      if (silent && !opts.compatibleAudio) {
+        setToast("No sound from this file. Switching to a compatible stream…");
+        reloadRef.current({ compatibleAudio: true, ...(stream.method === "DirectPlay" && { disableDirectPlay: true }) });
+      } else if (blank && !opts.disableDirectPlay) {
+        setToast("No picture from this file. Switching to a compatible stream…");
+        reloadRef.current({ disableDirectPlay: true });
+      }
+    };
+    el.addEventListener("timeupdate", check);
+    return () => el.removeEventListener("timeupdate", check);
+    // Once per play session; opts is the one that session was built from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.playSessionId]);
+
   // ---- subtitles (rendered by us for consistent styling and sync offset) ----------
   const textTrack = stream?.textTracks.find((t) => t.index === stream.subtitleIndex);
   useEffect(() => {
@@ -356,7 +397,7 @@ function Player({ id }: { id: string }) {
     if (!el || !textTrack) return;
     const tracks = Array.from(el.textTracks);
     const track = tracks.find((t) => t.label === textTrack.label && t.language === (textTrack.language ?? ""));
-    tracks.forEach((t) => (t.mode = t === track ? "hidden" : "disabled"));
+    tracks.forEach((t) => (t.mode = t === track ? (nativeFullscreen ? "showing" : "hidden") : "disabled"));
     if (!track) return;
     const onCue = () => {
       const cues = Array.from(track.activeCues ?? []) as VTTCue[];
@@ -364,7 +405,7 @@ function Player({ id }: { id: string }) {
     };
     track.addEventListener("cuechange", onCue);
     return () => track.removeEventListener("cuechange", onCue);
-  }, [textTrack, stream]);
+  }, [textTrack, stream, nativeFullscreen]);
 
   // Shift every cue when the sync offset changes.
   const appliedOffset = useRef(0);
@@ -451,7 +492,9 @@ function Player({ id }: { id: string }) {
   const seekBy = useCallback((d: number) => seekTo((video.current?.currentTime ?? 0) + d), [seekTo]);
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else root.current?.requestFullscreen?.().catch(() => {});
+    else if (document.fullscreenEnabled) root.current?.requestFullscreen?.().catch(() => {});
+    // iPhone Safari can't put a page element full screen, only the video, in its own player.
+    else (video.current as IosVideo | null)?.webkitEnterFullscreen?.();
   }, []);
   const exit = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -464,6 +507,20 @@ function Player({ id }: { id: string }) {
     const on = () => setFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", on);
     return () => document.removeEventListener("fullscreenchange", on);
+  }, []);
+
+  // The iPhone's own player draws subtitles itself, so the chosen track is shown while it's open.
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    const begin = () => setNativeFullscreen(true);
+    const end = () => setNativeFullscreen(false);
+    el.addEventListener("webkitbeginfullscreen", begin);
+    el.addEventListener("webkitendfullscreen", end);
+    return () => {
+      el.removeEventListener("webkitbeginfullscreen", begin);
+      el.removeEventListener("webkitendfullscreen", end);
+    };
   }, []);
 
   const selectSubtitle = (index: number) => {
@@ -800,7 +857,7 @@ function Player({ id }: { id: string }) {
   return (
     <div
       ref={root}
-      className={`player ${visible ? "is-ui" : "is-idle"} ${playing ? "is-playing" : "is-paused"}`}
+      className={`player ${visible ? "is-ui" : "is-idle"} ${playing ? "is-playing" : "is-paused"} ${nativeFullscreen ? "is-native-fs" : ""}`}
       onPointerMove={(e) => e.pointerType === "mouse" && poke()}
       data-nav-trap
       data-own-keys

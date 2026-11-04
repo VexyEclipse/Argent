@@ -21,7 +21,7 @@ const isSafari = /Safari\//.test(ua) && !isChromium;
 const isTizen = /Tizen/i.test(ua);
 const isWebOS = /Web0S|webOS/i.test(ua);
 
-export interface Capabilities {
+export interface CodecSupport {
   h264: boolean;
   hevc: boolean;
   /** 10-bit HEVC (Main 10): common on newer files, and missing where only 8-bit decodes. */
@@ -36,13 +36,21 @@ export interface Capabilities {
   ac3: boolean;
   eac3: boolean;
   dts: boolean;
+}
+
+export interface Capabilities extends CodecSupport {
+  /**
+   * What plays from a plain file (Direct Play). Media Source support doesn't carry over:
+   * Chrome can accept E-AC3 through MSE, yet play an E-AC3 file as video with no sound.
+   */
+  file: CodecSupport;
   mkv: boolean;
   hlsNative: boolean;
   hlsMse: boolean;
 }
 
-export function capabilities(): Capabilities {
-  const anyOf = (...types: string[]) => types.some((t) => can(t) || mse(t));
+function codecSupport(test: (type: string) => boolean): CodecSupport {
+  const anyOf = (...types: string[]) => types.some(test);
   return {
     h264: anyOf('video/mp4; codecs="avc1.640029"', 'video/mp4; codecs="avc1.42E01E"'),
     hevc: anyOf('video/mp4; codecs="hvc1.1.6.L120.90"', 'video/mp4; codecs="hev1.1.6.L120.90"', 'video/mp4; codecs="hvc1.2.4.L153.B0"'),
@@ -57,6 +65,13 @@ export function capabilities(): Capabilities {
     ac3: anyOf('audio/mp4; codecs="ac-3"'),
     eac3: anyOf('audio/mp4; codecs="ec-3"'),
     dts: isTizen || isWebOS,
+  };
+}
+
+export function capabilities(): Capabilities {
+  return {
+    ...codecSupport((t) => can(t) || mse(t)),
+    file: codecSupport(can),
     // Chromium's demuxer handles Matroska; Firefox and Safari do not reliably.
     mkv: isChromium || isTizen || isWebOS,
     hlsNative: can("application/vnd.apple.mpegurl") && (isSafari || isTizen || isWebOS),
@@ -64,19 +79,28 @@ export function capabilities(): Capabilities {
   };
 }
 
-export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boolean } = {}) {
+export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boolean; compatibleAudio?: boolean } = {}) {
   const c = capabilities();
-  const video = ["h264", c.hevc && "hevc", c.av1 && "av1", c.vp9 && "vp9"].filter(Boolean).join(",");
-  const audioMp4 = ["aac", c.mp3 && "mp3", c.opus && "opus", c.flac && "flac", c.ac3 && "ac3", c.eac3 && "eac3", c.dts && "dts"].filter(Boolean).join(",");
+  const f = c.file;
+  // compatibleAudio: a stream already played silently here, so skip the surround formats.
+  const surround = (s: CodecSupport) => (opts.compatibleAudio ? [] : [s.ac3 && "ac3", s.eac3 && "eac3"]);
+  const video = ["h264", f.hevc && "hevc", f.av1 && "av1", f.vp9 && "vp9"].filter(Boolean).join(",");
+  const audioMp4 = ["aac", f.mp3 && "mp3", f.opus && "opus", f.flac && "flac", ...surround(f), !opts.compatibleAudio && f.dts && "dts"].filter(Boolean).join(",");
+  // Chromium's Matroska demuxer drops an audio track its own decoders can't handle (Dolby,
+  // DTS) and plays the picture in silence, so those go through the server instead.
+  const audioMkv = isChromium ? ["aac", f.mp3 && "mp3", f.opus && "opus", f.flac && "flac", "vorbis"].filter(Boolean).join(",") : [audioMp4, "vorbis"].join(",");
   const audioWebm = ["opus", "vorbis"].join(",");
-  const hlsVideo = ["h264", c.hevc && "hevc", c.av1 && "av1"].filter(Boolean).join(",");
-  const hlsAudio = ["aac", c.mp3 && "mp3", c.ac3 && "ac3", c.eac3 && "eac3", c.opus && "opus", c.flac && "flac"].filter(Boolean).join(",");
+  // Apple's player only takes HEVC from fMP4 segments; from MPEG-TS it plays the sound over
+  // a black picture.
+  const fmp4 = c.hlsMse || isSafari;
+  const hlsVideo = ["h264", c.hevc && (fmp4 || isTizen || isWebOS) && "hevc", c.av1 && fmp4 && !isSafari && "av1"].filter(Boolean).join(",");
+  const hlsAudio = ["aac", c.mp3 && "mp3", ...surround(c), c.opus && "opus", c.flac && "flac"].filter(Boolean).join(",");
 
   const directPlay = [
     { Container: "mp4,m4v", Type: "Video", VideoCodec: video, AudioCodec: audioMp4 },
-    { Container: "mov", Type: "Video", VideoCodec: "h264" + (c.hevc ? ",hevc" : ""), AudioCodec: audioMp4 },
-    { Container: "webm", Type: "Video", VideoCodec: ["vp8", c.vp9 && "vp9", c.av1 && "av1"].filter(Boolean).join(","), AudioCodec: audioWebm },
-    ...(c.mkv ? [{ Container: "mkv", Type: "Video", VideoCodec: video, AudioCodec: [audioMp4, "vorbis"].join(",") }] : []),
+    { Container: "mov", Type: "Video", VideoCodec: "h264" + (f.hevc ? ",hevc" : ""), AudioCodec: audioMp4 },
+    { Container: "webm", Type: "Video", VideoCodec: ["vp8", f.vp9 && "vp9", f.av1 && "av1"].filter(Boolean).join(","), AudioCodec: audioWebm },
+    ...(c.mkv ? [{ Container: "mkv", Type: "Video", VideoCodec: video, AudioCodec: audioMkv }] : []),
     { Container: "mp3", Type: "Audio" },
     { Container: "m4a,aac", Type: "Audio", AudioCodec: "aac" },
     { Container: "flac", Type: "Audio" },
@@ -91,7 +115,7 @@ export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boole
     DirectPlayProfiles: directPlay,
     TranscodingProfiles: [
       {
-        Container: c.hlsMse && !isSafari ? "mp4" : "ts",
+        Container: fmp4 ? "mp4" : "ts",
         Type: "Video",
         AudioCodec: hlsAudio,
         VideoCodec: hlsVideo,
@@ -166,4 +190,4 @@ export const QUALITY_OPTIONS: { label: string; bitrate: number }[] = [
   { label: "360p · 720 kbps", bitrate: 720_000 },
 ];
 
-export { isFirefox };
+export { isChromium, isFirefox };

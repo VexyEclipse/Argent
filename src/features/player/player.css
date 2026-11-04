@@ -18,8 +18,9 @@
   object-fit: contain;
   background: #000;
 }
-.player__video::cue {
-  /* Native cues are hidden; we render our own (see .player__cues). */
+.player:not(.is-native-fs) .player__video::cue {
+  /* Native cues are hidden; we render our own (see .player__cues). The iPhone's
+     full-screen player can't show ours, so it draws them there. */
   opacity: 0;
 }
 
