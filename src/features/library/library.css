@@ -17,8 +17,11 @@
   margin-bottom: var(--sp-4);
   background: linear-gradient(180deg, var(--bg-0) 75%, transparent);
 }
+/* On a phone the toolbar would float over the grid under the see-through top bar; it
+   stays with the page header instead. */
 html[data-platform="mobile"] .toolbar {
-  top: calc(var(--nav-h) + env(safe-area-inset-top));
+  position: static;
+  background: none;
 }
 html[data-platform="tv"] .toolbar {
   top: 0;

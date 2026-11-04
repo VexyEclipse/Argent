@@ -1,5 +1,6 @@
 // Renders the silver Jellyfin mark into the app icons:
 //   build/icon.png (512px, window icon) and build/icon.ico (16–256px, exe + shortcuts),
+//   the web app's home screen icons in public/,
 //   and for the Android app: launcher icons (legacy and adaptive) and the TV banner.
 // Run with: npx electron scripts/make-icons.cjs
 
@@ -97,6 +98,12 @@ app.whenReady().then(async () => {
   write(path.join(OUT, "icon.ico"), buildIco(pngs));
   write(path.join(OUT, "icon.png"), await render({ width: 512 }));
   console.log(`Wrote build/icon.ico (${SIZES.join(", ")}px) and build/icon.png (512px)`);
+
+  // Web app (home screen) icons: the mark on the app's near-black. iOS rounds the corners itself.
+  const PUBLIC = path.join(__dirname, "..", "public");
+  write(path.join(PUBLIC, "apple-touch-icon.png"), await render({ width: 180, mark: 180 * 0.64, bg: "#0a0a0b" }));
+  write(path.join(PUBLIC, "icon-512.png"), await render({ width: 512, mark: 512 * 0.64, bg: "#0a0a0b" }));
+  console.log("Wrote public/apple-touch-icon.png (180px) and public/icon-512.png (512px)");
 
   for (const [density, scale] of Object.entries(DENSITIES)) {
     const icon = 48 * scale;
