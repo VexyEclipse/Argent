@@ -95,6 +95,28 @@ export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boole
   const fmp4 = c.hlsMse || isSafari;
   const hlsVideo = ["h264", c.hevc && (fmp4 || isTizen || isWebOS) && "hevc", c.av1 && fmp4 && !isSafari && "av1"].filter(Boolean).join(",");
   const hlsAudio = ["aac", c.mp3 && "mp3", ...surround(c), c.opus && "opus", c.flac && "flac"].filter(Boolean).join(",");
+  const hls = (Container: string, VideoCodec: string, AudioCodec: string) => ({
+    Container,
+    Type: "Video",
+    AudioCodec,
+    VideoCodec,
+    Context: "Streaming",
+    Protocol: "hls",
+    MaxAudioChannels: "6",
+    MinSegments: 1,
+    BreakOnNonKeyFrames: true,
+  });
+  // Where hls.js plays the stream, H.264 and HEVC come as MPEG-TS: the server's ffmpeg gives
+  // the first frame of each fMP4 segment the wrong time when it remuxes, so the picture
+  // hitches every few seconds. fMP4 stays for AV1, which TS can't carry; the server picks
+  // the profile that keeps the file's own video. hls.js reads no E-AC3 from TS.
+  const hlsProfiles =
+    !c.hlsNative && c.hlsMse
+      ? [
+          hls("ts", ["h264", c.hevc && "hevc"].filter(Boolean).join(","), ["aac", c.mp3 && "mp3", !opts.compatibleAudio && c.ac3 && "ac3"].filter(Boolean).join(",")),
+          ...(c.av1 ? [hls("mp4", "av1", hlsAudio)] : []),
+        ]
+      : [hls(fmp4 ? "mp4" : "ts", hlsVideo, hlsAudio)];
 
   const directPlay = [
     { Container: "mp4,m4v", Type: "Video", VideoCodec: video, AudioCodec: audioMp4 },
@@ -114,17 +136,7 @@ export function buildDeviceProfile(maxBitrate: number, opts: { burnInAss?: boole
     MusicStreamingTranscodingBitrate: 384_000,
     DirectPlayProfiles: directPlay,
     TranscodingProfiles: [
-      {
-        Container: fmp4 ? "mp4" : "ts",
-        Type: "Video",
-        AudioCodec: hlsAudio,
-        VideoCodec: hlsVideo,
-        Context: "Streaming",
-        Protocol: "hls",
-        MaxAudioChannels: "6",
-        MinSegments: 1,
-        BreakOnNonKeyFrames: true,
-      },
+      ...hlsProfiles,
       { Container: "mp3", Type: "Audio", AudioCodec: "mp3", Context: "Streaming", Protocol: "http", MaxAudioChannels: "2" },
     ],
     ContainerProfiles: [],
