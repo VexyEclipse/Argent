@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaSegment } from "@/api/types";
-import { activeSkip, missingTrack, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt } from "./playerLogic";
+import { activeSkip, missingTrack, nextChapter, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt } from "./playerLogic";
 
 const T = 10_000_000;
 const seg = (Type: MediaSegment["Type"], start: number, end: number): MediaSegment => ({ Id: Type, ItemId: "i", Type, StartTicks: start * T, EndTicks: end * T });
@@ -38,6 +38,20 @@ describe("segments", () => {
   it("shows Up Next at the credits, else 30 s from the end", () => {
     expect(upNextAt(segments, 1400)).toBe(1300);
     expect(upNextAt([], 1400)).toBe(1370);
+  });
+});
+
+describe("nextChapter", () => {
+  const chapters = [600, 0, 1200].map((s) => ({ StartPositionTicks: s * T }));
+  it("finds the next chapter, in any order", () => {
+    expect(nextChapter(chapters, 30)).toBe(600);
+    expect(nextChapter(chapters, 700)).toBe(1200);
+  });
+  it("moves on from a seek that landed just short", () => expect(nextChapter(chapters, 599.8)).toBe(1200));
+  it("does nothing at the last chapter or without chapters", () => {
+    expect(nextChapter(chapters, 1250)).toBeUndefined();
+    expect(nextChapter([], 30)).toBeUndefined();
+    expect(nextChapter(undefined, 30)).toBeUndefined();
   });
 });
 

@@ -47,6 +47,17 @@ export function activeSkip(segments: readonly MediaSegment[] | undefined, second
   );
 }
 
+/**
+ * Page Up: where the next chapter starts, or nothing at the last chapter or without any.
+ * The second's margin keeps a seek that lands just short of a chapter from finding it again.
+ */
+export function nextChapter(chapters: BaseItem["Chapters"], seconds: number): number | undefined {
+  return chapters
+    ?.map((c) => c.StartPositionTicks / TICKS)
+    .sort((a, b) => a - b)
+    .find((t) => t > seconds + 1);
+}
+
 /** When Up Next appears: at the credits (outro segment), else 30 seconds from the end. */
 export function upNextAt(segments: readonly MediaSegment[] | undefined, durationSeconds: number): number {
   const outro = segments?.find((s) => s.Type === "Outro");

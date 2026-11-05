@@ -27,7 +27,7 @@ import { QUALITY_OPTIONS } from "./deviceProfile";
 import { externalEngine, type ExternalEngine } from "./external";
 import { ExternalPlayback } from "./ExternalPlayback";
 import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, type StreamInfo, type StreamOptions } from "./playback";
-import { activeSkip, outroStart, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
+import { activeSkip, nextChapter, outroStart, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
 import { BottomBar, PlaybackInfo, TopBar, type Menu } from "./PlayerChrome";
 import { readMatchFrameRate, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
 import { PlaybackReporter } from "./reporter";
@@ -760,6 +760,12 @@ function WebPlayer(props: {
         case "s":
           if (activeSegment) seekTo(activeSegment.EndTicks / TICKS_PER_SECOND);
           break;
+        case "PageUp": {
+          const chapter = nextChapter(item.Chapters, video.current?.currentTime ?? 0);
+          if (chapter === undefined) return;
+          seekTo(chapter);
+          break;
+        }
         default:
           return;
       }
