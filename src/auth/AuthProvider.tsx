@@ -14,7 +14,8 @@ export interface Account {
   primaryImageTag?: string;
 }
 
-type Status = "loading" | "signedOut" | "signedIn";
+/** "offline": the server can't be reached, but this account has downloads to watch. */
+type Status = "loading" | "signedOut" | "signedIn" | "offline";
 
 interface AuthState {
   status: Status;
@@ -27,6 +28,8 @@ interface AuthState {
   signOut: (opts?: { forget?: boolean }) => Promise<void>;
   addAccount: () => void;
   refreshUser: () => Promise<void>;
+  /** Offline: try the server again. */
+  reconnect: () => Promise<void>;
 }
 
 const ACCOUNTS_KEY = "argent.accounts";
@@ -53,9 +56,30 @@ function accountKey(a: Pick<Account, "serverId" | "userId">) {
   return `${a.serverId}:${a.userId}`;
 }
 
+// The last user record seen for each account, so offline mode knows who you are.
+const userKey = (a: Pick<Account, "serverId" | "userId">) => `argent.user.${accountKey(a)}`;
+
+function rememberUser(a: Pick<Account, "serverId" | "userId">, user: User) {
+  try {
+    localStorage.setItem(userKey(a), JSON.stringify({ Id: user.Id, Name: user.Name, ServerId: user.ServerId, PrimaryImageTag: user.PrimaryImageTag, Configuration: user.Configuration }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function rememberedUser(a: Account): User {
+  try {
+    const u = JSON.parse(localStorage.getItem(userKey(a)) || "null");
+    if (u?.Id) return u;
+  } catch {
+    /* ignore */
+  }
+  return { Id: a.userId, Name: a.userName, ServerId: a.serverId };
+}
+
 const AuthContext = createContext<AuthState | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, hasOfflineContent }: { children: ReactNode; hasOfflineContent?: (account: Account) => boolean }) {
   const queryClient = useQueryClient();
   const [accounts, setAccounts] = useState<Account[]>(loadAccounts);
   const [account, setAccount] = useState<Account | null>(null);
@@ -77,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccount(target);
         setUser(me);
         setStatus("signedIn");
+        rememberUser(target, me);
         try {
           localStorage.setItem(ACTIVE_KEY, accountKey(target));
         } catch {
@@ -87,6 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           // Token revoked server-side: forget it.
           persist(loadAccounts().filter((a) => accountKey(a) !== accountKey(target)));
+        } else if (!(error instanceof ApiError) && hasOfflineContent?.(target)) {
+          // Unreachable (no network, server down) with downloads to watch: offline mode.
+          setClient(c);
+          setAccount(target);
+          setUser(rememberedUser(target));
+          setStatus("offline");
+          return true;
         }
         return false;
       }
@@ -148,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccount(next);
       setUser(result.User);
       setStatus("signedIn");
+      rememberUser(next, result.User);
       try {
         localStorage.setItem(ACTIVE_KEY, accountKey(next));
       } catch {
@@ -203,6 +236,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("signedOut");
   }, [queryClient]);
 
+  const reconnect = useCallback(async () => {
+    if (account) await activate(account);
+  }, [account, activate]);
+
   const refreshUser = useCallback(async () => {
     if (!account) return;
     const c = new JellyfinClient(account.serverUrl, account.accessToken, account.userId);
@@ -221,8 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       addAccount,
       refreshUser,
+      reconnect,
     }),
-    [status, user, account, accounts, completeSignIn, switchAccount, signOut, addAccount, refreshUser],
+    [status, user, account, accounts, completeSignIn, switchAccount, signOut, addAccount, refreshUser, reconnect],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

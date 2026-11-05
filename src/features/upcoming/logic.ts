@@ -151,3 +151,46 @@ export function notificationsFor(
   }
   return out;
 }
+
+// ---- NEW badges -------------------------------------------------------------------------
+
+export type NewBadge = "New series" | "New season" | "New episode" | "New episodes";
+
+/** Added to the library this recently… */
+const NEW_ADDED_DAYS = 14;
+/** …and first aired this recently: an old show added today isn't news. */
+const NEW_AIRED_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+export interface NewArrival {
+  badge: NewBadge;
+  /** The newest of the new episodes (for "it's here" reminders). */
+  latest: Pick<BaseItem, "Id" | "Name" | "IndexNumber" | "ParentIndexNumber" | "DateCreated">;
+}
+
+/**
+ * Shows with episodes that are genuinely new: recently aired, recently added, and not yet
+ * watched. A first episode means a new season (or series); otherwise new episodes.
+ */
+export function newArrivals(episodes: BaseItem[], now = new Date()): Map<string, NewArrival> {
+  const t = now.getTime();
+  const fresh = new Map<string, BaseItem[]>();
+  for (const e of episodes) {
+    if (e.Type !== "Episode" || !e.SeriesId || e.UserData?.Played || e.LocationType === "Virtual") continue;
+    const added = Date.parse(e.DateCreated ?? "");
+    const aired = Date.parse(e.PremiereDate ?? "");
+    if (!(t - added <= NEW_ADDED_DAYS * DAY_MS) || !(t - aired <= NEW_AIRED_DAYS * DAY_MS) || aired > t + DAY_MS) continue;
+    if ((e.ParentIndexNumber ?? 1) === 0) continue; // specials
+    fresh.set(e.SeriesId, [...(fresh.get(e.SeriesId) ?? []), e]);
+  }
+  const out = new Map<string, NewArrival>();
+  for (const [seriesId, list] of fresh) {
+    const order = (e: BaseItem) => (e.ParentIndexNumber ?? 0) * 10_000 + (e.IndexNumber ?? 0);
+    const sorted = [...list].sort((a, b) => order(a) - order(b));
+    const premiere = sorted.find((e) => e.IndexNumber === 1);
+    const badge: NewBadge = premiere ? ((premiere.ParentIndexNumber ?? 1) <= 1 ? "New series" : "New season") : list.length > 1 ? "New episodes" : "New episode";
+    const last = sorted[sorted.length - 1];
+    out.set(seriesId, { badge, latest: { Id: last.Id, Name: last.Name, IndexNumber: last.IndexNumber, ParentIndexNumber: last.ParentIndexNumber, DateCreated: last.DateCreated } });
+  }
+  return out;
+}

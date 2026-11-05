@@ -27,12 +27,21 @@ import { QUALITY_OPTIONS } from "./deviceProfile";
 import { externalEngine, type ExternalEngine } from "./external";
 import { ExternalPlayback } from "./ExternalPlayback";
 import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, type StreamInfo, type StreamOptions } from "./playback";
-import { activeSkip, nextChapter, outroStart, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
+import { activeCredits, activeSkip, autoSkipNow, nextChapter, outroStart, skipLabel, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
 import { BottomBar, PlaybackInfo, TopBar, type Menu } from "./PlayerChrome";
-import { readMatchFrameRate, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
+import { readAutoSkip, readMatchFrameRate, readPauseInfo, readSound, saveSound, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
+import { useAudioEffects, type SoundPrefs } from "./audioEffects";
+import { PauseInfo } from "./PauseInfo";
 import { PlaybackReporter } from "./reporter";
 import { useMediaHealth } from "./useMediaHealth";
 import { useOsControls } from "./useOsControls";
+import { shuffleEpisode } from "./shuffle";
+import type { DownloadRecord } from "@/features/downloads/logic";
+import { offlineNeighbours, offlineStart } from "@/features/downloads/logic";
+import { OfflineReporter, offlineStream } from "@/features/downloads/offlinePlayback";
+import { findDownload, readDownloads } from "@/features/downloads/store";
+import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useFillerIds } from "@/features/filler/store";
 import { useSubtitles } from "./useSubtitles";
 import { useUpNext } from "./useUpNext";
 import "./player.css";
@@ -40,13 +49,39 @@ import "./player.css";
 type IosVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
 
 const HIDE_AFTER_MS = 3200;
+/** Paused and untouched this long: "You're watching" comes up. */
+const PAUSE_INFO_AFTER_MS = 6000;
 
 export default function PlayerPage() {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
+  const { status } = useAuth();
+  // A download plays from the device: asked for, or the only way while offline.
+  if (params.has("offline") || status === "offline") return <OfflineRoute key={id} id={id} />;
   // Remount per title, per hand-off back from a native player and per group queue entry,
   // so each gets a clean session.
   return <PlayerRoute key={`${id}-${params.get("engine") ?? ""}-${params.get("together") ?? ""}`} id={id} />;
+}
+
+/** A downloaded title in the page's own player, with Up Next through the other downloaded episodes. */
+function OfflineRoute({ id }: { id: string }) {
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Read once: saving progress updates the record, which must not restart playback.
+  const [record] = useState(() => findDownload(id));
+  const [{ prev, next }] = useState(() => offlineNeighbours(readDownloads(), id));
+  const position = useRef(0);
+  const exit = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/downloads", { replace: true });
+  }, [navigate]);
+  const playItem = useCallback((target: BaseItem | null | undefined) => target && navigate(`/play/${target.Id}?offline=1&start=0`, { replace: true }), [navigate]);
+  if (!record || record.state !== "done") return <PlaybackError message="This title isn't downloaded on this device." onBack={exit} />;
+  const start = params.get("start") !== null ? startTicks(record.item, params.get("start")) : offlineStart(record);
+  return (
+    <WebPlayer item={record.item} next={next} prev={prev} segments={record.segments} startTicks={start} subtitleIndex={record.subtitleIndex} position={position} exit={exit} playItem={playItem} offline={record} />
+  );
 }
 
 /**
@@ -72,11 +107,13 @@ function PlayerRoute({ id }: { id: string }) {
     refetchOnReconnect: false,
   });
   const item = resolved.data;
+  // Shuffling a series: "next" is a random episode, and there's no "previous".
+  const shuffle = params.get("shuffle");
   const neighbours = useQuery({
-    queryKey: ["play", "neighbours", item?.Id],
-    queryFn: () => episodeNeighbours(item!),
+    queryKey: ["play", "neighbours", item?.Id, shuffle],
+    queryFn: async () => (shuffle ? { prev: null, next: await shuffleEpisode(shuffle, item!.Id) } : episodeNeighbours(item!)),
     enabled: item?.Type === "Episode",
-    staleTime: 60_000,
+    staleTime: shuffle ? Infinity : 60_000,
   });
   const segments = useQuery({
     queryKey: ["segments", item?.Id],
@@ -93,7 +130,10 @@ function PlayerRoute({ id }: { id: string }) {
     if (window.history.length > 1) navigate(-1);
     else navigate(item ? `/details/${item.Type === "Episode" ? item.SeriesId : item.Id}` : "/", { replace: true });
   }, [navigate, item]);
-  const playItem = useCallback((target: BaseItem | null | undefined) => target && navigate(`/play/${target.Id}?start=0`, { replace: true }), [navigate]);
+  const playItem = useCallback(
+    (target: BaseItem | null | undefined) => target && navigate(`/play/${target.Id}?start=0${shuffle ? `&shuffle=${shuffle}` : ""}`, { replace: true }),
+    [navigate, shuffle],
+  );
 
   // ---- where it plays ------------------------------------------------------------------
   type Route = { kind: "pending" } | { kind: "remote" } | { kind: "group"; failed?: boolean } | { kind: "external"; engine: ExternalEngine } | { kind: "web" };
@@ -288,6 +328,8 @@ function WebPlayer(props: {
   position: React.MutableRefObject<number>;
   exit: () => void;
   playItem: (item: BaseItem | null | undefined) => void;
+  /** Play this download from the device rather than streaming from the server. */
+  offline?: DownloadRecord;
 }) {
   const { item, next, prev, segments, exit } = props;
   const platform = usePlatform();
@@ -334,18 +376,18 @@ function WebPlayer(props: {
   live.current = { current, playing, muted, volume, rate };
   const positionNow = () => (reachedStart.current ? (video.current?.currentTime ?? live.current.current) : startSeconds.current);
   props.position.current = reachedStart.current ? current : Math.max(current, startSeconds.current);
-  const reporter = useMemo(
-    () =>
-      new PlaybackReporter(() => ({
-        positionSeconds: positionNow(),
-        paused: !live.current.playing,
-        muted: live.current.muted,
-        volume: live.current.volume,
-        playbackRate: live.current.rate,
-      })),
+  const reporter = useMemo(() => {
+    const read = () => ({
+      positionSeconds: positionNow(),
+      paused: !live.current.playing,
+      muted: live.current.muted,
+      volume: live.current.volume,
+      playbackRate: live.current.rate,
+    });
+    // A download keeps its own watch state, sent to the server once it's reachable.
+    return props.offline ? new OfflineReporter(props.offline.id, read) : new PlaybackReporter(read);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  }, []);
 
   useEffect(() => {
     const onHide = () => reporter.stop();
@@ -361,7 +403,7 @@ function WebPlayer(props: {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    requestStream(item, opts)
+    (props.offline ? offlineStream(props.offline) : requestStream(item, opts))
       .then((s) => {
         if (cancelled) return;
         pendingSeek.current = opts.startTicks / TICKS_PER_SECOND;
@@ -520,11 +562,18 @@ function WebPlayer(props: {
   }, [stream, reporter, reload, notice]);
 
   useMediaHealth({ video, stream, streamOpts: opts, reload, onNotice: notice });
+  const [sound, setSound] = useState<SoundPrefs>(readSound);
+  // Web Audio can't take the sound of a stream the browser plays natively (Safari, TVs).
+  const soundSupported = !(stream?.hls && !needsHlsJs()) && typeof AudioContext !== "undefined";
+  useAudioEffects(video, sound, soundSupported);
   const subs = useSubtitles({ video, stream, nativeFullscreen, reload, onNotice: notice });
 
   // ---- controls visibility --------------------------------------------------------
   const hideTimer = useRef(0);
+  // Movement while paused restarts the wait for "You're watching" (and clears it).
+  const [activity, setActivity] = useState(0);
   const poke = useCallback(() => {
+    if (video.current?.paused) setActivity((a) => a + 1);
     setVisible(true);
     window.clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
@@ -537,6 +586,19 @@ function WebPlayer(props: {
       window.clearTimeout(hideTimer.current);
     } else poke();
   }, [playing, menu, scrubbing, poke]);
+
+  const [pauseInfo, setPauseInfo] = useState(false);
+  const pauseInfoOn = useMemo(readPauseInfo, []);
+  useEffect(() => {
+    setPauseInfo(false);
+    if (playing || menu || scrubbing || loading || !pauseInfoOn) return;
+    const t = window.setTimeout(() => {
+      if (!video.current?.paused || !reachedStart.current) return;
+      setPauseInfo(true);
+      setVisible(false);
+    }, PAUSE_INFO_AFTER_MS);
+    return () => window.clearTimeout(t);
+  }, [playing, menu, scrubbing, loading, pauseInfoOn, activity]);
 
   // ---- actions (a Watch Together group decides play, pause and seek) ----------------
   const togglePlay = useCallback(() => {
@@ -661,6 +723,7 @@ function WebPlayer(props: {
   });
 
   // ---- skip segments & up next ----------------------------------------------------
+  const nextIsFiller = useFillerIds(next?.SeriesId).has(next?.Id ?? "");
   const activeSegment = activeSkip(segments, current);
   const upNext = useUpNext({
     video,
@@ -673,6 +736,35 @@ function WebPlayer(props: {
     playItem: props.playItem,
     exit,
   });
+  // Skipping: intros and recaps get a card; the credits too, unless Up Next is up (with a
+  // next episode, the Up Next card is the credits card). S does whichever is showing.
+  const credits = activeCredits(segments, current);
+  const skipCard = activeSegment ?? (credits && !(next && upNext.showUpNext && !sync) ? credits : undefined);
+  const creditsToNext = Boolean(credits && next && !sync);
+  const skipNow = useCallback(
+    (segment: MediaSegment | undefined) => {
+      if (segment?.Type === "Outro" && next && !syncRef.current) props.playItem(next);
+      else if (segment) seekTo(segment.EndTicks / TICKS_PER_SECOND);
+    },
+    [next, props, seekTo],
+  );
+  // Automatic skips (Settings → Skipping). Not in a Watch Together group: everyone's
+  // player would jump at once.
+  const autoSkip = useMemo(readAutoSkip, []);
+  const autoSkipped = useRef(new Set<string>());
+  useEffect(() => {
+    if (!playing || sync || !reachedStart.current) return;
+    const segment = autoSkipNow(segments, current, autoSkip, { hasNext: Boolean(next), done: autoSkipped.current });
+    if (!segment) return;
+    autoSkipped.current.add(segment.Id);
+    if (segment.Type === "Outro") {
+      upNext.autoplayNext();
+      return;
+    }
+    seekTo(segment.EndTicks / TICKS_PER_SECOND);
+    showToast(`Skipped the ${segment.Type.toLowerCase()}`, { label: "Watch it", run: () => seekTo(segment.StartTicks / TICKS_PER_SECOND) });
+  }, [current, playing, sync, segments, autoSkip, next, upNext, seekTo]);
+
   // A group moves on together when its episode ends.
   useEffect(() => {
     const el = video.current;
@@ -758,7 +850,11 @@ function WebPlayer(props: {
           goPrev();
           break;
         case "s":
-          if (activeSegment) seekTo(activeSegment.EndTicks / TICKS_PER_SECOND);
+        case "S":
+          // One key for every skip: the intro, the recap, the credits (to the next episode).
+          if (skipCard) skipNow(skipCard);
+          else if (creditsToNext || (upNext.showUpNext && next && !sync)) props.playItem(next);
+          else return;
           break;
         case "PageUp": {
           const chapter = nextChapter(item.Chapters, video.current?.currentTime ?? 0);
@@ -865,6 +961,8 @@ function WebPlayer(props: {
         </div>
       )}
 
+      {pauseInfo && !upNext.stillWatching && <PauseInfo item={item} />}
+
       {loading && (
         <div className="player__loading">
           {landscapeImage(item, 1280) && !playing && current === 0 ? (
@@ -893,11 +991,14 @@ function WebPlayer(props: {
         }
       />
 
-      {activeSegment && (
-        <button className="player__skip" onClick={() => seekTo(activeSegment.EndTicks / TICKS_PER_SECOND)} data-autofocus>
-          Skip {activeSegment.Type === "Commercial" ? "Ad" : activeSegment.Type}
-          <Icon name="skipNext" size={16} />
-        </button>
+      {skipCard && !upNext.stillWatching && (
+        <SkipCard
+          key={skipCard.Id}
+          label={skipLabel(skipCard.Type)}
+          progress={(current - skipCard.StartTicks / TICKS_PER_SECOND) / ((skipCard.EndTicks - skipCard.StartTicks) / TICKS_PER_SECOND)}
+          keyHint={platform === "desktop"}
+          onSkip={() => skipNow(skipCard)}
+        />
       )}
 
       {upNext.stillWatching && next && (
@@ -928,10 +1029,14 @@ function WebPlayer(props: {
           <div className="upnext__text">
             <span className="eyebrow">Up next{upNext.countdown !== null ? ` · ${upNext.countdown}s` : ""}</span>
             <span className="upnext__title">{next.Name}</span>
-            <span className="upnext__code">{episodeCode(next)}</span>
+            <span className="upnext__code">
+              {episodeCode(next)}
+              {nextIsFiller && <FillerBadge />}
+            </span>
             <div className="upnext__actions">
               <button className="btn btn--primary btn--sm" onClick={() => props.playItem(next)} autoFocus>
-                <Icon name="play" size={14} /> Play now
+                <Icon name="play" size={14} /> Next episode
+                {platform === "desktop" && <kbd className="kbd">S</kbd>}
               </button>
               <button className="btn btn--ghost btn--sm" onClick={upNext.dismiss}>
                 Dismiss
@@ -983,6 +1088,15 @@ function WebPlayer(props: {
         }}
         onQuality={selectQuality}
         onVersion={selectVersion}
+        sound={sound}
+        soundSupported={soundSupported}
+        onSound={(patch) =>
+          setSound((s) => {
+            const next = { ...s, ...patch };
+            saveSound(next);
+            return next;
+          })
+        }
         onPip={document.pictureInPictureEnabled && platform !== "tv" ? () => video.current?.requestPictureInPicture().catch(() => {}) : undefined}
         onFullscreen={toggleFullscreen}
       />
@@ -991,5 +1105,20 @@ function WebPlayer(props: {
 
       <ToastHost />
     </div>
+  );
+}
+
+/**
+ * The skip card: appears as an intro, recap or the credits start, fills as the part plays
+ * out, and takes focus so OK on a remote presses it.
+ */
+function SkipCard({ label, progress, keyHint, onSkip }: { label: string; progress: number; keyHint: boolean; onSkip: () => void }) {
+  return (
+    <button className="player__skip fade-in" onClick={onSkip} data-autofocus>
+      <span className="player__skip-fill" style={{ transform: `scaleX(${Math.min(1, Math.max(0, progress))})` }} aria-hidden="true" />
+      <span className="player__skip-label">{label}</span>
+      <Icon name="skipNext" size={16} />
+      {keyHint && <kbd className="kbd">S</kbd>}
+    </button>
   );
 }

@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
+import android.media.audiofx.DynamicsProcessing;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -63,6 +65,8 @@ public class PlayerActivity extends Activity {
     private static WeakReference<PlayerActivity> current = new WeakReference<>(null);
 
     private ExoPlayer player;
+    /** Dialogue boost and volume levelling, on the player's own audio session (Android 9+). */
+    private DynamicsProcessing soundEffects;
     private PlayerView view;
     private TextView title;
     private Button skipButton;
@@ -198,6 +202,51 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    // ---- sound ---------------------------------------------------------------------------
+
+    /**
+     * Dialogue boost: the lows under speech down, the 1–4 kHz voice band up. Volume levelling:
+     * a compressor with make-up gain, so quiet scenes come up and loud ones down. Neither
+     * applies when the sound goes to a receiver untouched (passthrough).
+     */
+    private void applySound() {
+        JSONObject sound = request.optJSONObject("sound");
+        boolean dialogue = sound != null && sound.optBoolean("dialogue");
+        boolean level = sound != null && sound.optBoolean("level");
+        if (Build.VERSION.SDK_INT < 28 || (!dialogue && !level)) return;
+        AudioManager audio = getSystemService(AudioManager.class);
+        if (audio == null) return;
+        int session = audio.generateAudioSessionId();
+        player.setAudioSessionId(session);
+        try {
+            int channels = 8;
+            DynamicsProcessing.Config config = new DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION, channels,
+                    dialogue, 3, false, 0, false, 0, true).build();
+            if (dialogue) {
+                DynamicsProcessing.Eq eq = new DynamicsProcessing.Eq(true, true, 3);
+                eq.getBand(0).setCutoffFrequency(220f);
+                eq.getBand(0).setGain(-5f);
+                eq.getBand(1).setCutoffFrequency(4200f);
+                eq.getBand(1).setGain(5f);
+                eq.getBand(2).setCutoffFrequency(20000f);
+                eq.getBand(2).setGain(-1f);
+                config.setPreEqAllChannelsTo(eq);
+            }
+            // The limiter doubles as the leveller: a low threshold and ratio with make-up gain,
+            // or with levelling off, a plain peak limiter after the boost.
+            DynamicsProcessing.Limiter limiter = level
+                    ? new DynamicsProcessing.Limiter(true, true, 0, 5f, 350f, 4f, -30f, 9f)
+                    : new DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -2f, 0f);
+            config.setLimiterAllChannelsTo(limiter);
+            soundEffects = new DynamicsProcessing(0, session, config);
+            soundEffects.setEnabled(true);
+        } catch (RuntimeException e) {
+            // Some devices offer no effects on this output: play without them.
+            soundEffects = null;
+        }
+    }
+
     // ---- playback ------------------------------------------------------------------------
 
     private void startPlayer() {
@@ -207,6 +256,7 @@ public class PlayerActivity extends Activity {
                 .setSeekForwardIncrementMs(10_000)
                 .build();
         player.setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF);
+        applySound();
         view.setPlayer(player);
 
         MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(request.optString("url")));
@@ -541,6 +591,10 @@ public class PlayerActivity extends Activity {
         if (player != null) {
             player.release();
             player = null;
+        }
+        if (soundEffects != null) {
+            soundEffects.release();
+            soundEffects = null;
         }
         if (current.get() == this) current = new WeakReference<>(null);
         super.onDestroy();

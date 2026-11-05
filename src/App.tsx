@@ -7,6 +7,7 @@ import { FullScreenLoader } from "@/components/States";
 import { Shell, useTvNavigation } from "@/layouts/Shell";
 import { HomePage } from "@/features/home/HomePage";
 import { TogetherRoot } from "@/features/together/TogetherRoot";
+import { useDownloadsRunner } from "@/features/downloads/store";
 
 // Everything past the home page loads on demand.
 const BrowsePage = lazy(() => import("@/features/library/BrowsePage"));
@@ -20,13 +21,37 @@ const PlayerPage = lazy(() => import("@/features/player/PlayerPage"));
 const ProfilePage = lazy(() => import("@/features/profile/ProfilePage"));
 const WatchlistPage = lazy(() => import("@/features/watchlist/WatchlistPage"));
 const TogetherPage = lazy(() => import("@/features/together/TogetherPage"));
+const DownloadsPage = lazy(() => import("@/features/downloads/DownloadsPage"));
+const OfflineShell = lazy(() => import("@/features/downloads/OfflineShell").then((m) => ({ default: m.OfflineShell })));
 
 export function App() {
   const { status } = useAuth();
   const location = useLocation();
   useTvNavigation();
+  useDownloadsRunner();
   if (status === "loading") return <FullScreenLoader />;
   if (status === "signedOut") return <LoginPage />;
+
+  // The server can't be reached: your downloads, and nothing that needs the server.
+  if (status === "offline")
+    return (
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
+          <Route
+            path="/play/:id"
+            element={
+              <ErrorBoundary resetKey={location.pathname} fullScreen>
+                <PlayerPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route element={<OfflineShell />}>
+            <Route path="downloads" element={<DownloadsPage />} />
+            <Route path="*" element={<Navigate to="/downloads" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    );
 
   return (
     <Suspense fallback={<FullScreenLoader />}>
@@ -54,6 +79,7 @@ export function App() {
           <Route path="search" element={<SearchPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="together" element={<TogetherPage />} />
+          <Route path="downloads" element={<DownloadsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

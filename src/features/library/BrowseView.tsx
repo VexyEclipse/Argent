@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { CARD_FIELDS, getItems, getLegacyFilters, type ItemQuery } from "@/api/jellyfin";
 import { Icon } from "@/components/Icon";
 import { CardSkeleton, MediaCard } from "@/components/MediaCard";
 import { EmptyState, ErrorState, Spinner } from "@/components/States";
+import { showToast } from "@/components/Toast";
+import { randomFrom } from "@/features/player/shuffle";
 import { usePlatform } from "@/platform/platform";
 import "./library.css";
 
@@ -73,6 +75,7 @@ export function BrowseView({
   queryKey,
 }: Props) {
   const platform = usePlatform();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [density, setDensity] = useState<Density>(readDensity);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -167,6 +170,14 @@ export function BrowseView({
     return () => io.disconnect();
   }, [items]);
 
+  // Shuffle play: a random title from what's shown (filters kept); a series plays its next episode.
+  const shufflePlay = async () => {
+    const pick = await randomFrom(query).catch(() => null);
+    if (!pick) return showToast("Nothing to play here");
+    showToast(`Playing ${pick.Name}`);
+    navigate(`/play/${pick.Id}`);
+  };
+
   const all = items.data?.pages.flatMap((p) => p.Items) ?? [];
   const total = items.data?.pages[0]?.TotalRecordCount;
   const activeFilterCount = (watched !== "all" ? 1 : 0) + (favourites ? 1 : 0) + genres.length + (decade ? 1 : 0);
@@ -220,6 +231,12 @@ export function BrowseView({
             title={order === "Ascending" ? "Ascending" : "Descending"}
           >
             <Icon name="chevronDown" size={16} className={order === "Ascending" ? "flip" : ""} />
+          </button>
+        )}
+
+        {total !== 0 && (
+          <button className="chip" onClick={shufflePlay} title="Play a random title from this view">
+            <Icon name="shuffle" size={16} /> Shuffle play
           </button>
         )}
 

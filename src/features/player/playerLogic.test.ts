@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaSegment } from "@/api/types";
-import { activeSkip, missingTrack, nextChapter, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt } from "./playerLogic";
+import { activeCredits, activeSkip, autoSkipNow, missingTrack, skipLabel, nextChapter, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt } from "./playerLogic";
 
 const T = 10_000_000;
 const seg = (Type: MediaSegment["Type"], start: number, end: number): MediaSegment => ({ Id: Type, ItemId: "i", Type, StartTicks: start * T, EndTicks: end * T });
@@ -70,4 +70,28 @@ describe("missingTrack", () => {
 it("asks if anyone's watching after three unattended episodes", () => {
   expect(shouldAskStillWatching(2)).toBe(false);
   expect(shouldAskStillWatching(3)).toBe(true);
+});
+
+describe("skipping", () => {
+  const segments = [seg("Intro", 60, 150), seg("Outro", 1300, 1400)];
+  const on = { intro: true, credits: true };
+
+  it("finds the credits and names each skip", () => {
+    expect(activeCredits(segments, 1310)?.Type).toBe("Outro");
+    expect(activeCredits(segments, 1000)).toBeUndefined();
+    expect(skipLabel("Intro")).toBe("Skip Intro");
+    expect(skipLabel("Outro")).toBe("Skip Credits");
+    expect(skipLabel("Commercial")).toBe("Skip Ad");
+  });
+
+  it("skips intros and credits only when switched on", () => {
+    expect(autoSkipNow(segments, 70, on, { hasNext: true, done: new Set() })?.Type).toBe("Intro");
+    expect(autoSkipNow(segments, 70, { intro: false, credits: true }, { hasNext: true, done: new Set() })).toBeUndefined();
+    expect(autoSkipNow(segments, 1310, on, { hasNext: true, done: new Set() })?.Type).toBe("Outro");
+  });
+
+  it("leaves a film's credits and a segment you went back to", () => {
+    expect(autoSkipNow(segments, 1310, on, { hasNext: false, done: new Set() })).toBeUndefined();
+    expect(autoSkipNow(segments, 70, on, { hasNext: true, done: new Set(["Intro"]) })).toBeUndefined();
+  });
 });

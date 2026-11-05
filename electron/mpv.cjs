@@ -42,6 +42,19 @@ async function findMpv(chosen) {
 let current = null;
 
 /**
+ * Dialogue boost (voice band up, rumble down) and volume levelling (ffmpeg's dynamic
+ * normaliser), with a limiter so the boosts don't clip. Empty when neither is on.
+ */
+function soundFilters(sound) {
+  if (!sound || (!sound.dialogue && !sound.level)) return "";
+  const chain = [];
+  if (sound.dialogue) chain.push("equalizer=f=200:t=h:w=200:g=-5", "equalizer=f=2400:t=q:w=0.8:g=6", "highshelf=f=9000:g=-2");
+  if (sound.level) chain.push("dynaudnorm=f=250:g=15:p=0.9");
+  chain.push("alimiter=limit=0.95");
+  return chain.join(",");
+}
+
+/**
  * Plays `request` (see src/features/player/externalPlan.ts) and resolves with the
  * result when mpv exits. `onState` hears position, pause and track changes.
  */
@@ -61,6 +74,8 @@ function play(mpvPath, request, onState) {
     ...(request.subtitles || []).map((s) => `--sub-file=${s.url}`),
   ];
   if (request.method !== "Transcode" && request.audio) args.push(`--aid=${request.audio.ordinal + 1}`);
+  const af = soundFilters(request.sound);
+  if (af) args.push(`--af=lavfi=[${af}]`);
   const choice = request.subtitleChoice || { kind: "off" };
   if (choice.kind === "off") args.push("--sid=no");
   else if (choice.kind === "embedded") args.push(`--sid=${choice.ordinal + 1}`);

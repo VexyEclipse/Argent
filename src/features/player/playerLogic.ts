@@ -47,6 +47,43 @@ export function activeSkip(segments: readonly MediaSegment[] | undefined, second
   );
 }
 
+/** The end credits being played (the outro segment). */
+export function activeCredits(segments: readonly MediaSegment[] | undefined, seconds: number): MediaSegment | undefined {
+  return segments?.find((s) => s.Type === "Outro" && seconds >= s.StartTicks / TICKS && seconds < s.EndTicks / TICKS - 1);
+}
+
+/** "Skip Intro", "Skip Recap", "Skip Credits", "Skip Ad"… */
+export function skipLabel(type: MediaSegment["Type"]): string {
+  if (type === "Commercial") return "Skip Ad";
+  if (type === "Outro") return "Skip Credits";
+  return `Skip ${type}`;
+}
+
+export interface AutoSkipPrefs {
+  /** Jump past intros as they start. */
+  intro: boolean;
+  /** Go straight to the next episode when the credits start. */
+  credits: boolean;
+}
+
+/**
+ * What to skip on its own right now: an intro, or the credits when there's a next episode
+ * to go to (a film's credits may hide a final scene). Each segment once, so seeking back
+ * into one you chose to watch is left alone.
+ */
+export function autoSkipNow(
+  segments: readonly MediaSegment[] | undefined,
+  seconds: number,
+  prefs: AutoSkipPrefs,
+  opts: { hasNext: boolean; done: ReadonlySet<string> },
+): MediaSegment | undefined {
+  const intro = activeSkip(segments, seconds);
+  if (prefs.intro && intro?.Type === "Intro" && !opts.done.has(intro.Id)) return intro;
+  const credits = activeCredits(segments, seconds);
+  if (prefs.credits && opts.hasNext && credits && !opts.done.has(credits.Id)) return credits;
+  return undefined;
+}
+
 /**
  * Page Up: where the next chapter starts, or nothing at the last chapter or without any.
  * The second's margin keeps a seek that lands just short of a chapter from finding it again.

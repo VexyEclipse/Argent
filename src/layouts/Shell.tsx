@@ -9,8 +9,10 @@ import { Icon, type IconName } from "@/components/Icon";
 import { JellyfinLogo, JellyfinMark } from "@/components/JellyfinLogo";
 import { ToastHost } from "@/components/Toast";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
+import { downloadsSupported } from "@/features/downloads/store";
 import { ManageHost } from "@/features/manage/ManageHost";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
+import { useNewArrivalsSync } from "@/features/upcoming/newBadges";
 import { useUpcomingSync } from "@/features/upcoming/store";
 import { useTogether } from "@/features/together/store";
 import { androidApp } from "@/platform/android";
@@ -99,6 +101,11 @@ function ProfileMenu() {
           {platform === "mobile" && (
             <Link className="menu__item" to="/watchlist" role="menuitem">
               <Icon name="bookmark" size={18} /> Watchlist
+            </Link>
+          )}
+          {downloadsSupported() && (
+            <Link className="menu__item" to="/downloads" role="menuitem">
+              <Icon name="download" size={18} /> Downloads
             </Link>
           )}
           {others.length > 0 && <div className="menu__label">Libraries</div>}
@@ -210,6 +217,7 @@ function TvRail() {
     { to: "/search", label: "Search", icon: "search" },
     ...nav,
     ...others.map((v) => ({ to: `/library/${v.Id}`, label: v.Name, icon: "grid" as IconName })),
+    ...(downloadsSupported() ? [{ to: "/downloads", label: "Downloads", icon: "download" as IconName }] : []),
     { to: "/together", label: "Devices", icon: "cast" },
     { to: "/profile", label: "Profile", icon: "user" },
   ];
@@ -248,8 +256,9 @@ export function Shell() {
   const platform = usePlatform();
   const location = useLocation();
   const navigate = useNavigate();
-  const openSeries = useCallback((id: string) => navigate(`/details/${id}`), [navigate]);
-  useUpcomingSync(openSeries);
+  const openPath = useCallback((path: string) => navigate(path), [navigate]);
+  useUpcomingSync(openPath);
+  useNewArrivalsSync();
 
   useEffect(() => {
     window.scrollTo({ top: 0 });

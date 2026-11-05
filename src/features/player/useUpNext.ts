@@ -83,5 +83,5 @@ export function useUpNext(opts: {
     playItem(next);
   };
 
-  return { showUpNext, countdown, stillWatching, dismiss: () => setDismissed(true), keepWatching };
+  return { showUpNext, countdown, stillWatching, dismiss: () => setDismissed(true), keepWatching, autoplayNext };
 }

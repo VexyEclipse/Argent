@@ -10,8 +10,8 @@ import { usePlayerCommands } from "./commands";
 import type { ExternalEngine } from "./external";
 import { buildExternalRequest, indexOfOrdinal, type ExternalResult, type ExternalState } from "./externalPlan";
 import { requestStream, type StreamInfo } from "./playback";
-import { shouldAskStillWatching, upNextAt } from "./playerLogic";
-import { readAutoplayChain, readQuality, writeAutoplayChain } from "./prefs";
+import { autoSkipNow, shouldAskStillWatching, upNextAt } from "./playerLogic";
+import { readAutoSkip, readAutoplayChain, readQuality, readSound, writeAutoplayChain } from "./prefs";
 import { QUALITY_OPTIONS } from "./deviceProfile";
 import { PlaybackReporter } from "./reporter";
 
@@ -111,12 +111,25 @@ export function ExternalPlayback(props: {
         nextTitle: p.next ? `${episodeCode(p.next)} · ${p.next.Name}` : undefined,
         hasPrevious: Boolean(p.prev),
         matchFrameRate: p.matchFrameRate,
+        sound: readSound(),
         authorise,
       });
       let lastBeat = Date.now();
       let wasPaused = false;
+      // Automatic skips (Settings → Skipping), from the position the player reports.
+      const autoSkip = readAutoSkip();
+      const skipped = new Set<string>();
+      let creditsSkipped = false;
       const result: ExternalResult = await engine.play(request, (st) => {
         state.current = st;
+        const skip = autoSkipNow(p.segments, st.position, autoSkip, { hasNext: Boolean(p.next), done: skipped });
+        if (skip) {
+          skipped.add(skip.Id);
+          if (skip.Type === "Outro") {
+            creditsSkipped = true;
+            engine.control({ kind: "next" });
+          } else engine.control({ kind: "seek", seconds: skip.EndTicks / TICKS });
+        }
         const audio = indexOfOrdinal(s.source, "Audio", st.audioOrdinal);
         const subtitle = st.externalSubtitle ?? indexOfOrdinal(s.source, "Subtitle", st.subtitleOrdinal);
         if ((audio !== undefined && audio !== s.audioIndex) || (subtitle !== undefined && subtitle !== s.subtitleIndex)) {
@@ -143,7 +156,12 @@ export function ExternalPlayback(props: {
           now.onFallback(result.position);
           return;
         case "next":
-          writeAutoplayChain(0);
+          // Skipping the credits on its own is autoplay, which stops to ask after a few episodes.
+          if (creditsSkipped && !result.interacted && shouldAskStillWatching(readAutoplayChain())) {
+            setStillWatching(true);
+            return;
+          }
+          writeAutoplayChain(creditsSkipped && !result.interacted ? readAutoplayChain() + 1 : 0);
           now.playItem(now.next);
           return;
         case "previous":

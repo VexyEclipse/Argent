@@ -1,17 +1,20 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { logoImage } from "@/api/images";
 import { episodeCode, formatClock } from "@/api/format";
 import type { BaseItem, MediaStream } from "@/api/types";
 import { Icon } from "@/components/Icon";
+import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useFillerIds } from "@/features/filler/store";
 import type { Platform } from "@/platform/platform";
 import { QUALITY_OPTIONS } from "./deviceProfile";
 import type { StreamInfo } from "./playback";
 import { streamsOfType, subtitleIsText } from "./playback";
+import type { SoundPrefs } from "./audioEffects";
 import { PlayerMenu } from "./PlayerMenu";
 import { Seekbar } from "./Seekbar";
 import { versionLabel, versionOption } from "./streamPlan";
 
-export type Menu = "audio" | "subtitles" | "quality" | "speed" | "version" | "info" | null;
+export type Menu = "audio" | "subtitles" | "quality" | "speed" | "version" | "sound" | "info" | null;
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
@@ -23,6 +26,7 @@ const trackLabel = (s: MediaStream) => s.DisplayTitle || s.Language || `Track ${
 export function TopBar(props: { item: BaseItem | undefined; menu: Menu; setMenu: (m: Menu) => void; onBack: () => void; badge?: ReactNode; onMouseUp: (e: React.MouseEvent) => void }) {
   const { item, menu, setMenu } = props;
   const logo = item ? logoImage(item, 500) : null;
+  const filler = useFillerIds(item?.Type === "Episode" ? item.SeriesId : undefined);
   return (
     <div className="pc pc--top" onMouseUp={props.onMouseUp}>
       <button className="pc__btn" onClick={props.onBack} aria-label="Back">
@@ -33,7 +37,9 @@ export function TopBar(props: { item: BaseItem | undefined; menu: Menu; setMenu:
           <>
             <span className="pc__series">{item.SeriesName}</span>
             <span className="pc__episode">
-              {episodeCode(item)} · {item.Name}
+              {episodeCode(item)}
+              {filler.has(item.Id) ? <FillerBadge /> : " · "}
+              {item.Name}
             </span>
           </>
         ) : logo ? (
@@ -86,6 +92,10 @@ export interface BottomBarProps {
   onVersion: (sourceId: string) => void;
   onPip?: () => void;
   onFullscreen: () => void;
+  sound: SoundPrefs;
+  /** False where the browser plays the stream itself and Web Audio can't reach its sound. */
+  soundSupported: boolean;
+  onSound: (patch: Partial<SoundPrefs>) => void;
 }
 
 /** Seekbar, transport and the track, speed, quality and version menus. */
@@ -149,8 +159,9 @@ export function BottomBar(p: BottomBarProps) {
           {subtitleStreams.length > 0 && trigger("subtitles", "subtitles", "Subtitles", "Subtitles (C)")}
           {audioStreams.length > 1 && trigger("audio", "audio", "Audio track", "Audio")}
           {versions.length > 1 && trigger("version", "layers", "Version", "Version")}
+          {trigger("sound", "sound", "Sound: dialogue boost and volume levelling", "Sound")}
           {trigger("speed", "speed", "Playback speed", "Speed")}
-          {trigger("quality", "sliders", "Quality", "Quality")}
+          {!stream?.offline && trigger("quality", "sliders", "Quality", "Quality")}
           {p.onPip && (
             <button className="pc__btn" onClick={p.onPip} aria-label="Picture in picture" title="Picture in picture">
               <Icon name="pip" size={22} />
@@ -225,6 +236,7 @@ export function BottomBar(p: BottomBarProps) {
           })}
         />
       )}
+      {menu === "sound" && <SoundMenu sound={p.sound} supported={p.soundSupported} onChange={p.onSound} onClose={() => setMenu(null)} />}
       {menu === "speed" && (
         <PlayerMenu
           title="Speed"
@@ -251,12 +263,57 @@ export function BottomBar(p: BottomBarProps) {
   );
 }
 
+/** Switches for the sound effects, in the player's menu style. */
+function SoundMenu({ sound, supported, onChange, onClose }: { sound: SoundPrefs; supported: boolean; onChange: (patch: Partial<SoundPrefs>) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("button")?.focus();
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest(".pc__menu-trigger")) onClose();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
+  const rows: [keyof SoundPrefs, string, string][] = [
+    ["dialogue", "Dialogue boost", "Clearer voices over music and effects"],
+    ["level", "Volume levelling", "Evens out loud and quiet scenes"],
+  ];
+  return (
+    <div className="pmenu" ref={ref} role="dialog" aria-label="Sound">
+      <div className="pmenu__title">Sound</div>
+      <div className="pmenu__list">
+        {rows.map(([key, label, detail]) => (
+          <button
+            key={key}
+            role="switch"
+            aria-checked={sound[key]}
+            className={`pmenu__item ${sound[key] ? "is-active" : ""}`}
+            onClick={() => onChange({ [key]: !sound[key] })}
+            disabled={!supported}
+          >
+            <span className="pmenu__check">{sound[key] && <Icon name="check" size={16} />}</span>
+            <span className="pmenu__label">
+              {label}
+              <span className="pmenu__detail">{detail}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      {!supported && (
+        <div className="pmenu__footer">
+          <span className="pmenu__hint">Not available for this stream on this device.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** What's playing and how: the method, why the server converts, the tracks and bitrate. */
 export function PlaybackInfo({ stream, onCopyDiagnostics }: { stream: StreamInfo; onCopyDiagnostics: () => void }) {
   const video = streamsOfType(stream.source, "Video")[0];
   const audio = streamsOfType(stream.source, "Audio").find((a) => a.Index === stream.audioIndex);
   const rows: [string, ReactNode][] = [
-    ["Method", METHOD_LABELS[stream.method]],
+    ["Method", stream.offline ? "Downloaded" : METHOD_LABELS[stream.method]],
     ...(stream.transcodeReasons.length ? [["Reason", stream.transcodeReasons.map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2")).join(", ")] as [string, ReactNode]] : []),
     ...(stream.versions.length > 1 ? [["Version", versionLabel(stream.source, stream.versions.indexOf(stream.source))] as [string, ReactNode]] : []),
     ["Container", stream.source.Container?.toUpperCase()],

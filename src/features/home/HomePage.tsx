@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CARD_FIELDS, getItems, getNextUp, getResume } from "@/api/jellyfin";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
+import { Icon } from "@/components/Icon";
 import { MediaCard } from "@/components/MediaCard";
+import { showToast } from "@/components/Toast";
 import { Row } from "@/components/Row";
 import { MediaBar } from "@/features/mediabar/MediaBar";
 import { useRecommendations, type UiPick } from "@/features/recommendations/useRecommendations";
@@ -12,7 +15,9 @@ import { useLibraryGroups } from "@/api/libraries";
 import { interleave } from "@/features/mediabar/logic";
 import { useComingUp } from "@/features/upcoming/useComingUp";
 import { isFinished, useWatchlistItems } from "@/features/watchlist/useWatchlistItems";
+import { pickSomething } from "@/features/player/shuffle";
 import { GenreRow } from "./GenreRow";
+import { clearResumePoint, useHiddenNextUp } from "./hidden";
 import "./home.css";
 
 const ROW_IMAGES = ["Primary", "Backdrop", "Thumb", "Logo"];
@@ -137,10 +142,58 @@ export function HomePage() {
   const onOpen = useCallback((item: BaseItem) => user && recordOpen(user.Id, item.Id), [user]);
 
   // Continue Watching and Next Up overlap for shows mid-episode; keep each once.
+  const hiddenNextUp = useHiddenNextUp();
   const nextUpItems = useMemo(() => {
     const resumeIds = new Set((resume.data ?? []).map((i) => i.Id));
-    return (nextUp.data ?? []).filter((i) => !resumeIds.has(i.Id));
-  }, [resume.data, nextUp.data]);
+    return (nextUp.data ?? []).filter((i) => !resumeIds.has(i.Id) && !hiddenNextUp.isHidden(i));
+  }, [resume.data, nextUp.data, hiddenNextUp]);
+
+  // "Remove from row": Continue Watching forgets the resume point on the server; an
+  // episode's show also leaves Next Up until you watch more of it.
+  const queryClient = useQueryClient();
+  const removeFromResume = useCallback(
+    async (item: BaseItem) => {
+      queryClient.setQueryData<BaseItem[]>(["home", "resume"], (list) => list?.filter((i) => i.Id !== item.Id));
+      if (item.Type === "Episode") hiddenNextUp.hide(item);
+      try {
+        const undo = await clearResumePoint(item);
+        showToast(`Removed ${item.Type === "Episode" ? (item.SeriesName ?? item.Name) : item.Name} from Continue Watching`, {
+          label: "Undo",
+          run: async () => {
+            if (item.Type === "Episode") hiddenNextUp.unhide(item);
+            await undo().catch(() => {});
+            queryClient.invalidateQueries({ queryKey: ["home", "resume"] });
+          },
+        });
+      } catch {
+        showToast("Couldn't reach the server. Try again.");
+        if (item.Type === "Episode") hiddenNextUp.unhide(item);
+        queryClient.invalidateQueries({ queryKey: ["home", "resume"] });
+      }
+    },
+    [queryClient, hiddenNextUp],
+  );
+  const removeFromNextUp = useCallback(
+    (item: BaseItem) => {
+      hiddenNextUp.hide(item);
+      showToast(`Removed ${item.SeriesName ?? item.Name} from Next Up`, { label: "Undo", run: () => hiddenNextUp.unhide(item) });
+    },
+    [hiddenNextUp],
+  );
+
+  // "Play something": straight into a title picked from your recommendations.
+  const navigate = useNavigate();
+  const lastPick = useRef<string>(undefined);
+  const playSomething = () => {
+    const pick = pickSomething(
+      (recs.data?.recommended ?? []).map((p) => p.item),
+      lastPick.current,
+    );
+    if (!pick) return;
+    lastPick.current = pick.Id;
+    showToast(`Playing ${pick.Name}`);
+    navigate(`/play/${pick.Id}`);
+  };
 
   const personal = recs.data?.sections ?? [];
   const renderPersonal = (index: number) => {
@@ -168,7 +221,7 @@ export function HomePage() {
         {(resume.isPending || (resume.data?.length ?? 0) > 0) && (
           <Row title="Continue Watching" variant="landscape" loading={resume.isPending}>
             {resume.data?.map((item) => (
-              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick />
+              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick onDismiss={removeFromResume} dismissLabel="Remove from Continue Watching" />
             ))}
           </Row>
         )}
@@ -176,7 +229,7 @@ export function HomePage() {
         {(nextUp.isPending || nextUpItems.length > 0) && (
           <Row title="Next Up" variant="landscape" loading={nextUp.isPending}>
             {nextUpItems.map((item) => (
-              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick />
+              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick onDismiss={removeFromNextUp} dismissLabel="Remove from Next Up" />
             ))}
           </Row>
         )}
@@ -195,6 +248,13 @@ export function HomePage() {
             eyebrow={recs.data && !recs.data.personalised ? "Start watching to personalise" : "For " + (user?.Name ?? "you")}
             loading={recs.isLoading}
             className="row--feature"
+            actions={
+              (recs.data?.recommended.length ?? 0) > 0 && (
+                <button className="chip" onClick={playSomething} title="Start a title picked for you">
+                  <Icon name="shuffle" size={16} /> Play something
+                </button>
+              )
+            }
           >
             {recs.data?.recommended.map((p) => (
               <PickCard key={p.item.Id} pick={p} onOpen={onOpen} onDismiss={(i) => recs.dismiss(i.Id)} showReason />
@@ -223,7 +283,7 @@ export function HomePage() {
             }
           >
             {comingUp.cards.map((c) => (
-              <MediaCard key={c.key} item={c.item} subtitle={c.subtitle} noPlay={c.external} />
+              <MediaCard key={c.key} item={c.item} subtitle={c.subtitle} noPlay={c.external} remind />
             ))}
           </Row>
         )}

@@ -1,8 +1,13 @@
 package com.vexyeclipse.argent;
 
+import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.UiModeManager;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -53,6 +58,9 @@ public class MainActivity extends Activity {
     private static final String HOST = "localhost";
     private static final String START_URL = "http://" + HOST + "/";
     private static final int BACKGROUND = 0xFF0A0A0B;
+    /** Notifications carry the page to open when tapped ("/details/…"). */
+    private static final String EXTRA_PATH = "path";
+    private static final String CHANNEL = "coming-up";
 
     // Back is offered to the page as Escape, which closes whatever is open (a menu, a dialog,
     // the player) and on TV goes back a page. Handlers that act on it mark it handled.
@@ -100,7 +108,44 @@ public class MainActivity extends Activity {
         }
 
         createWebView();
-        web.loadUrl(START_URL);
+        web.loadUrl(START_URL + pathFrom(getIntent()).substring(1));
+    }
+
+    /** A tapped notification while Argent is open: the page navigates there. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String path = pathFrom(intent);
+        if (path.length() <= 1) return;
+        try {
+            sendEvent(new JSONObject().put("type", "open").put("path", path));
+        } catch (JSONException ignored) {
+            // not reachable
+        }
+    }
+
+    /** The in-app page a notification points to; "/" when there is none or it isn't a page path. */
+    private static String pathFrom(Intent intent) {
+        String path = intent == null ? null : intent.getStringExtra(EXTRA_PATH);
+        return path != null && path.startsWith("/") && !path.startsWith("//") ? path : "/";
+    }
+
+    private void postNotification(String title, String body, String path, String tag) {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return;
+        if (Build.VERSION.SDK_INT >= 26 && manager.getNotificationChannel(CHANNEL) == null) {
+            manager.createNotificationChannel(new NotificationChannel(CHANNEL, "New episodes and reminders", NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        Intent open = new Intent(this, MainActivity.class).putExtra(EXTRA_PATH, path).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent tap = PendingIntent.getActivity(this, tag.hashCode(), open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        @SuppressWarnings("deprecation")
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+        builder.setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setContentIntent(tap)
+                .setAutoCancel(true);
+        manager.notify(tag, 1, builder.build());
     }
 
     private void createWebView() {
@@ -278,6 +323,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void installUpdate(String url, String version) {
             runOnUiThread(() -> Updater.install(MainActivity.this, url, version));
+        }
+
+        /** Posts a notification (JSON: title, body, path, tag). Android 13+ shows it only once allowed. */
+        @JavascriptInterface
+        public void notify(String notification) {
+            try {
+                JSONObject n = new JSONObject(notification);
+                String path = n.optString("path", "/");
+                postNotification(n.optString("title"), n.optString("body"), path.startsWith("/") ? path : "/", n.optString("tag", path));
+            } catch (JSONException ignored) {
+                // not a notification
+            }
+        }
+
+        @JavascriptInterface
+        public void requestNotifications() {
+            if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;
+            runOnUiThread(() -> requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1));
         }
     }
 

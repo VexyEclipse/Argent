@@ -10,11 +10,13 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { clearDismissed, readFeedback, subscribeFeedback } from "@/features/recommendations/feedback";
-import { refreshUpcoming, setUpcomingPref, useUpcomingEntries, useUpcomingPrefs } from "@/features/upcoming/store";
+import { announcesFollowed, refreshUpcoming, setUpcomingPref, useUpcomingEntries, useUpcomingPrefs } from "@/features/upcoming/store";
 import { desktop, useDesktopInfo, type DesktopInfo, type UpdateStatus } from "@/platform/desktop";
 import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { androidApp } from "@/platform/android";
+import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
+import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/features/player/prefs";
 import { AndroidSection, HelpSection } from "./DeviceSections";
 import { MediaProfile } from "./MediaProfile";
 import { Toggle } from "./Toggle";
@@ -72,14 +74,52 @@ function ComingUpSection({ userId }: { userId: string }) {
           </Button>
         </div>
       )}
-      {desktop && prefs.tvmaze && (
+      {announcesFollowed() && prefs.tvmaze && (
         <Toggle
           label="Notify me"
-          hint="When an episode of your show airs today, or a new season is announced"
+          hint="When an episode of your show airs today, or a new season is announced. Shows you set a reminder for always notify."
           checked={prefs.notify}
           onChange={(v) => setUpcomingPref("notify", v)}
         />
       )}
+    </section>
+  );
+}
+
+/** Skipping intros, credits and anime filler. */
+function SkippingSection() {
+  const [skip, setSkip] = useState(readAutoSkip);
+  const filler = useFillerPrefs();
+  const change = (patch: Partial<typeof skip>) => {
+    const next = { ...skip, ...patch };
+    setSkip(next);
+    saveAutoSkip(next);
+  };
+  return (
+    <section className="panel profile__section">
+      <h2 className="profile__title">Skipping</h2>
+      <p className="profile__desc">
+        This device only. Without these, a Skip card comes up as each intro or the credits start: press it, or S on a keyboard.
+      </p>
+      <Toggle label="Skip intros" hint="Jumps past an intro as it starts. A toast lets you go back and watch it." checked={skip.intro} onChange={(v) => change({ intro: v })} />
+      <Toggle
+        label="Skip credits"
+        hint="Goes straight to the next episode when the credits start. A film's credits always play, in case of a final scene."
+        checked={skip.credits}
+        onChange={(v) => change({ credits: v })}
+      />
+      <Toggle
+        label="Mark filler episodes"
+        hint="A Filler badge on anime episodes outside the source story. Each show is looked up on MyAnimeList (through Jikan) by its ids or title; nothing about you is sent."
+        checked={filler.badges}
+        onChange={(v) => setFillerPref("badges", v)}
+      />
+      <Toggle
+        label="Skip all filler"
+        hint="Next episode, autoplay and a show's Play button pass over filler. You can still pick a filler episode yourself."
+        checked={filler.skip}
+        onChange={(v) => setFillerPref("skip", v)}
+      />
     </section>
   );
 }
@@ -156,6 +196,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [platform, setPlatform] = useState<Platform | "auto">(getPlatformOverride);
+  const [pauseInfo, setPauseInfo] = useState(readPauseInfo);
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "media";
   const ratingPrefs = useRatingPrefs();
@@ -309,12 +350,23 @@ export default function ProfilePage() {
               </div>
             </div>
             <Toggle
+              label="Show details when paused"
+              hint="After a few seconds paused, the picture dims and shows what's playing, the story and the cast"
+              checked={pauseInfo}
+              onChange={(v) => {
+                setPauseInfo(v);
+                savePauseInfo(v);
+              }}
+            />
+            <Toggle
               label="Hide watched items in Recently Added"
               hint="Account setting"
               checked={Boolean(cfg.HidePlayedInLatest)}
               onChange={(v) => save({ HidePlayedInLatest: v })}
             />
           </section>
+
+          <SkippingSection />
 
           <ComingUpSection userId={user.Id} />
 

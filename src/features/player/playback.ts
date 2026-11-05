@@ -1,6 +1,7 @@
 import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
 import { logEvent } from "@/features/diagnostics/log";
+import { skipFiller } from "@/features/filler/store";
 import { isAssCodec } from "./assRenderer";
 import { buildDeviceProfile, capabilities } from "./deviceProfile";
 import { asVtt, builtTracks, clientDelivered, deliveryOf, fontAttachments, pickSource, serverWork, type PlayMethod } from "./streamPlan";
@@ -44,6 +45,8 @@ export interface StreamInfo {
   assTracks: { index: number; url: string }[];
   /** Fonts embedded in the file, for ASS typesetting. */
   fonts: string[];
+  /** A download playing from this device. */
+  offline?: boolean;
 }
 
 /**
@@ -69,9 +72,13 @@ export async function seriesPlayTarget(seriesId: string): Promise<BaseItem | nul
     getNextUp({ seriesId, limit: 1 }),
   ]);
   if (resumable.Items[0]) return resumable.Items[0];
-  if (next.Items[0]) return next.Items[0];
-  const eps = (await getEpisodes(seriesId)).Items;
-  return eps.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? eps[0] ?? null;
+  const eps = (await getEpisodes(seriesId)).Items.filter((e) => e.LocationType !== "Virtual");
+  const first = next.Items[0] ?? eps.find((e) => (e.ParentIndexNumber ?? 0) > 0) ?? eps[0] ?? null;
+  if (!first) return null;
+  // "Skip filler": start from the next episode that isn't filler.
+  const from = eps.findIndex((e) => e.Id === first.Id);
+  if (from < 0) return first;
+  return (await skipFiller(seriesId, eps.slice(from))) ?? first;
 }
 
 export async function resolvePlayable(id: string): Promise<BaseItem> {
@@ -228,5 +235,8 @@ export async function episodeNeighbours(item: BaseItem): Promise<{ prev: BaseIte
   if (item.Type !== "Episode" || !item.SeriesId) return { prev: null, next: null };
   const list = (await getEpisodes(item.SeriesId)).Items.filter((e) => e.LocationType !== "Virtual");
   const i = list.findIndex((e) => e.Id === item.Id);
-  return { prev: i > 0 ? list[i - 1] : null, next: i >= 0 && i < list.length - 1 ? list[i + 1] : null };
+  if (i < 0) return { prev: null, next: null };
+  // With "Skip filler" on, both directions pass over filler episodes.
+  const [prev, next] = await Promise.all([skipFiller(item.SeriesId, list.slice(0, i).reverse()), skipFiller(item.SeriesId, list.slice(i + 1))]);
+  return { prev, next };
 }

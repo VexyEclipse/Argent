@@ -80,3 +80,44 @@ export function readMatchFrameRate(): boolean {
 }
 
 export const saveMatchFrameRate = (on: boolean) => writeValue(localStorage, MATCH_FRAME_RATE_KEY, String(on));
+
+const SKIP_KEY = "argent.autoSkip";
+
+/** Skip intros and credits automatically (this device). */
+export function readAutoSkip(): { intro: boolean; credits: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(SKIP_KEY) || "{}");
+    return { intro: v.intro === true, credits: v.credits === true };
+  } catch {
+    return { intro: false, credits: false };
+  }
+}
+
+export const saveAutoSkip = (value: { intro: boolean; credits: boolean }) => writeValue(localStorage, SKIP_KEY, JSON.stringify(value));
+
+const PAUSE_INFO_KEY = "argent.pauseInfo";
+
+/** After a few seconds paused, dim the picture and show what's playing (this device). */
+export function readPauseInfo(): boolean {
+  try {
+    return localStorage.getItem(PAUSE_INFO_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+export const savePauseInfo = (on: boolean) => writeValue(localStorage, PAUSE_INFO_KEY, String(on));
+
+const SOUND_KEY = "argent.sound";
+
+/** Dialogue boost and volume levelling (this device); also passed to the native players. */
+export function readSound(): { dialogue: boolean; level: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(SOUND_KEY) || "{}");
+    return { dialogue: v.dialogue === true, level: v.level === true };
+  } catch {
+    return { dialogue: false, level: false };
+  }
+}
+
+export const saveSound = (value: { dialogue: boolean; level: boolean }) => writeValue(localStorage, SOUND_KEY, JSON.stringify(value));

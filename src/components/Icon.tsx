@@ -180,6 +180,14 @@ const PATHS = {
       <path d="M15 9V6a1.5 1.5 0 0 0-1.5-1.5h-7.5A1.5 1.5 0 0 0 4.5 6v7.5A1.5 1.5 0 0 0 6 15h3" />
     </>
   ),
+  bell: <path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14l1.5-2ZM10 20.5a2 2 0 0 0 4 0" />,
+  bellFilled: (
+    <>
+      <path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14l1.5-2Z" fill="currentColor" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </>
+  ),
+  sound: <path d="M4.5 10v4M8.5 7v10M12.5 4.5v15M16.5 8v8M20 10.5v3" />,
   bookmark: <path d="M6.5 4.5h11a1 1 0 0 1 1 1v14l-6.5-4-6.5 4v-14a1 1 0 0 1 1-1Z" />,
   bookmarkFilled: <path d="M6.5 4.5h11a1 1 0 0 1 1 1v14l-6.5-4-6.5 4v-14a1 1 0 0 1 1-1Z" fill="currentColor" />,
   calendar: (

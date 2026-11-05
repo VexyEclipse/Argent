@@ -186,6 +186,8 @@ export interface ExternalRequest {
   frameRate?: number;
   /** Match the display's refresh rate to the video. */
   matchFrameRate: boolean;
+  /** Dialogue boost and volume levelling (ignored when the sound goes to a receiver as is). */
+  sound?: { dialogue: boolean; level: boolean };
 }
 
 const MIME: Record<string, string> = {
@@ -227,6 +229,7 @@ export function buildExternalRequest(input: {
   nextTitle?: string;
   hasPrevious: boolean;
   matchFrameRate: boolean;
+  sound?: { dialogue: boolean; level: boolean };
   /** Adds the access token to a server URL. */
   authorise: (url: string) => string;
 }): ExternalRequest {
@@ -269,6 +272,7 @@ export function buildExternalRequest(input: {
     hasPrevious: input.hasPrevious,
     frameRate: video?.RealFrameRate ?? video?.AverageFrameRate,
     matchFrameRate: input.matchFrameRate,
+    sound: input.sound,
   };
 }
 

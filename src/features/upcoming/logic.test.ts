@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BaseItem } from "@/api/types";
-import { entryFor, entryKey, notificationsFor, parseRef, parseSchedule, pickCandidates, showRef, sortEntries, type UpcomingEntry } from "./logic";
+import { entryFor, entryKey, newArrivals, notificationsFor, parseRef, parseSchedule, pickCandidates, showRef, sortEntries, type UpcomingEntry } from "./logic";
 
 const NOW = new Date(2026, 10, 4, 12, 0);
 const day = (offset: number) => new Date(2026, 10, 4 + offset, 21, 0).toISOString();
@@ -123,5 +123,45 @@ describe("notificationsFor", () => {
     expect(notificationsFor({ b: announced }, [announced], {}, NOW)).toEqual([]);
     // A show checked for the first time isn't news either.
     expect(notificationsFor({}, [announced], {}, NOW)).toEqual([]);
+  });
+});
+
+describe("NEW badges", () => {
+  const ep = (id: string, seriesId: string, s: number, e: number, addedDaysAgo: number, airedDaysAgo: number, extra: Partial<BaseItem> = {}): BaseItem => ({
+    Id: id,
+    Name: id,
+    Type: "Episode",
+    SeriesId: seriesId,
+    ParentIndexNumber: s,
+    IndexNumber: e,
+    DateCreated: new Date(NOW.getTime() - addedDaysAgo * 86_400_000).toISOString(),
+    PremiereDate: new Date(NOW.getTime() - airedDaysAgo * 86_400_000).toISOString(),
+    UserData: { Played: false },
+    ...extra,
+  });
+
+  it("calls out a new season, new episodes, and a brand-new series", () => {
+    const badges = newArrivals(
+      [ep("a1", "A", 3, 1, 2, 3), ep("a2", "A", 3, 2, 1, 1), ep("b5", "B", 2, 5, 1, 2), ep("b6", "B", 2, 6, 1, 1), ep("c1", "C", 1, 1, 1, 1), ep("d4", "D", 1, 4, 1, 1)],
+      NOW,
+    );
+    expect(badges.get("A")).toEqual({ badge: "New season", latest: expect.objectContaining({ Id: "a2" }) });
+    expect(badges.get("B")?.badge).toBe("New episodes");
+    expect(badges.get("C")?.badge).toBe("New series");
+    expect(badges.get("D")?.badge).toBe("New episode");
+  });
+
+  it("ignores old shows added today, old additions, specials and what you've watched", () => {
+    const badges = newArrivals(
+      [
+        ep("old", "A", 1, 1, 1, 400),
+        ep("stale", "B", 2, 1, 30, 31),
+        ep("special", "C", 0, 1, 1, 1),
+        ep("seen", "D", 2, 3, 1, 1, { UserData: { Played: true } }),
+        ep("virtual", "E", 2, 3, 1, 1, { LocationType: "Virtual" }),
+      ],
+      NOW,
+    );
+    expect(badges.size).toBe(0);
   });
 });

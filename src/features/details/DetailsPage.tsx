@@ -11,11 +11,17 @@ import { Icon } from "@/components/Icon";
 import { MediaCard } from "@/components/MediaCard";
 import { ErrorState, Spinner } from "@/components/States";
 import { seriesPlayTarget } from "@/features/player/playback";
+import { shuffleEpisode } from "@/features/player/shuffle";
 import type { RateTarget } from "@/features/ratings/logic";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { openMenu } from "@/features/manage/store";
 import { useAuth } from "@/auth/AuthProvider";
+import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useFillerIds } from "@/features/filler/store";
+import { DownloadButton } from "@/features/downloads/DownloadButton";
+import { useDownloadDialog } from "@/features/downloads/DownloadDialog";
+import { downloadsSupported } from "@/features/downloads/store";
 import { Hero } from "./Hero";
 import { CastRow, ExtrasRow, InfoTable, SimilarRow } from "./Sections";
 import { earlierUnwatched } from "./episodes";
@@ -68,6 +74,7 @@ function MovieDetails({ item }: { item: BaseItem }) {
 // ---- Series ---------------------------------------------------------------------
 
 function SeriesDetails({ item }: { item: BaseItem }) {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const seasons = useQuery({ queryKey: ["seasons", item.Id], queryFn: () => getSeasons(item.Id).then((r) => r.Items), staleTime: 60_000 });
   const nextUp = useQuery({ queryKey: ["nextup", item.Id], queryFn: () => seriesPlayTarget(item.Id), staleTime: 30_000 });
@@ -77,7 +84,16 @@ function SeriesDetails({ item }: { item: BaseItem }) {
 
   const ratings = useRatings();
   const rateDialog = useRateDialog();
+  const downloadDialog = useDownloadDialog();
+  const queryClient = useQueryClient();
   const bulk = useBulkPlayed();
+  const downloadSeason = async (season: BaseItem) => {
+    const episodes = await queryClient
+      .fetchQuery({ queryKey: ["episodes", item.Id, season.Id], queryFn: () => getEpisodes(item.Id, season.Id).then((r) => r.Items), staleTime: 30_000 })
+      .catch(() => [] as BaseItem[]);
+    const real = episodes.filter((e) => e.LocationType !== "Virtual");
+    if (real.length) downloadDialog.open(real, `${item.Name} · ${season.Name}`);
+  };
   const seasonTarget = (s: BaseItem): RateTarget => ({
     id: s.Id,
     name: `${item.Name} · ${s.Name}`,
@@ -89,6 +105,10 @@ function SeriesDetails({ item }: { item: BaseItem }) {
 
   const playTarget = nextUp.data ?? null;
   const started = (item.UserData?.PlayedPercentage ?? 0) > 0 || Boolean(playTarget && progressOf(playTarget) > 0);
+  const shuffle = async () => {
+    const episode = await shuffleEpisode(item.Id).catch(() => null);
+    if (episode) navigate(`/play/${episode.Id}?start=0&shuffle=${item.Id}`);
+  };
 
   return (
     <div className="details">
@@ -97,6 +117,11 @@ function SeriesDetails({ item }: { item: BaseItem }) {
         playTarget={playTarget}
         playLabel={
           playTarget ? `${started ? (progressOf(playTarget) > 0 ? "Resume" : "Continue") : "Play"} ${episodeCode(playTarget).replace(" · ", "")}` : undefined
+        }
+        extraActions={
+          (item.RecursiveItemCount ?? 2) > 1 && (
+            <Button variant="icon" size="lg" icon="shuffle" onClick={shuffle} aria-label="Shuffle episodes" title="Shuffle episodes" />
+          )
         }
       >
         {playTarget && started && (
@@ -144,6 +169,12 @@ function SeriesDetails({ item }: { item: BaseItem }) {
                   {selectedSeason.UserData?.Played ? "Mark season unwatched" : "Mark season watched"}
                 </button>
               )}
+              {selectedSeason && downloadsSupported() && (
+                <button className="seasons__tab seasons__action" onClick={() => downloadSeason(selectedSeason)}>
+                  <Icon name="download" size={15} />
+                  Download season
+                </button>
+              )}
               {selectedSeason && (selectedSeason.IndexNumber ?? 0) > 0 && (
                 <button className="seasons__tab seasons__rate" onClick={() => rateDialog.open(seasonTarget(selectedSeason))}>
                   <Icon name="star" size={14} />
@@ -160,6 +191,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
         <InfoTable item={item} />
       </div>
       {rateDialog.dialog}
+      {downloadDialog.dialog}
     </div>
   );
 }
@@ -216,6 +248,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
     queryFn: () => getEpisodes(seriesId, seasonId).then((r) => r.Items),
     staleTime: 30_000,
   });
+  const filler = useFillerIds(seriesId);
 
   const toggleEpisode = async (ep: BaseItem) => {
     const value = !ep.UserData?.Played;
@@ -267,7 +300,11 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
                 <Link to={`/details/${ep.Id}`} className="episode__title">
                   <span className="episode__num">{ep.IndexNumber ?? "–"}</span>
                   {ep.Name}
+                  {filler.has(ep.Id) && <FillerBadge />}
                 </Link>
+                <span className="episode__download">
+                  <DownloadButton item={ep} size="sm" />
+                </span>
                 <button
                   className={`episode__watched ${played ? "is-on" : ""}`}
                   onClick={() => toggleEpisode(ep)}
@@ -319,6 +356,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
 
 function EpisodeDetails({ item }: { item: BaseItem }) {
   const navigate = useNavigate();
+  const filler = useFillerIds(item.SeriesId);
   const all = useQuery({
     queryKey: ["episodes", item.SeriesId, "all"],
     queryFn: () => getEpisodes(item.SeriesId!).then((r) => r.Items),
@@ -343,6 +381,7 @@ function EpisodeDetails({ item }: { item: BaseItem }) {
             </Link>
             {"  ·  "}
             {episodeCode(item)}
+            {filler.has(item.Id) && <FillerBadge />}
           </>
         }
         extraActions={

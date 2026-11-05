@@ -12,8 +12,10 @@ import { openMenu } from "@/features/manage/store";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
+import { canRemind, useReminder } from "@/features/upcoming/reminders";
 import { rememberedVersion, rememberVersion } from "@/features/player/prefs";
 import { pickSource, versionOption } from "@/features/player/streamPlan";
+import { DownloadButton } from "@/features/downloads/DownloadButton";
 import { TrailerModal, useTrailer } from "./Trailer";
 import { useItemActions } from "./useItemActions";
 
@@ -48,6 +50,7 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const navigate = useNavigate();
   const actions = useItemActions(item);
   const watchlist = useWatchlistToggle(item);
+  const reminder = useReminder(canRemind(item) ? item : undefined);
   const { isAdmin } = useAuth();
   const [trailerOpen, setTrailerOpen] = useState(false);
   const trailer = useTrailer(item);
@@ -182,6 +185,17 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
                 title={watchlist.on ? "On your watchlist" : "Add to watchlist"}
               />
             )}
+            {canRemind(item) && (
+              <Button
+                variant="icon"
+                size="lg"
+                icon={reminder.on ? "bellFilled" : "bell"}
+                active={reminder.on}
+                onClick={reminder.toggle}
+                aria-label={reminder.on ? "Turn off the reminder" : "Remind me about new episodes"}
+                title={reminder.on ? "Reminder on: you'll hear when new episodes arrive" : "Remind me when new episodes arrive"}
+              />
+            )}
             <Button
               variant="icon"
               size="lg"
@@ -202,6 +216,7 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
                 title={mine ? `Your rating: ${mine.stars}/10` : "Rate"}
               />
             )}
+            <DownloadButton item={item} />
             {extraActions}
             {isAdmin && (
               <Button

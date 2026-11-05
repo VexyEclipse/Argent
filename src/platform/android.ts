@@ -15,6 +15,10 @@ interface AndroidBridge {
   control?(command: string): void;
   /** Downloads an APK and asks Android to install it; progress through "argent-native" events. */
   installUpdate?(url: string, version: string): void;
+  /** Posts a system notification (JSON AppNotification); a click comes back as an "open" event. */
+  notify?(notification: string): void;
+  /** Asks for the notification permission (Android 13+). */
+  requestNotifications?(): void;
 }
 
 export const androidApp: AndroidBridge | null = (window as unknown as { argentAndroid?: AndroidBridge }).argentAndroid ?? null;

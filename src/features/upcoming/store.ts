@@ -6,8 +6,11 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { client, getItems } from "@/api/jellyfin";
 import { useAuth } from "@/auth/AuthProvider";
 import { readWatchlist } from "@/features/watchlist/store";
+import { androidApp } from "@/platform/android";
 import { desktop } from "@/platform/desktop";
+import { notify, setNotificationTarget } from "@/platform/notify";
 import { entryFor, entryKey, notificationsFor, pickCandidates, sortEntries, type ShowSchedule, type UpcomingEntry } from "./logic";
+import { readReminders } from "./reminders";
 import { fetchSchedule, lookupShow } from "./tvmaze";
 
 const DAY = 86_400_000;
@@ -39,7 +42,7 @@ interface UpcomingCache {
 export interface UpcomingPrefs {
   /** Check TVmaze daily for new episodes and seasons. */
   tvmaze: boolean;
-  /** Desktop app: a notification when an episode airs today or a season is announced. */
+  /** Desktop and Android apps: a notification when an episode airs today or a season is announced. */
   notify: boolean;
 }
 
@@ -138,10 +141,9 @@ export const isChecking = () => checking;
 interface Announcement {
   entry: UpcomingEntry;
   name: string;
+  /** You asked to be reminded about this show: always announced. */
+  reminded: boolean;
 }
-
-// Where a clicked notification takes you; set by useUpcomingSync (it owns the router).
-let openSeries: (id: string) => void = () => {};
 
 /**
  * Checks TVmaze for every show you follow, at most once a day unless forced ("Check
@@ -165,7 +167,9 @@ export async function refreshUpcoming(userId: string, force = false): Promise<vo
       limit: 5000,
     });
     const names = new Map(series.Items.map((s) => [s.Id, s.Name]));
-    const candidates = pickCandidates(series.Items, new Set(Object.keys(readWatchlist(userId).items)));
+    const reminders = readReminders(userId);
+    // Reminded shows count as followed even before you've started them.
+    const candidates = pickCandidates(series.Items, new Set([...Object.keys(readWatchlist(userId).items), ...Object.keys(reminders)]));
     const previous =
       start.checkedAt === 0
         ? null
@@ -210,7 +214,7 @@ export async function refreshUpcoming(userId: string, force = false): Promise<vo
     result.notified = Object.fromEntries(Object.entries(start.notified).filter(([, at]) => at > cutoff));
     for (const e of news) result.notified[entryKey(e)] = Date.now();
     writeCache(userId, result);
-    announce(news.map((entry) => ({ entry, name: shows[entry.seriesId]?.name || "A show you follow" })));
+    announce(news.map((entry) => ({ entry, name: shows[entry.seriesId]?.name || "A show you follow", reminded: Boolean(reminders[entry.seriesId]) })));
   } catch {
     // Jellyfin unreachable: try again on the next hourly tick.
   } finally {
@@ -232,15 +236,14 @@ export function useUpcomingEntries() {
   return { entries, checkedAt: value.checkedAt, checking: busy };
 }
 
-function announce(list: Announcement[]) {
-  if (!desktop || !readUpcomingPrefs().notify || !list.length || typeof Notification === "undefined") return;
-  const show = (title: string, body: string, seriesId?: string) => {
-    const n = new Notification(title, { body });
-    n.onclick = () => {
-      desktop?.showWindow();
-      if (seriesId) openSeries(seriesId);
-    };
-  };
+/** Whether this device announces news about shows you follow (reminded shows always are). */
+export const announcesFollowed = () => Boolean(desktop || androidApp?.notify);
+
+function announce(all: Announcement[]) {
+  const list = all.filter((a) => a.reminded || (announcesFollowed() && readUpcomingPrefs().notify));
+  if (!list.length) return;
+  const show = (title: string, body: string, seriesId?: string) =>
+    notify({ title, body, path: seriesId ? `/details/${seriesId}` : "/", tag: seriesId ? `upcoming-${seriesId}` : "upcoming" });
   if (list.length > MAX_NOTIFICATIONS) {
     show("Coming Up", `${list.length} of your shows have new episodes or seasons.`);
     return;
@@ -263,13 +266,13 @@ export function describeEntry(e: UpcomingEntry, forNotification = false): string
 }
 
 /** Runs the check shortly after start-up, then hourly (it only does work once a day). */
-export function useUpcomingSync(onOpenSeries: (id: string) => void) {
+export function useUpcomingSync(openPath: (path: string) => void) {
   const { user } = useAuth();
   const prefs = useUpcomingPrefs();
   const userId = user?.Id;
   useEffect(() => {
-    openSeries = onOpenSeries;
-  }, [onOpenSeries]);
+    setNotificationTarget(openPath);
+  }, [openPath]);
   useEffect(() => {
     if (!userId || !prefs.tvmaze) return;
     const run = () => refreshUpcoming(userId);

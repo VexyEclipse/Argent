@@ -7,6 +7,8 @@ import { useAuth } from "@/auth/AuthProvider";
 import { openMenu, toggleSelected, useIsSelected, useSelecting } from "@/features/manage/store";
 import { usePosterScore } from "@/features/ratings/prefs";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
+import { useNewBadge } from "@/features/upcoming/newBadges";
+import { useReminder } from "@/features/upcoming/reminders";
 import { Artwork } from "./Artwork";
 import { Icon } from "./Icon";
 
@@ -23,11 +25,15 @@ interface Props {
   /** Clicking the card starts playback (Continue Watching, Next Up). */
   playOnClick?: boolean;
   onDismiss?: (item: BaseItem) => void;
+  /** What the dismiss button does, for its label ("Not interested" by default). */
+  dismissLabel?: string;
   eager?: boolean;
   /** Your own 1–10 score, shown as a corner badge. */
   rating?: number;
   /** No play button (the card is about something that hasn't aired yet). */
   noPlay?: boolean;
+  /** A "Remind me" bell (Coming Up). */
+  remind?: boolean;
 }
 
 export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
@@ -44,14 +50,21 @@ export const MediaCard = memo(function MediaCard({
   showProgress = true,
   playOnClick,
   onDismiss,
+  dismissLabel = "Not interested",
   eager,
   rating,
   noPlay,
+  remind,
 }: Props) {
   const navigate = useNavigate();
   const myScore = usePosterScore(item.Id);
   const watchlist = useWatchlistToggle(item);
   const score = rating ?? myScore;
+  const fresh = useNewBadge(item.Type === "Series" ? item.Id : "");
+  // An upcoming episode's reminder is for its show.
+  const reminder = useReminder(
+    !remind ? undefined : item.Type === "Episode" && item.SeriesId ? { Id: item.SeriesId, Name: item.SeriesName ?? item.Name, Type: "Series" } : item,
+  );
   const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
   const progress = showProgress ? progressOf(item) : 0;
   const played = item.UserData?.Played;
@@ -87,6 +100,12 @@ export const MediaCard = memo(function MediaCard({
     event.preventDefault();
     event.stopPropagation();
     onDismiss?.(item);
+  };
+
+  const toggleReminder = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    reminder.toggle();
   };
 
   const toggleWatchlist = (event: MouseEvent) => {
@@ -127,6 +146,7 @@ export const MediaCard = memo(function MediaCard({
               <Icon name="star" size={11} /> {score}
             </span>
           ) : null}
+          {fresh && <span className="card__new">{fresh}</span>}
           {progress > 0 && progress < 100 && (
             <span className="card__progress" aria-label={`${Math.round(progress)}% watched`}>
               <span style={{ width: `${progress}%` }} />
@@ -146,6 +166,17 @@ export const MediaCard = memo(function MediaCard({
             <Icon name="play" size={18} />
           </button>
         )}
+        {remind && (
+          <button
+            className={`card__remind ${reminder.on ? "is-on" : ""}`}
+            onClick={toggleReminder}
+            aria-label={reminder.on ? `Turn off the reminder for ${item.Name}` : `Remind me about ${item.Name}`}
+            aria-pressed={reminder.on}
+            title={reminder.on ? "Reminder on" : "Remind me"}
+          >
+            <Icon name={reminder.on ? "bellFilled" : "bell"} size={15} />
+          </button>
+        )}
         {canWatchlist(item) && (
           <button
             className={`card__watch ${watchlist.on ? "is-on" : ""}`}
@@ -158,7 +189,7 @@ export const MediaCard = memo(function MediaCard({
           </button>
         )}
         {onDismiss && (
-          <button className="card__dismiss" onClick={dismiss} aria-label={`Not interested in ${item.Name}`} title="Not interested">
+          <button className="card__dismiss" onClick={dismiss} aria-label={`${dismissLabel}: ${item.Name}`} title={dismissLabel}>
             <Icon name="close" size={14} />
           </button>
         )}

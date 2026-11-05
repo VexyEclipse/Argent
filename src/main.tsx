@@ -6,6 +6,7 @@ import { PlatformProvider } from "@/platform/platform";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { installErrorLogging } from "@/features/diagnostics/log";
+import { hasDownloads } from "@/features/downloads/store";
 import { App } from "./App";
 import "@/design/tokens.css";
 import "@/design/base.css";
@@ -36,7 +37,7 @@ createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <PlatformProvider>
-            <AuthProvider>
+            <AuthProvider hasOfflineContent={hasDownloads}>
               <App />
             </AuthProvider>
           </PlatformProvider>

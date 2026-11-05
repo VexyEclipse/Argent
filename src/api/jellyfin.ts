@@ -297,11 +297,14 @@ export const setPlayed = (id: string, played: boolean) =>
   });
 
 /** Your own 0–10 score, shared with other Jellyfin clients. */
-export const setUserRating = (id: string, rating: number | null) =>
+export const setUserRating = (id: string, rating: number | null) => updateUserData(id, { Rating: rating });
+
+/** Changes your watch state directly: resume point, watched, last played (downloads, Continue Watching). */
+export const updateUserData = (id: string, data: { Rating?: number | null; PlaybackPositionTicks?: number; Played?: boolean; LastPlayedDate?: string }) =>
   client().request<UserItemData>(`/UserItems/${id}/UserData`, {
     method: "POST",
     query: { userId: uid() },
-    body: { Rating: rating },
+    body: data,
   });
 
 // ---- Playback -------------------------------------------------------------------

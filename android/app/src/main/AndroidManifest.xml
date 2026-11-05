@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Updates: Argent installs a newer APK from its GitHub releases, after asking. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Coming Up: "Remind me" and new-episode notifications (asked for when you set one). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- One APK for TVs and phones: neither a remote nor a touchscreen is required. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
