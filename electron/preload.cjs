@@ -24,4 +24,12 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   setNowPlaying: (info) => ipcRenderer.send("now-playing", info),
   /** "toggle" | "pause" | "next" | "previous", from the tray menu and window. */
   onPlayerCommand: (fn) => subscribe("player:command", fn),
+  /** Plays in mpv; resolves with the result when mpv closes. */
+  playExternal: (request) => ipcRenderer.invoke("mpv:play", request),
+  /** mpv's position, pause and track changes while it plays. */
+  onExternalState: (fn) => subscribe("mpv:state", fn),
+  /** Remote control, tray and Stop for mpv. */
+  controlExternal: (command) => ipcRenderer.send("mpv:control", command),
+  /** Lets the viewer pick mpv.exe; resolves to the app info. */
+  chooseMpv: () => ipcRenderer.invoke("mpv:choose"),
 });

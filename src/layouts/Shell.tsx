@@ -12,6 +12,7 @@ import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { ManageHost } from "@/features/manage/ManageHost";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { useUpcomingSync } from "@/features/upcoming/store";
+import { useTogether } from "@/features/together/store";
 import { androidApp } from "@/platform/android";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
@@ -133,6 +134,18 @@ function ProfileMenu() {
   );
 }
 
+/** Devices & Watch Together; lit while Play goes to another device or a group is active. */
+function TogetherLink({ className = "nav__icon", size = 20 }: { className?: string; size?: number }) {
+  const { target, group } = useTogether();
+  const on = Boolean(target || group);
+  const label = target ? `Playing on ${target.DeviceName}` : group ? `Watching together: ${group.GroupName}` : "Devices & Watch Together";
+  return (
+    <NavLink to="/together" className={`${className} ${on ? "is-on" : ""}`} aria-label={label} title={label}>
+      <Icon name={group ? "users" : "cast"} size={size} />
+    </NavLink>
+  );
+}
+
 function DesktopNav() {
   const nav = useNav();
   const [solid, setSolid] = useState(false);
@@ -158,6 +171,7 @@ function DesktopNav() {
         <NavLink to="/search" className="nav__icon" aria-label="Search">
           <Icon name="search" size={20} />
         </NavLink>
+        <TogetherLink />
         <ProfileMenu />
       </div>
     </header>
@@ -172,7 +186,10 @@ function MobileNav() {
         <Link to="/" aria-label="Argent home">
           <JellyfinLogo size={24} />
         </Link>
-        <ProfileMenu />
+        <div className="mnav__end">
+          <TogetherLink />
+          <ProfileMenu />
+        </div>
       </header>
       <nav className="tabbar" aria-label="Main">
         {[...nav.slice(0, -1), { to: "/search", label: "Search", icon: "search" as IconName }, nav[nav.length - 1]].map((n) => (
@@ -193,6 +210,7 @@ function TvRail() {
     { to: "/search", label: "Search", icon: "search" },
     ...nav,
     ...others.map((v) => ({ to: `/library/${v.Id}`, label: v.Name, icon: "grid" as IconName })),
+    { to: "/together", label: "Devices", icon: "cast" },
     { to: "/profile", label: "Profile", icon: "user" },
   ];
   return (

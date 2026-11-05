@@ -1,0 +1,157 @@
+.together__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: var(--sp-5);
+  align-items: start;
+}
+.together__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6);
+}
+.together__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-h2);
+}
+.together__desc {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+.together__desc a {
+  color: var(--text-1);
+  text-decoration: underline;
+}
+.together__devices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.together__device {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  column-gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid transparent;
+  text-align: left;
+  color: var(--text-1);
+  min-width: 0;
+}
+.together__device:hover,
+.together__device:focus-visible {
+  background: var(--bg-4);
+}
+.together__device.is-active {
+  border-color: var(--line-3);
+  background: var(--bg-4);
+}
+.together__tick {
+  opacity: 0;
+}
+.together__device.is-active .together__tick {
+  opacity: 1;
+}
+.together__device-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.together__device-meta {
+  grid-column: 2;
+  font-size: var(--fs-small);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.together__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.together__group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+.together__people {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.together__people li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--bg-3);
+  font-size: var(--fs-small);
+}
+
+/* ---- remote control ---- */
+.remote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-1);
+}
+.remote__now {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--sp-4);
+  align-items: center;
+}
+.remote__art {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-3);
+}
+.remote__title {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+}
+.remote__sub {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.remote__seek,
+.remote__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.remote__range {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--silver-200);
+}
+.remote__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+.remote__tracks .select {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .remote__now {
+    grid-template-columns: 96px 1fr;
+  }
+}

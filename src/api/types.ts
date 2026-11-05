@@ -71,6 +71,8 @@ export interface MediaStream {
   BitRate?: number;
   VideoRange?: string;
   VideoRangeType?: string;
+  RealFrameRate?: number;
+  AverageFrameRate?: number;
 }
 
 export interface MediaAttachment {

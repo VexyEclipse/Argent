@@ -2,86 +2,64 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type Hls from "hls.js";
-import { getMediaSegments } from "@/api/jellyfin";
-import { landscapeImage, logoImage } from "@/api/images";
-import { episodeCode, formatClock, TICKS_PER_SECOND } from "@/api/format";
+import { getEpisodes, getMediaSegments } from "@/api/jellyfin";
+import { landscapeImage } from "@/api/images";
+import { episodeCode, TICKS_PER_SECOND } from "@/api/format";
+import { remotePlay, syncPlay } from "@/api/sessions";
 import type { BaseItem, MediaSegment } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
 import { Artwork } from "@/components/Artwork";
 import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
+import { showToast, ToastHost } from "@/components/Toast";
+import { logEvent } from "@/features/diagnostics/log";
+import { buildDiagnostics, copyText } from "@/features/diagnostics/report";
 import { isFinished, ratingTarget, shouldPrompt } from "@/features/ratings/logic";
 import { readRatingPrefs } from "@/features/ratings/prefs";
 import { queueRatePrompt } from "@/features/ratings/prompt";
 import { readRatings } from "@/features/ratings/store";
-import { desktop } from "@/platform/desktop";
+import { getTogether, setPlayTarget, useTogether } from "@/features/together/store";
+import { useSyncPlayer, type SyncPlayer } from "@/features/together/useSyncPlayer";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey, moveFocus } from "@/platform/spatialNavigation";
-import { isChromium, isFirefox, QUALITY_OPTIONS } from "./deviceProfile";
-import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, streamsOfType, subtitleIsText, type StreamInfo, type StreamOptions } from "./playback";
-import { createAssRenderer, type AssRenderer } from "./assRenderer";
-import { PlayerMenu } from "./PlayerMenu";
+import { usePlayerCommands } from "./commands";
+import { QUALITY_OPTIONS } from "./deviceProfile";
+import { externalEngine, type ExternalEngine } from "./external";
+import { ExternalPlayback } from "./ExternalPlayback";
+import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, type StreamInfo, type StreamOptions } from "./playback";
+import { activeSkip, outroStart, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
+import { BottomBar, PlaybackInfo, TopBar, type Menu } from "./PlayerChrome";
+import { readMatchFrameRate, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
 import { PlaybackReporter } from "./reporter";
-import { Seekbar } from "./Seekbar";
+import { useMediaHealth } from "./useMediaHealth";
+import { useOsControls } from "./useOsControls";
+import { useSubtitles } from "./useSubtitles";
+import { useUpNext } from "./useUpNext";
 import "./player.css";
 
-type Menu = "audio" | "subtitles" | "quality" | "speed" | "info" | null;
 type IosVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
 
-const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-const VOLUME_KEY = "argent.volume";
-const QUALITY_KEY = "argent.maxBitrate";
 const HIDE_AFTER_MS = 3200;
-const UP_NEXT_SECONDS = 30;
-const MAX_UNATTENDED_EPISODES = 3;
-const CHAIN_KEY = "argent.autoplayChain";
-
-function readAutoplayChain(): number {
-  try {
-    return Number(sessionStorage.getItem(CHAIN_KEY)) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeAutoplayChain(n: number) {
-  try {
-    sessionStorage.setItem(CHAIN_KEY, String(n));
-  } catch {
-    /* ignore */
-  }
-}
-
-function readNumber(key: string, fallback: number) {
-  try {
-    const v = Number(localStorage.getItem(key));
-    return Number.isFinite(v) && localStorage.getItem(key) !== null ? v : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function store(key: string, value: number) {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    /* ignore */
-  }
-}
 
 export default function PlayerPage() {
   const { id = "" } = useParams();
-  // Remount per item so every title gets a clean session.
-  return <Player key={id} id={id} />;
+  const [params] = useSearchParams();
+  // Remount per title, per hand-off back from a native player and per group queue entry,
+  // so each gets a clean session.
+  return <PlayerRoute key={`${id}-${params.get("engine") ?? ""}-${params.get("together") ?? ""}`} id={id} />;
 }
 
-function Player({ id }: { id: string }) {
+/**
+ * Where a title plays: on the device chosen in "Play on", for the whole Watch Together
+ * group, in the native player (Android app, mpv), or in this page's own player.
+ */
+function PlayerRoute({ id }: { id: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
-  const platform = usePlatform();
   const { user } = useAuth();
-  const config = user?.Configuration;
+  const together = useTogether();
+  const here = params.has("here") || params.has("together");
 
   // Resolved once per mount: a background refetch would restart the stream.
   const resolved = useQuery({
@@ -110,17 +88,228 @@ function Player({ id }: { id: string }) {
     staleTime: Infinity,
   });
 
+  const exit = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (window.history.length > 1) navigate(-1);
+    else navigate(item ? `/details/${item.Type === "Episode" ? item.SeriesId : item.Id}` : "/", { replace: true });
+  }, [navigate, item]);
+  const playItem = useCallback((target: BaseItem | null | undefined) => target && navigate(`/play/${target.Id}?start=0`, { replace: true }), [navigate]);
+
+  // ---- where it plays ------------------------------------------------------------------
+  type Route = { kind: "pending" } | { kind: "remote" } | { kind: "group"; failed?: boolean } | { kind: "external"; engine: ExternalEngine } | { kind: "web" };
+  const [route, setRoute] = useState<Route>({ kind: "pending" });
+  const start = item ? startTicks(item, params.get("start")) : 0;
+  const version = params.get("version") ?? (item ? rememberedVersion(item.Id) : undefined);
+  const inGroup = Boolean(together.group);
+  useEffect(() => {
+    if (!item || route.kind !== "pending") return;
+    let cancelled = false;
+    (async () => {
+      const target = getTogether().target;
+      if (target && !here) {
+        await remotePlay(target.Id, [item.Id], start, version ?? undefined);
+        logEvent("remote", `Sent ${item.Id} to ${target.DeviceName}`);
+        if (!cancelled) navigate("/together", { replace: true });
+        return;
+      }
+      if (inGroup && !here) {
+        // Everyone in the group starts it; the queue update brings this device back here.
+        const ids = item.Type === "Episode" && item.SeriesId ? await followingEpisodes(item) : [item.Id];
+        await syncPlay.setQueue(ids, start);
+        if (!cancelled) setRoute({ kind: "group" });
+        window.setTimeout(() => !cancelled && setRoute((r) => (r.kind === "group" ? { kind: "group", failed: true } : r)), 10_000);
+        return;
+      }
+      const engine = params.get("engine") === "web" || inGroup ? null : await externalEngine();
+      if (!cancelled) setRoute(engine ? { kind: "external", engine } : { kind: "web" });
+    })().catch((e) => {
+      logEvent("playback", `Couldn't start: ${e instanceof Error ? e.message : e}`, "error");
+      if (!cancelled) {
+        if (getTogether().target && !here) {
+          showToast("Couldn't reach that device. Playing here.");
+          setPlayTarget(null);
+        }
+        setRoute({ kind: "web" });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Decided once, when the title has loaded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
+
+  // ---- leaving: refresh what depends on watch state, and ask for a rating ---------------
+  const position = useRef(start / TICKS_PER_SECOND);
+  const duration = item?.RunTimeTicks ? item.RunTimeTicks / TICKS_PER_SECOND : 0;
+  const rateCheck = useRef(() => {});
+  rateCheck.current = () => {
+    if (!item || !user || route.kind === "remote" || route.kind === "pending") return;
+    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined, { seasons: readRatingPrefs().rateSeasons });
+    if (isFinished(position.current, duration, outroStart(segments.data)) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
+  };
+  useEffect(
+    () => () => {
+      rateCheck.current();
+      // Resume points, Continue Watching and recommendations reflect this session, once
+      // the player's stop report has reached the server.
+      window.setTimeout(() => {
+        for (const key of ["home", "item", "episodes", "nextup", "seasons"]) queryClient.invalidateQueries({ queryKey: [key] });
+        queryClient.invalidateQueries({ queryKey: ["rec", "history"] });
+      }, 1200);
+    },
+    [queryClient],
+  );
+
+  const backdrop = item ? landscapeImage(item, 1280) : null;
+  const waiting = (message: string, actions?: React.ReactNode) => (
+    <div className="player player--external" data-nav-trap>
+      {backdrop && (
+        <div className="player__poster">
+          <Artwork image={backdrop} alt="" eager />
+        </div>
+      )}
+      <div className="player__message">
+        <JellyfinMark size={44} />
+        <p>{message}</p>
+        <div className="player__message-actions">
+          {actions}
+          <button className="btn btn--secondary btn--md" onClick={exit} autoFocus>
+            Go back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (resolved.isError) return <PlaybackError message={resolved.error instanceof Error ? resolved.error.message : "This item couldn't be loaded."} onBack={exit} />;
+  if (!item || route.kind === "pending") return waiting("Loading…");
+  if (route.kind === "remote") return waiting(`Sending to ${together.target?.DeviceName ?? "the other device"}…`);
+  if (route.kind === "group")
+    return waiting(
+      route.failed ? "The group didn't start it. Check that everyone can play this title." : `Starting for ${together.group?.GroupName ?? "the group"}…`,
+      route.failed && (
+        <button className="btn btn--primary btn--md" onClick={() => navigate(`/play/${item.Id}?start=${start / TICKS_PER_SECOND}&here=1`, { replace: true })}>
+          Play just here
+        </button>
+      ),
+    );
+  if (route.kind === "external")
+    return (
+      <ExternalPlayback
+        engine={route.engine}
+        item={item}
+        next={neighbours.data?.next ?? null}
+        prev={neighbours.data?.prev ?? null}
+        segments={segments.data ?? []}
+        startTicks={start}
+        mediaSourceId={version ?? undefined}
+        audioIndex={numberParam(params.get("audio"))}
+        subtitleIndex={numberParam(params.get("subtitle"))}
+        autoplay={user?.Configuration?.EnableNextEpisodeAutoPlay !== false}
+        matchFrameRate={readMatchFrameRate()}
+        onPosition={(s) => (position.current = s)}
+        onFallback={(s) => {
+          showToast("Playing in Argent's own player instead");
+          navigate(`/play/${item.Id}?start=${Math.floor(s)}&engine=web${version ? `&version=${version}` : ""}`, { replace: true });
+        }}
+        playItem={playItem}
+        exit={exit}
+      />
+    );
+  return (
+    <WebPlayer
+      item={item}
+      next={neighbours.data?.next ?? null}
+      prev={neighbours.data?.prev ?? null}
+      segments={segments.data}
+      startTicks={start}
+      mediaSourceId={version ?? undefined}
+      audioIndex={numberParam(params.get("audio"))}
+      subtitleIndex={numberParam(params.get("subtitle"))}
+      position={position}
+      exit={exit}
+      playItem={playItem}
+    />
+  );
+}
+
+const numberParam = (v: string | null) => (v !== null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined);
+
+/** A group watching an episode carries on through the rest of the series. */
+async function followingEpisodes(item: BaseItem): Promise<string[]> {
+  const all = (await getEpisodes(item.SeriesId!)).Items.filter((e) => e.LocationType !== "Virtual");
+  const i = all.findIndex((e) => e.Id === item.Id);
+  return i < 0 ? [item.Id] : all.slice(i, i + 50).map((e) => e.Id);
+}
+
+function PlaybackError({ message, onBack, onRetry }: { message: string; onBack: () => void; onRetry?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="player player--error">
+      <div className="player__message">
+        <JellyfinMark size={44} />
+        <h2>Playback unavailable</h2>
+        <p>{message}</p>
+        <div className="player__message-actions">
+          <button className="btn btn--secondary btn--md" onClick={onBack} data-autofocus autoFocus>
+            Go back
+          </button>
+          {onRetry && (
+            <button className="btn btn--primary btn--md" onClick={onRetry}>
+              Try a compatible stream
+            </button>
+          )}
+          <button
+            className="btn btn--ghost btn--md"
+            onClick={async () => setCopied(await copyText(await buildDiagnostics()))}
+            title="For a bug report: what this device is and what the player did"
+          >
+            <Icon name={copied ? "check" : "copy"} size={16} /> {copied ? "Copied" : "Copy diagnostics"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- the page's own player ------------------------------------------------------------
+
+function WebPlayer(props: {
+  item: BaseItem;
+  next: BaseItem | null;
+  prev: BaseItem | null;
+  segments: MediaSegment[] | undefined;
+  startTicks: number;
+  mediaSourceId?: string;
+  audioIndex?: number;
+  subtitleIndex?: number;
+  /** Kept current for the rating prompt when the player closes. */
+  position: React.MutableRefObject<number>;
+  exit: () => void;
+  playItem: (item: BaseItem | null | undefined) => void;
+}) {
+  const { item, next, prev, segments, exit } = props;
+  const platform = usePlatform();
+  const { user } = useAuth();
+
   const video = useRef<HTMLVideoElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const hls = useRef<Hls | null>(null);
   const [stream, setStream] = useState<StreamInfo | null>(null);
-  const [opts, setOpts] = useState<StreamOptions | null>(null);
+  const [opts, setOpts] = useState<StreamOptions>(() => ({
+    startTicks: props.startTicks,
+    maxBitrate: readQuality(QUALITY_OPTIONS[0].bitrate),
+    mediaSourceId: props.mediaSourceId,
+    audioIndex: props.audioIndex,
+    subtitleIndex: props.subtitleIndex,
+  }));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [buffered, setBuffered] = useState(0);
-  const [volume, setVolume] = useState(() => readNumber(VOLUME_KEY, 1));
+  const [volume, setVolume] = useState(readVolume);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
   const [fullscreen, setFullscreen] = useState(false);
@@ -129,15 +318,12 @@ function Player({ id }: { id: string }) {
   const [visible, setVisible] = useState(true);
   const [menu, setMenu] = useState<Menu>(null);
   const [scrubbing, setScrubbing] = useState(false);
-  const [subOffset, setSubOffset] = useState(0);
-  const [cueHtml, setCueHtml] = useState<DocumentFragment[]>([]);
-  const [upNextDismissed, setUpNextDismissed] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const fellBack = useRef(false);
   const pendingSeek = useRef<number | null>(null);
+  const notice = useCallback((m: string) => showToast(m), []);
 
-  const duration = item?.RunTimeTicks ? item.RunTimeTicks / TICKS_PER_SECOND : video.current?.duration || 0;
+  const duration = item.RunTimeTicks ? item.RunTimeTicks / TICKS_PER_SECOND : video.current?.duration || 0;
+  const sync: SyncPlayer | null = useSyncPlayer({ video, itemId: item.Id, onStop: exit });
 
   // ---- reporting ------------------------------------------------------------------
   const live = useRef({ current: 0, playing: false, muted: false, volume: 1, rate: 1 });
@@ -146,15 +332,18 @@ function Player({ id }: { id: string }) {
   const startSeconds = useRef(0);
   const reachedStart = useRef(false);
   live.current = { current, playing, muted, volume, rate };
+  const positionNow = () => (reachedStart.current ? (video.current?.currentTime ?? live.current.current) : startSeconds.current);
+  props.position.current = reachedStart.current ? current : Math.max(current, startSeconds.current);
   const reporter = useMemo(
     () =>
       new PlaybackReporter(() => ({
-        positionSeconds: reachedStart.current ? (video.current?.currentTime ?? live.current.current) : startSeconds.current,
+        positionSeconds: positionNow(),
         paused: !live.current.playing,
         muted: live.current.muted,
         volume: live.current.volume,
         playbackRate: live.current.rate,
       })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -163,31 +352,12 @@ function Player({ id }: { id: string }) {
     window.addEventListener("pagehide", onHide);
     return () => {
       window.removeEventListener("pagehide", onHide);
-      reporter.stop().then(() => {
-        // Resume points, Continue Watching and recommendations reflect this session.
-        queryClient.invalidateQueries({ queryKey: ["home"] });
-        queryClient.invalidateQueries({ queryKey: ["rec", "history"] });
-        queryClient.invalidateQueries({ queryKey: ["item"] });
-        queryClient.invalidateQueries({ queryKey: ["episodes"] });
-        queryClient.invalidateQueries({ queryKey: ["nextup"] });
-        queryClient.invalidateQueries({ queryKey: ["seasons"] });
-      });
+      reporter.stop();
     };
-  }, [reporter, queryClient]);
+  }, [reporter]);
 
-  // ---- initial stream -------------------------------------------------------------
+  // ---- stream ---------------------------------------------------------------------
   useEffect(() => {
-    if (!item) return;
-    const startParam = params.get("start");
-    const resumeTicks = item.UserData?.PlaybackPositionTicks ?? 0;
-    const pct = item.UserData?.PlayedPercentage ?? 0;
-    const startTicks = startParam !== null ? Number(startParam) * TICKS_PER_SECOND : pct < 95 ? resumeTicks : 0;
-    setOpts({ startTicks, maxBitrate: readNumber(QUALITY_KEY, QUALITY_OPTIONS[0].bitrate) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item]);
-
-  useEffect(() => {
-    if (!item || !opts) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -205,23 +375,25 @@ function Player({ id }: { id: string }) {
     };
   }, [item, opts]);
 
-  /** Rebuild the stream (audio change, burned-in subtitle, quality) at the current position. */
+  /** Rebuild the stream (audio change, burned-in subtitle, quality, version) at the current position. */
   const reload = useCallback(
     (patch: Partial<StreamOptions>) => {
       // Before the stream reaches its start point the element reads 0:00; keep the start.
       const position = reachedStart.current ? (video.current?.currentTime ?? current) : startSeconds.current;
       // Always restate both tracks: if either is left out, the server substitutes the
       // user's remembered track instead of the one playing now.
-      const tracks = { audioIndex: stream?.audioIndex, subtitleIndex: stream?.subtitleIndex ?? -1 };
-      setOpts((o) => (o ? { ...o, ...tracks, ...patch, startTicks: Math.round(position * TICKS_PER_SECOND) } : o));
+      const tracks = { audioIndex: stream?.audioIndex, subtitleIndex: stream?.subtitleIndex ?? -1, mediaSourceId: stream?.source.Id };
+      setOpts((o) => ({ ...o, ...tracks, ...patch, startTicks: Math.round(position * TICKS_PER_SECOND) }));
     },
     [current, stream],
   );
 
   // ---- attach the source ----------------------------------------------------------
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
   useEffect(() => {
     const el = video.current;
-    if (!el || !stream || !item) return;
+    if (!el || !stream) return;
     let destroyed = false;
     const start = pendingSeek.current ?? 0;
 
@@ -242,7 +414,7 @@ function Player({ id }: { id: string }) {
         hls.current = h;
         let recoveries = 0;
         h.on(HlsCtor.Events.ERROR, (_e, data) => {
-          if (import.meta.env.DEV) console.warn("[hls]", data.type, data.details, data.fatal ? "fatal" : "", data.reason ?? data.error?.message ?? "");
+          if (data.fatal || import.meta.env.DEV) logEvent("hls", `${data.type} ${data.details}${data.fatal ? " (fatal)" : ""} ${data.reason ?? data.error?.message ?? ""}`, data.fatal ? "error" : "warn");
           if (!data.fatal) return;
           // Recover a media error at most twice; looping recovery hammers the server.
           if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR && recoveries++ < 2) h.recoverMediaError();
@@ -256,7 +428,8 @@ function Player({ id }: { id: string }) {
       }
       el.volume = volume;
       el.playbackRate = rate;
-      el.play().catch(() => setPlaying(false));
+      // In a group, the group says when to start.
+      if (!syncRef.current) el.play().catch(() => setPlaying(false));
     };
     attach();
 
@@ -314,151 +487,40 @@ function Player({ id }: { id: string }) {
     const onVolume = () => {
       setVolume(el.volume);
       setMuted(el.muted);
-      store(VOLUME_KEY, el.volume);
+      saveVolume(el.volume);
       reporter.nudge("VolumeChange");
     };
     const onError = () => {
+      const code = el.error?.code;
       // A file the browser claimed it could play but couldn't: ask the server to remux/transcode.
       if (stream?.method === "DirectPlay" && !fellBack.current) {
         fellBack.current = true;
-        setToast("Switching to a compatible stream…");
+        logEvent("playback", `Media error ${code ?? "?"} on Direct Play of ${stream.source.Container}; retrying without it`, "warn");
+        notice("Switching to a compatible stream…");
         reload({ disableDirectPlay: true });
         return;
       }
+      logEvent("playback", `Media error ${code ?? "?"} on ${stream?.method ?? "stream"}`, "error");
       setError("This video couldn't be played on this device.");
     };
-    el.addEventListener("loadedmetadata", onMeta);
-    el.addEventListener("playing", onPlaying);
-    el.addEventListener("pause", onPause);
-    el.addEventListener("play", onPlay);
-    el.addEventListener("waiting", onWaiting);
-    el.addEventListener("canplay", onCanPlay);
-    el.addEventListener("timeupdate", onTime);
-    el.addEventListener("seeked", onSeeked);
-    el.addEventListener("volumechange", onVolume);
-    el.addEventListener("error", onError);
-    return () => {
-      el.removeEventListener("loadedmetadata", onMeta);
-      el.removeEventListener("playing", onPlaying);
-      el.removeEventListener("pause", onPause);
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("waiting", onWaiting);
-      el.removeEventListener("canplay", onCanPlay);
-      el.removeEventListener("timeupdate", onTime);
-      el.removeEventListener("seeked", onSeeked);
-      el.removeEventListener("volumechange", onVolume);
-      el.removeEventListener("error", onError);
-    };
-  }, [stream, reporter, reload]);
+    const events: [string, () => void][] = [
+      ["loadedmetadata", onMeta],
+      ["playing", onPlaying],
+      ["pause", onPause],
+      ["play", onPlay],
+      ["waiting", onWaiting],
+      ["canplay", onCanPlay],
+      ["timeupdate", onTime],
+      ["seeked", onSeeked],
+      ["volumechange", onVolume],
+      ["error", onError],
+    ];
+    events.forEach(([e, fn]) => el.addEventListener(e, fn));
+    return () => events.forEach(([e, fn]) => el.removeEventListener(e, fn));
+  }, [stream, reporter, reload, notice]);
 
-  // ---- silent audio / blank picture ------------------------------------------------
-  // A browser can accept a file yet drop a track it can't decode, playing the picture in
-  // silence (or the sound over black) without an error. A few seconds in, check that both
-  // are being decoded and otherwise ask the server for a stream that converts them.
-  const reloadRef = useRef(reload);
-  reloadRef.current = reload;
-  useEffect(() => {
-    const el = video.current;
-    if (!el || !stream || !opts) return;
-    const hasAudio = streamsOfType(stream.source, "Audio").length > 0;
-    let played = 0;
-    let last = el.currentTime;
-    const check = () => {
-      const step = el.currentTime - last;
-      last = el.currentTime;
-      // Count real playback only, not jumps to the resume point.
-      if (el.paused || step <= 0 || step > 1) return;
-      played += step;
-      if (played < 4) return;
-      el.removeEventListener("timeupdate", check);
-      const media = el as HTMLVideoElement & { webkitAudioDecodedByteCount?: number; mozHasAudio?: boolean };
-      // Safari's native player always reports 0 decoded bytes, so only trust these where they're real.
-      const silent = hasAudio && ((isChromium && media.webkitAudioDecodedByteCount === 0) || (isFirefox && media.mozHasAudio === false));
-      const blank = stream.method === "DirectPlay" && document.visibilityState === "visible" && el.getVideoPlaybackQuality?.().totalVideoFrames === 0;
-      if (silent && !opts.compatibleAudio) {
-        setToast("No sound from this file. Switching to a compatible stream…");
-        reloadRef.current({ compatibleAudio: true, ...(stream.method === "DirectPlay" && { disableDirectPlay: true }) });
-      } else if (blank && !opts.disableDirectPlay) {
-        setToast("No picture from this file. Switching to a compatible stream…");
-        reloadRef.current({ disableDirectPlay: true });
-      }
-    };
-    el.addEventListener("timeupdate", check);
-    return () => el.removeEventListener("timeupdate", check);
-    // Once per play session; opts is the one that session was built from.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.playSessionId]);
-
-  // ---- subtitles (rendered by us for consistent styling and sync offset) ----------
-  const textTrack = stream?.textTracks.find((t) => t.index === stream.subtitleIndex);
-  useEffect(() => {
-    const el = video.current;
-    setCueHtml([]);
-    if (!el || !textTrack) return;
-    const tracks = Array.from(el.textTracks);
-    const track = tracks.find((t) => t.label === textTrack.label && t.language === (textTrack.language ?? ""));
-    tracks.forEach((t) => (t.mode = t === track ? (nativeFullscreen ? "showing" : "hidden") : "disabled"));
-    if (!track) return;
-    const onCue = () => {
-      const cues = Array.from(track.activeCues ?? []) as VTTCue[];
-      setCueHtml(cues.map((c) => c.getCueAsHTML()));
-    };
-    track.addEventListener("cuechange", onCue);
-    return () => track.removeEventListener("cuechange", onCue);
-  }, [textTrack, stream, nativeFullscreen]);
-
-  // Shift every cue when the sync offset changes.
-  const appliedOffset = useRef(0);
-  useEffect(() => {
-    const el = video.current;
-    if (!el || !textTrack) return;
-    const track = Array.from(el.textTracks).find((t) => t.label === textTrack.label);
-    const delta = subOffset - appliedOffset.current;
-    if (!track?.cues || !delta) return;
-    for (const cue of Array.from(track.cues)) {
-      cue.startTime = Math.max(0, cue.startTime + delta);
-      cue.endTime = Math.max(0, cue.endTime + delta);
-    }
-    appliedOffset.current = subOffset;
-  }, [subOffset, textTrack]);
-  // ---- ASS/SSA (libass in the browser, keeps Direct Play) -------------------------
-  const assTrack = stream?.assTracks.find((t) => t.index === stream.subtitleIndex);
-  const assCanvas = useRef<HTMLCanvasElement>(null);
-  const assRenderer = useRef<AssRenderer | null>(null);
-  const subOffsetRef = useRef(subOffset);
-  subOffsetRef.current = subOffset;
-  useEffect(() => {
-    const el = video.current;
-    const canvas = assCanvas.current;
-    if (!el || !canvas || !assTrack || !stream) return;
-    let cancelled = false;
-    createAssRenderer({ video: el, canvas, subUrl: assTrack.url, fonts: stream.fonts, delay: subOffsetRef.current })
-      .then((r) => {
-        if (cancelled) r.destroy();
-        else assRenderer.current = r;
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        console.warn("ASS renderer unavailable; asking the server to burn subtitles in.", e);
-        setToast("Switching to server-rendered subtitles…");
-        reload({ subtitleIndex: assTrack.index, burnInSubtitles: true });
-      });
-    return () => {
-      cancelled = true;
-      assRenderer.current?.destroy();
-      assRenderer.current = null;
-    };
-    // A new renderer per track and per play session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assTrack?.url, stream?.playSessionId]);
-  useEffect(() => {
-    assRenderer.current?.setDelay(subOffset);
-  }, [subOffset]);
-
-  useEffect(() => {
-    appliedOffset.current = 0;
-    setSubOffset(0);
-  }, [textTrack?.url, assTrack?.url]);
+  useMediaHealth({ video, stream, streamOpts: opts, reload, onNotice: notice });
+  const subs = useSubtitles({ video, stream, nativeFullscreen, reload, onNotice: notice });
 
   // ---- controls visibility --------------------------------------------------------
   const hideTimer = useRef(0);
@@ -476,17 +538,23 @@ function Player({ id }: { id: string }) {
     } else poke();
   }, [playing, menu, scrubbing, poke]);
 
-  // ---- actions --------------------------------------------------------------------
+  // ---- actions (a Watch Together group decides play, pause and seek) ----------------
   const togglePlay = useCallback(() => {
     const el = video.current;
     if (!el) return;
-    if (el.paused) el.play().catch(() => {});
+    if (syncRef.current) syncRef.current.toggle();
+    else if (el.paused) el.play().catch(() => {});
     else el.pause();
   }, []);
   const seekTo = useCallback((t: number) => {
     const el = video.current;
     if (!el) return;
-    el.currentTime = Math.max(0, Math.min(t, (el.duration || Infinity) - 0.5));
+    const to = Math.max(0, Math.min(t, (el.duration || Infinity) - 0.5));
+    if (syncRef.current) {
+      syncRef.current.seek(to);
+      return;
+    }
+    el.currentTime = to;
     setCurrent(el.currentTime);
   }, []);
   const seekBy = useCallback((d: number) => seekTo((video.current?.currentTime ?? 0) + d), [seekTo]);
@@ -496,12 +564,8 @@ function Player({ id }: { id: string }) {
     // iPhone Safari can't put a page element full screen, only the video, in its own player.
     else (video.current as IosVideo | null)?.webkitEnterFullscreen?.();
   }, []);
-  const exit = useCallback(() => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    if (window.history.length > 1) navigate(-1);
-    else navigate(item ? `/details/${item.Type === "Episode" ? item.SeriesId : item.Id}` : "/", { replace: true });
-  }, [navigate, item]);
-  const playItem = useCallback((target: BaseItem | null | undefined) => target && navigate(`/play/${target.Id}?start=0`, { replace: true }), [navigate]);
+  const goNext = useCallback(() => (syncRef.current?.hasNext ? syncRef.current.next() : props.playItem(next)), [next, props]);
+  const goPrev = useCallback(() => (syncRef.current?.hasPrevious ? syncRef.current.previous() : props.playItem(prev)), [prev, props]);
 
   useEffect(() => {
     const on = () => setFullscreen(Boolean(document.fullscreenElement));
@@ -526,107 +590,97 @@ function Player({ id }: { id: string }) {
   const selectSubtitle = (index: number) => {
     setMenu(null);
     if (!stream) return;
-    const target = stream.source.MediaStreams.find((s) => s.Index === index);
-    const clientSide = (i?: number) => stream.textTracks.some((t) => t.index === i) || stream.assTracks.some((t) => t.index === i);
-    const currentlyBurned = stream.subtitleIndex !== undefined && stream.subtitleIndex >= 0 && !clientSide(stream.subtitleIndex);
-    if (index === -1 || (target && subtitleIsText(target) && clientSide(index))) {
-      if (currentlyBurned) reload({ subtitleIndex: index });
-      else {
-        setStream({ ...stream, subtitleIndex: index });
-        reporter.updateStreams(stream.audioIndex, index);
-      }
-      return;
-    }
-    reload({ subtitleIndex: index }); // image/styled subtitles are burned in by the server
+    if (subtitleChange(stream, index) === "local") {
+      setStream({ ...stream, subtitleIndex: index });
+      reporter.updateStreams(stream.audioIndex, index);
+    } else reload({ subtitleIndex: index }); // image/styled subtitles are burned in by the server
   };
-
   const selectAudio = (index: number) => {
     setMenu(null);
     if (stream && index !== stream.audioIndex) reload({ audioIndex: index, subtitleIndex: stream.subtitleIndex });
   };
-
   const selectQuality = (bitrate: number) => {
     setMenu(null);
-    store(QUALITY_KEY, bitrate);
+    saveQuality(bitrate);
     reload({ maxBitrate: bitrate, audioIndex: stream?.audioIndex, subtitleIndex: stream?.subtitleIndex });
   };
+  const selectVersion = (sourceId: string) => {
+    setMenu(null);
+    if (!stream || sourceId === stream.source.Id) return;
+    rememberVersion(item.Id, sourceId);
+    // Another file has its own tracks: let the server pick by language preference again.
+    reload({ mediaSourceId: sourceId, audioIndex: undefined, subtitleIndex: undefined, disableDirectPlay: false, compatibleAudio: false });
+  };
 
-  // ---- skip segments & up next ----------------------------------------------------
-  const activeSegment = segments.data?.find(
-    (s) =>
-      ["Intro", "Recap", "Preview", "Commercial"].includes(s.Type) && current >= s.StartTicks / TICKS_PER_SECOND && current < s.EndTicks / TICKS_PER_SECOND - 1,
-  );
-  const outro = segments.data?.find((s) => s.Type === "Outro");
-  const next = neighbours.data?.next ?? null;
-  const prev = neighbours.data?.prev ?? null;
-  // Autoplay stops after a few unattended episodes and asks first, so a player left
-  // running doesn't work through a season (and mark it watched) on its own.
-  const [stillWatching, setStillWatching] = useState(false);
-  const autoplay = config?.EnableNextEpisodeAutoPlay !== false && !stillWatching;
-  const autoplayNext = useCallback(() => {
-    if (!next) return;
-    if (readAutoplayChain() >= MAX_UNATTENDED_EPISODES) {
-      video.current?.pause();
-      setCountdown(null);
-      setStillWatching(true);
-      return;
-    }
-    writeAutoplayChain(readAutoplayChain() + 1);
-    playItem(next);
-  }, [next, playItem]);
-
-  // Any input from the viewer proves someone is watching.
-  useEffect(() => {
-    const reset = () => writeAutoplayChain(0);
-    window.addEventListener("pointerdown", reset);
-    window.addEventListener("keydown", reset);
-    return () => {
-      window.removeEventListener("pointerdown", reset);
-      window.removeEventListener("keydown", reset);
-    };
-  }, []);
-  const upNextAt = outro ? outro.StartTicks / TICKS_PER_SECOND : duration - UP_NEXT_SECONDS;
-  const showUpNext = Boolean(next && duration > 60 && current >= upNextAt && !upNextDismissed);
-
-  useEffect(() => {
-    if (!showUpNext || !autoplay) {
-      setCountdown(null);
-      return;
-    }
-    setCountdown((c) => c ?? 10);
-  }, [showUpNext, autoplay]);
-  useEffect(() => {
-    if (countdown === null || !playing) return;
-    if (countdown <= 0) {
-      autoplayNext();
-      return;
-    }
-    const t = window.setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
-    return () => window.clearTimeout(t);
-  }, [countdown, playing, autoplayNext]);
-
-  useEffect(() => {
+  // ---- commands: tray, media keys, remote control ------------------------------------
+  usePlayerCommands((c) => {
     const el = video.current;
     if (!el) return;
-    const onEnded = () => {
-      if (next && autoplay) autoplayNext();
-      else if (!stillWatching) exit();
-    };
+    switch (c.kind) {
+      case "toggle":
+        togglePlay();
+        break;
+      case "pause":
+        if (syncRef.current) syncRef.current.pause();
+        else el.pause();
+        break;
+      case "unpause":
+        if (syncRef.current) syncRef.current.unpause();
+        else el.play().catch(() => {});
+        break;
+      case "stop":
+        exit();
+        break;
+      case "next":
+        goNext();
+        break;
+      case "previous":
+        goPrev();
+        break;
+      case "seek":
+        seekTo(c.seconds);
+        break;
+      case "seekBy":
+        seekBy(c.seconds);
+        break;
+      case "volume":
+        el.volume = Math.min(1, Math.max(0, c.value));
+        el.muted = false;
+        break;
+      case "mute":
+        el.muted = c.muted ?? !el.muted;
+        break;
+      case "audio":
+        selectAudio(c.index);
+        break;
+      case "subtitle":
+        selectSubtitle(c.index);
+        break;
+    }
+    poke();
+  });
+
+  // ---- skip segments & up next ----------------------------------------------------
+  const activeSegment = activeSkip(segments, current);
+  const upNext = useUpNext({
+    video,
+    next: sync ? null : next,
+    segments,
+    current,
+    duration,
+    playing,
+    autoplayEnabled: user?.Configuration?.EnableNextEpisodeAutoPlay !== false,
+    playItem: props.playItem,
+    exit,
+  });
+  // A group moves on together when its episode ends.
+  useEffect(() => {
+    const el = video.current;
+    if (!el || !sync) return;
+    const onEnded = () => (sync.hasNext ? sync.next() : exit());
     el.addEventListener("ended", onEnded);
     return () => el.removeEventListener("ended", onEnded);
-  }, [next, autoplay, autoplayNext, exit, stillWatching]);
-
-  // ---- rating prompt --------------------------------------------------------------
-  // Leaving a film or a series finale after the credits start asks for a rating on the
-  // page playback returns to. Checked on unmount so every way out counts.
-  const rateCheck = useRef(() => {});
-  rateCheck.current = () => {
-    if (!item || !user) return;
-    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined, { seasons: readRatingPrefs().rateSeasons });
-    const position = Math.max(live.current.current, startSeconds.current);
-    if (isFinished(position, duration, outro && outro.StartTicks / TICKS_PER_SECOND) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
-  };
-  useEffect(() => () => rateCheck.current(), []);
+  }, [sync, exit]);
 
   // ---- keyboard & remote ----------------------------------------------------------
   useEffect(() => {
@@ -642,13 +696,7 @@ function Player({ id }: { id: string }) {
       }
       const onControl = target.closest(".pc button, .seek, .pmenu");
       // With controls up on TV, the D-pad moves between controls.
-      if (
-        platform === "tv" &&
-        visible &&
-        onControl &&
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) &&
-        !target.classList.contains("seek")
-      ) {
+      if (platform === "tv" && visible && onControl && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && !target.classList.contains("seek")) {
         const dir = ({ ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" } as const)[e.key as "ArrowUp"];
         if (moveFocus(dir)) e.preventDefault();
         poke();
@@ -668,10 +716,12 @@ function Player({ id }: { id: string }) {
           togglePlay();
           break;
         case "MediaPlay":
-          video.current?.play();
+          if (syncRef.current) syncRef.current.unpause();
+          else video.current?.play();
           break;
         case "MediaPause":
-          video.current?.pause();
+          if (syncRef.current) syncRef.current.pause();
+          else video.current?.pause();
           break;
         case "ArrowLeft":
         case "j":
@@ -684,16 +734,11 @@ function Player({ id }: { id: string }) {
           seekBy(10);
           break;
         case "ArrowUp":
-          if (platform === "tv") {
-            poke();
-            root.current?.querySelector<HTMLElement>(".pc__play")?.focus();
-          } else if (video.current) video.current.volume = Math.min(1, video.current.volume + 0.05);
-          break;
         case "ArrowDown":
           if (platform === "tv") {
             poke();
             root.current?.querySelector<HTMLElement>(".pc__play")?.focus();
-          } else if (video.current) video.current.volume = Math.max(0, video.current.volume - 0.05);
+          } else if (video.current) video.current.volume = Math.min(1, Math.max(0, video.current.volume + (e.key === "ArrowUp" ? 0.05 : -0.05)));
           break;
         case "f":
           toggleFullscreen();
@@ -702,15 +747,15 @@ function Player({ id }: { id: string }) {
           if (video.current) video.current.muted = !video.current.muted;
           break;
         case "c":
-          if (stream) selectSubtitle(stream.subtitleIndex !== undefined && stream.subtitleIndex >= 0 ? -1 : (stream.textTracks[0]?.index ?? -1));
+          if (stream) selectSubtitle(toggledSubtitle(stream));
           break;
         case "N":
         case "MediaTrackNext":
-          playItem(next);
+          goNext();
           break;
         case "P":
         case "MediaTrackPrevious":
-          playItem(prev);
+          goPrev();
           break;
         case "s":
           if (activeSegment) seekTo(activeSegment.EndTicks / TICKS_PER_SECOND);
@@ -725,72 +770,7 @@ function Player({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // ---- media session (OS / lock-screen controls) ------------------------------------
-  useEffect(() => {
-    if (!item || !("mediaSession" in navigator)) return;
-    const art = landscapeImage(item, 512);
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: item.Name,
-      artist: item.SeriesName ?? "",
-      album: item.Type === "Episode" ? episodeCode(item) : "",
-      artwork: art ? [{ src: art.url, sizes: "512x288", type: "image/jpeg" }] : [],
-    });
-    const set = (a: MediaSessionAction, h: MediaSessionActionHandler | null) => {
-      try {
-        navigator.mediaSession.setActionHandler(a, h);
-      } catch {
-        /* unsupported action */
-      }
-    };
-    set("play", () => video.current?.play());
-    set("pause", () => video.current?.pause());
-    set("seekbackward", () => seekBy(-10));
-    set("seekforward", () => seekBy(10));
-    set("seekto", (d) => d.seekTime !== undefined && seekTo(d.seekTime));
-    set("nexttrack", next ? () => playItem(next) : null);
-    set("previoustrack", prev ? () => playItem(prev) : null);
-    return () => {
-      navigator.mediaSession.metadata = null;
-    };
-  }, [item, next, prev, seekBy, seekTo, playItem]);
-
-  // ---- desktop app: tray controls -------------------------------------------------------
-  useEffect(() => {
-    const el = video.current;
-    if (!desktop || !item || !el) return;
-    const send = () =>
-      desktop?.setNowPlaying({
-        title: item.Type === "Episode" ? (item.SeriesName ?? item.Name) : item.Name,
-        subtitle: item.Type === "Episode" ? [episodeCode(item), item.Name].filter(Boolean).join(" — ") : item.ProductionYear?.toString(),
-        paused: el.paused,
-        position: el.currentTime,
-        duration,
-        hasNext: Boolean(next),
-        hasPrevious: Boolean(prev),
-      });
-    send();
-    // The tray shows play/pause state; plain progress doesn't need reporting.
-    const events = ["play", "pause", "loadedmetadata"];
-    events.forEach((e) => el.addEventListener(e, send));
-    return () => events.forEach((e) => el.removeEventListener(e, send));
-  }, [item, next, prev, duration, error]);
-  useEffect(() => () => desktop?.setNowPlaying(null), []);
-  useEffect(
-    () =>
-      desktop?.onPlayerCommand((command) => {
-        if (command === "toggle") togglePlay();
-        else if (command === "pause") video.current?.pause();
-        else if (command === "next") playItem(next);
-        else if (command === "previous") playItem(prev);
-      }),
-    [togglePlay, playItem, next, prev],
-  );
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 3000);
-    return () => window.clearTimeout(t);
-  }, [toast]);
+  useOsControls({ video, item, next, prev, duration, error });
 
   // Mouse clicks shouldn't leave a button focused for the keyboard shortcuts to hit.
   // Remote and keyboard users keep focus where they put it.
@@ -809,7 +789,7 @@ function Player({ id }: { id: string }) {
       const x = (e.clientX - rect.left) / rect.width;
       if (now - lastTap.current < 300 && (x < 0.35 || x > 0.65)) {
         seekBy(x < 0.35 ? -10 : 10);
-        setToast(x < 0.35 ? "−10 seconds" : "+10 seconds");
+        notice(x < 0.35 ? "−10 seconds" : "+10 seconds");
       } else if (visible) setVisible(false);
       else poke();
       lastTap.current = now;
@@ -819,38 +799,25 @@ function Player({ id }: { id: string }) {
     poke();
   };
 
-  // ---- render ---------------------------------------------------------------------
-  const audioStreams = streamsOfType(stream?.source, "Audio");
-  const subtitleStreams = streamsOfType(stream?.source, "Subtitle");
-  const logo = item ? logoImage(item, 500) : null;
-  const methodLabel = stream ? { DirectPlay: "Direct Play", DirectStream: "Direct Stream", Transcode: "Transcoding" }[stream.method] : "";
-  const quality = readNumber(QUALITY_KEY, QUALITY_OPTIONS[0].bitrate);
+  const copyDiagnostics = async () => {
+    setMenu(null);
+    notice((await copyText(await buildDiagnostics())) ? "Diagnostics copied" : "Couldn't copy here");
+  };
 
-  if (resolved.isError || error) {
+  if (error) {
     return (
-      <div className="player player--error" ref={root}>
-        <div className="player__message">
-          <JellyfinMark size={44} />
-          <h2>Playback unavailable</h2>
-          <p>{error ?? (resolved.error instanceof Error ? resolved.error.message : "This item couldn't be loaded.")}</p>
-          <div className="player__message-actions">
-            <button className="btn btn--secondary btn--md" onClick={exit} data-autofocus autoFocus>
-              Go back
-            </button>
-            {stream && (
-              <button
-                className="btn btn--primary btn--md"
-                onClick={() => {
-                  setError(null);
-                  reload({ disableDirectPlay: true });
-                }}
-              >
-                Try a compatible stream
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      <PlaybackError
+        message={error}
+        onBack={exit}
+        onRetry={
+          stream
+            ? () => {
+                setError(null);
+                reload({ disableDirectPlay: true });
+              }
+            : undefined
+        }
+      />
     );
   }
 
@@ -876,11 +843,11 @@ function Player({ id }: { id: string }) {
         ))}
       </video>
 
-      {assTrack && stream && <canvas key={`${stream.playSessionId}-${assTrack.index}`} ref={assCanvas} className="player__ass" aria-hidden="true" />}
+      {subs.assTrack && stream && <canvas key={`${stream.playSessionId}-${subs.assTrack.index}`} ref={subs.assCanvas} className="player__ass" aria-hidden="true" />}
 
-      {cueHtml.length > 0 && (
+      {subs.cueHtml.length > 0 && (
         <div className="player__cues" aria-live="off">
-          {cueHtml.map((frag, i) => (
+          {subs.cueHtml.map((frag, i) => (
             <span
               key={i}
               className="player__cue"
@@ -892,9 +859,9 @@ function Player({ id }: { id: string }) {
         </div>
       )}
 
-      {(loading || resolved.isPending) && (
+      {loading && (
         <div className="player__loading">
-          {item && landscapeImage(item, 1280) && !playing && current === 0 ? (
+          {landscapeImage(item, 1280) && !playing && current === 0 ? (
             <div className="player__poster">
               <Artwork image={landscapeImage(item, 1280)} alt="" eager />
             </div>
@@ -905,33 +872,20 @@ function Player({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ---- top bar ---- */}
-      <div className="pc pc--top" onMouseUp={releaseFocus}>
-        <button className="pc__btn" onClick={exit} aria-label="Back">
-          <Icon name="chevronLeft" size={26} />
-        </button>
-        <div className="pc__title">
-          {item?.Type === "Episode" ? (
-            <>
-              <span className="pc__series">{item.SeriesName}</span>
-              <span className="pc__episode">
-                {episodeCode(item)} · {item.Name}
-              </span>
-            </>
-          ) : logo ? (
-            <img className="pc__logo" src={logo.url} alt={item?.Name} />
-          ) : (
-            <span className="pc__series">{item?.Name}</span>
-          )}
-        </div>
-        <button
-          className={`pc__btn pc__menu-trigger ${menu === "info" ? "is-active" : ""}`}
-          onClick={() => setMenu(menu === "info" ? null : "info")}
-          aria-label="Playback info"
-        >
-          <Icon name="info" size={22} />
-        </button>
-      </div>
+      <TopBar
+        item={item}
+        menu={menu}
+        setMenu={setMenu}
+        onBack={exit}
+        onMouseUp={releaseFocus}
+        badge={
+          sync && (
+            <span className="pc__together" title={sync.group.Participants.join(", ")}>
+              <Icon name="users" size={16} /> {sync.group.GroupName} · {sync.group.Participants.length}
+            </span>
+          )
+        }
+      />
 
       {activeSegment && (
         <button className="player__skip" onClick={() => seekTo(activeSegment.EndTicks / TICKS_PER_SECOND)} data-autofocus>
@@ -940,7 +894,7 @@ function Player({ id }: { id: string }) {
         </button>
       )}
 
-      {stillWatching && next && (
+      {upNext.stillWatching && next && (
         <div className="upnext upnext--still fade-in" role="dialog" aria-label="Still watching?">
           <div className="upnext__text">
             <span className="eyebrow">Paused</span>
@@ -949,14 +903,7 @@ function Player({ id }: { id: string }) {
               Next: {episodeCode(next)} · {next.Name}
             </span>
             <div className="upnext__actions">
-              <button
-                className="btn btn--primary btn--sm"
-                autoFocus
-                onClick={() => {
-                  writeAutoplayChain(0);
-                  playItem(next);
-                }}
-              >
+              <button className="btn btn--primary btn--sm" autoFocus onClick={upNext.keepWatching}>
                 <Icon name="play" size={14} /> Keep watching
               </button>
               <button className="btn btn--ghost btn--sm" onClick={exit}>
@@ -967,20 +914,20 @@ function Player({ id }: { id: string }) {
         </div>
       )}
 
-      {showUpNext && next && !stillWatching && (
+      {upNext.showUpNext && next && !upNext.stillWatching && (
         <div className="upnext fade-in" role="dialog" aria-label="Up next">
           <div className="upnext__thumb">
             <Artwork image={landscapeImage(next, 480)} alt="" />
           </div>
           <div className="upnext__text">
-            <span className="eyebrow">Up next{countdown !== null ? ` · ${countdown}s` : ""}</span>
+            <span className="eyebrow">Up next{upNext.countdown !== null ? ` · ${upNext.countdown}s` : ""}</span>
             <span className="upnext__title">{next.Name}</span>
             <span className="upnext__code">{episodeCode(next)}</span>
             <div className="upnext__actions">
-              <button className="btn btn--primary btn--sm" onClick={() => playItem(next)} autoFocus>
+              <button className="btn btn--primary btn--sm" onClick={() => props.playItem(next)} autoFocus>
                 <Icon name="play" size={14} /> Play now
               </button>
-              <button className="btn btn--ghost btn--sm" onClick={() => setUpNextDismissed(true)}>
+              <button className="btn btn--ghost btn--sm" onClick={upNext.dismiss}>
                 Dismiss
               </button>
             </div>
@@ -988,252 +935,55 @@ function Player({ id }: { id: string }) {
         </div>
       )}
 
-      {/* ---- bottom controls ---- */}
-      <div className="pc pc--bottom" onMouseUp={releaseFocus}>
-        {item && (
-          <Seekbar
-            item={item}
-            mediaSourceId={stream?.source.Id}
-            current={current}
-            duration={duration}
-            buffered={buffered}
-            onSeek={seekTo}
-            onScrub={setScrubbing}
-          />
-        )}
-        <div className="pc__row">
-          <div className="pc__group">
-            {prev && (
-              <button className="pc__btn" onClick={() => playItem(prev)} aria-label="Previous episode" title="Previous episode (Shift+P)">
-                <Icon name="skipPrev" size={22} />
-              </button>
-            )}
-            <button className="pc__btn" onClick={() => seekBy(-10)} aria-label="Back 10 seconds" title="Back 10s (←)">
-              <Icon name="replay10" size={26} />
-            </button>
-            <button
-              className="pc__btn pc__play"
-              onClick={togglePlay}
-              aria-label={playing ? "Pause" : "Play"}
-              title={playing ? "Pause (Space)" : "Play (Space)"}
-            >
-              <Icon name={playing ? "pause" : "play"} size={30} />
-            </button>
-            <button className="pc__btn" onClick={() => seekBy(10)} aria-label="Forward 10 seconds" title="Forward 10s (→)">
-              <Icon name="forward10" size={26} />
-            </button>
-            {next && (
-              <button className="pc__btn" onClick={() => playItem(next)} aria-label="Next episode" title="Next episode (Shift+N)">
-                <Icon name="skipNext" size={22} />
-              </button>
-            )}
-            <div className="pc__volume">
-              <button
-                className="pc__btn"
-                onClick={() => video.current && (video.current.muted = !video.current.muted)}
-                aria-label={muted ? "Unmute" : "Mute"}
-                title="Mute (M)"
-              >
-                <Icon name={muted || volume === 0 ? "volumeOff" : "volume"} size={22} />
-              </button>
-              <input
-                className="pc__volume-range"
-                type="range"
-                min={0}
-                max={1}
-                step={0.02}
-                value={muted ? 0 : volume}
-                onChange={(e) => {
-                  if (!video.current) return;
-                  video.current.volume = Number(e.target.value);
-                  video.current.muted = false;
-                }}
-                aria-label="Volume"
-                style={{ ["--fill" as string]: `${(muted ? 0 : volume) * 100}%` }}
-              />
-            </div>
-            <span className="pc__time">
-              {formatClock(current)} <span className="pc__time-sep">/</span> {formatClock(duration)}
-            </span>
-          </div>
+      <BottomBar
+        item={item}
+        stream={stream}
+        platform={platform}
+        menu={menu}
+        setMenu={setMenu}
+        current={current}
+        duration={duration}
+        buffered={buffered}
+        playing={playing}
+        volume={volume}
+        muted={muted}
+        rate={rate}
+        quality={readQuality(QUALITY_OPTIONS[0].bitrate)}
+        fullscreen={fullscreen}
+        hasPrev={Boolean(sync ? sync.hasPrevious : prev)}
+        hasNext={Boolean(sync ? sync.hasNext : next)}
+        subOffset={subs.subOffset}
+        setSubOffset={subs.setSubOffset}
+        subtitlesAdjustable={Boolean(subs.textTrack || subs.assTrack)}
+        onMouseUp={releaseFocus}
+        onSeek={seekTo}
+        onScrub={setScrubbing}
+        onSeekBy={seekBy}
+        onTogglePlay={togglePlay}
+        onPrev={goPrev}
+        onNext={goNext}
+        onToggleMute={() => video.current && (video.current.muted = !video.current.muted)}
+        onVolume={(v) => {
+          if (!video.current) return;
+          video.current.volume = v;
+          video.current.muted = false;
+        }}
+        onSubtitle={selectSubtitle}
+        onAudio={selectAudio}
+        onSpeed={(r) => {
+          setRate(r);
+          if (video.current) video.current.playbackRate = r;
+          setMenu(null);
+        }}
+        onQuality={selectQuality}
+        onVersion={selectVersion}
+        onPip={document.pictureInPictureEnabled && platform !== "tv" ? () => video.current?.requestPictureInPicture().catch(() => {}) : undefined}
+        onFullscreen={toggleFullscreen}
+      />
 
-          <div className="pc__group pc__group--end">
-            {subtitleStreams.length > 0 && (
-              <button
-                className={`pc__btn pc__menu-trigger ${menu === "subtitles" ? "is-active" : ""}`}
-                onClick={() => setMenu(menu === "subtitles" ? null : "subtitles")}
-                aria-label="Subtitles"
-                title="Subtitles (C)"
-              >
-                <Icon name="subtitles" size={22} />
-              </button>
-            )}
-            {audioStreams.length > 1 && (
-              <button
-                className={`pc__btn pc__menu-trigger ${menu === "audio" ? "is-active" : ""}`}
-                onClick={() => setMenu(menu === "audio" ? null : "audio")}
-                aria-label="Audio track"
-                title="Audio"
-              >
-                <Icon name="audio" size={22} />
-              </button>
-            )}
-            <button
-              className={`pc__btn pc__menu-trigger ${menu === "speed" ? "is-active" : ""}`}
-              onClick={() => setMenu(menu === "speed" ? null : "speed")}
-              aria-label="Playback speed"
-              title="Speed"
-            >
-              <Icon name="speed" size={22} />
-            </button>
-            <button
-              className={`pc__btn pc__menu-trigger ${menu === "quality" ? "is-active" : ""}`}
-              onClick={() => setMenu(menu === "quality" ? null : "quality")}
-              aria-label="Quality"
-              title="Quality"
-            >
-              <Icon name="sliders" size={22} />
-            </button>
-            {document.pictureInPictureEnabled && platform !== "tv" && (
-              <button
-                className="pc__btn"
-                onClick={() => video.current?.requestPictureInPicture().catch(() => {})}
-                aria-label="Picture in picture"
-                title="Picture in picture"
-              >
-                <Icon name="pip" size={22} />
-              </button>
-            )}
-            {platform !== "tv" && (
-              <button className="pc__btn" onClick={toggleFullscreen} aria-label={fullscreen ? "Exit full screen" : "Full screen"} title="Full screen (F)">
-                <Icon name={fullscreen ? "fullscreenExit" : "fullscreen"} size={22} />
-              </button>
-            )}
-          </div>
-        </div>
+      {menu === "info" && stream && <PlaybackInfo stream={stream} onCopyDiagnostics={copyDiagnostics} />}
 
-        {menu === "subtitles" && stream && (
-          <PlayerMenu
-            title="Subtitles"
-            value={stream.subtitleIndex ?? -1}
-            onChange={selectSubtitle}
-            onClose={() => setMenu(null)}
-            options={[
-              { value: -1, label: "Off" },
-              ...subtitleStreams.map((s) => ({
-                value: s.Index,
-                label: s.DisplayTitle || s.Language || `Track ${s.Index}`,
-                detail: [s.IsForced && "Forced", s.IsExternal && "External", !subtitleIsText(s) && "Burned in"].filter(Boolean).join(" · ") || undefined,
-              })),
-            ]}
-            footer={
-              textTrack || assTrack ? (
-                <div className="pmenu__offset">
-                  <span>Sync</span>
-                  <button className="pc__btn pc__btn--sm" onClick={() => setSubOffset((o) => Math.round((o - 0.1) * 10) / 10)} aria-label="Subtitles earlier">
-                    −
-                  </button>
-                  <span className="pmenu__offset-value">
-                    {subOffset > 0 ? "+" : ""}
-                    {subOffset.toFixed(1)}s
-                  </span>
-                  <button className="pc__btn pc__btn--sm" onClick={() => setSubOffset((o) => Math.round((o + 0.1) * 10) / 10)} aria-label="Subtitles later">
-                    +
-                  </button>
-                  {subOffset !== 0 && (
-                    <button className="pmenu__reset" onClick={() => setSubOffset(0)}>
-                      Reset
-                    </button>
-                  )}
-                </div>
-              ) : stream.subtitleIndex !== undefined && stream.subtitleIndex >= 0 ? (
-                <span className="pmenu__hint">Burned-in subtitles can't be re-timed.</span>
-              ) : null
-            }
-          />
-        )}
-        {menu === "audio" && stream && (
-          <PlayerMenu
-            title="Audio"
-            value={stream.audioIndex ?? -1}
-            onChange={selectAudio}
-            onClose={() => setMenu(null)}
-            options={audioStreams.map((s) => ({
-              value: s.Index,
-              label: s.DisplayTitle || s.Language || `Track ${s.Index}`,
-              detail: s.IsDefault ? "Default" : undefined,
-            }))}
-          />
-        )}
-        {menu === "speed" && (
-          <PlayerMenu
-            title="Speed"
-            value={rate}
-            onChange={(r) => {
-              setRate(r);
-              if (video.current) video.current.playbackRate = r;
-              setMenu(null);
-            }}
-            onClose={() => setMenu(null)}
-            options={SPEEDS.map((s) => ({ value: s, label: s === 1 ? "Normal" : `${s}×` }))}
-          />
-        )}
-        {menu === "quality" && (
-          <PlayerMenu
-            title="Quality"
-            value={quality}
-            onChange={selectQuality}
-            onClose={() => setMenu(null)}
-            options={QUALITY_OPTIONS.map((q) => ({
-              value: q.bitrate,
-              label: q.label,
-              detail: q.bitrate === QUALITY_OPTIONS[0].bitrate ? "Direct play when possible" : undefined,
-            }))}
-          />
-        )}
-      </div>
-
-      {menu === "info" && stream && (
-        <div className="pinfo fade-in" role="dialog" aria-label="Playback info">
-          <div className="pmenu__title">Playback</div>
-          <dl>
-            <div>
-              <dt>Method</dt>
-              <dd>{methodLabel}</dd>
-            </div>
-            {stream.transcodeReasons.length > 0 && (
-              <div>
-                <dt>Reason</dt>
-                <dd>{stream.transcodeReasons.map((r) => r.replace(/([a-z])([A-Z])/g, "$1 $2")).join(", ")}</dd>
-              </div>
-            )}
-            <div>
-              <dt>Container</dt>
-              <dd>{stream.source.Container?.toUpperCase()}</dd>
-            </div>
-            {streamsOfType(stream.source, "Video")[0] && (
-              <div>
-                <dt>Video</dt>
-                <dd>{streamsOfType(stream.source, "Video")[0].DisplayTitle}</dd>
-              </div>
-            )}
-            {audioStreams.find((a) => a.Index === stream.audioIndex) && (
-              <div>
-                <dt>Audio</dt>
-                <dd>{audioStreams.find((a) => a.Index === stream.audioIndex)!.DisplayTitle}</dd>
-              </div>
-            )}
-            {stream.source.Bitrate && (
-              <div>
-                <dt>Bitrate</dt>
-                <dd>{(stream.source.Bitrate / 1_000_000).toFixed(1)} Mbps</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      )}
-
-      {toast && <div className="toast">{toast}</div>}
+      <ToastHost />
     </div>
   );
 }

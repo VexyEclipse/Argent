@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Updates: Argent installs a newer APK from its GitHub releases, after asking. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- One APK for TVs and phones: neither a remote nor a touchscreen is required. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -29,5 +31,18 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- The native player (Media3), opened by the web app for each title. -->
+        <activity
+            android:name=".PlayerActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Argent.Player" />
+
+        <receiver
+            android:name=".Updater$InstallResult"
+            android:exported="false" />
     </application>
 </manifest>

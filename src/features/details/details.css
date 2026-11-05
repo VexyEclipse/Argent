@@ -172,6 +172,25 @@
   gap: var(--sp-3);
   margin-top: var(--sp-3);
 }
+.hero__version {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  max-width: 100%;
+}
+.hero__version-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+.hero__version .select {
+  min-width: 0;
+  max-width: min(520px, 100%);
+}
 .hero__progress {
   width: min(320px, 100%);
   height: 3px;

@@ -60,6 +60,15 @@ android {
     }
 }
 
+// The native player: Media3 (ExoPlayer) with HLS for server transcodes, and its UI.
+val media3 = "1.8.0"
+
+dependencies {
+    implementation("androidx.media3:media3-exoplayer:$media3")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3")
+    implementation("androidx.media3:media3-ui:$media3")
+}
+
 tasks.named("preBuild") {
     doFirst {
         check(dist.resolve("index.html").exists()) { "dist/ is missing: run `npm run build` in the Argent folder first." }

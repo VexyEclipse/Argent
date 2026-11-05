@@ -14,22 +14,13 @@ import { refreshUpcoming, setUpcomingPref, useUpcomingEntries, useUpcomingPrefs 
 import { desktop, useDesktopInfo, type DesktopInfo, type UpdateStatus } from "@/platform/desktop";
 import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
+import { androidApp } from "@/platform/android";
+import { AndroidSection, HelpSection } from "./DeviceSections";
 import { MediaProfile } from "./MediaProfile";
+import { Toggle } from "./Toggle";
 import "./profile.css";
 
 const LANGUAGES: [string, string][] = [["", "Any / server default"], ...LANGUAGE_LIST];
-
-function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div className="setting">
-      <div className="setting__text">
-        <span className="setting__label">{label}</span>
-        {hint && <span className="setting__hint">{hint}</span>}
-      </div>
-      <button className="switch" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} />
-    </div>
-  );
-}
 
 function updateLabel(status: UpdateStatus): string {
   switch (status.state) {
@@ -94,7 +85,7 @@ function ComingUpSection({ userId }: { userId: string }) {
 }
 
 /** Settings that only exist in the Argent desktop app. */
-function DesktopSection({ info, setSetting }: { info: DesktopInfo; setSetting: ReturnType<typeof useDesktopInfo>["setSetting"] }) {
+function DesktopSection({ info, setSetting, refresh }: { info: DesktopInfo; setSetting: ReturnType<typeof useDesktopInfo>["setSetting"]; refresh: () => void }) {
   const { settings, update } = info;
   const busy = update.state === "checking" || update.state === "downloading";
   return (
@@ -128,6 +119,34 @@ function DesktopSection({ info, setSetting }: { info: DesktopInfo; setSetting: R
         checked={settings.closeToTray}
         onChange={(v) => setSetting("closeToTray", v)}
       />
+      {/* Desktop apps before 0.7 have no mpv support. */}
+      {settings.useMpv !== undefined && (
+        <>
+          <Toggle
+            label="Play in mpv"
+            hint={
+              info.mpv
+                ? "Plays every format directly, with HDR, surround passthrough and every subtitle type. Argent still saves your progress and plays the next episode."
+                : "Install mpv (mpv.io) to play every format directly, then choose it here."
+            }
+            checked={settings.useMpv}
+            onChange={(v) => setSetting("useMpv", v)}
+          />
+          {settings.useMpv && (
+            <div className="setting">
+              <div className="setting__text">
+                <span className="setting__label">mpv</span>
+                <span className="setting__hint">{info.mpv ?? "Not found. Choose mpv.exe."}</span>
+              </div>
+              {desktop?.chooseMpv && (
+                <Button variant="secondary" size="sm" onClick={() => desktop?.chooseMpv?.().then(refresh)}>
+                  Choose…
+                </Button>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -299,7 +318,9 @@ export default function ProfilePage() {
 
           <ComingUpSection userId={user.Id} />
 
-          {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} />}
+          {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} refresh={desktopApp.refresh} />}
+
+          {androidApp && <AndroidSection />}
 
           <section className="panel profile__section">
             <h2 className="profile__title">Ratings</h2>
@@ -331,6 +352,8 @@ export default function ProfilePage() {
               </Button>
             </div>
           </section>
+
+          <HelpSection />
 
           <section className="panel profile__section">
             <h2 className="profile__title">Account</h2>

@@ -1,23 +1,30 @@
 import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
+import { logEvent } from "@/features/diagnostics/log";
 import { isAssCodec } from "./assRenderer";
 import { buildDeviceProfile, capabilities } from "./deviceProfile";
+import { asVtt, builtTracks, clientDelivered, deliveryOf, fontAttachments, pickSource, serverWork, type PlayMethod } from "./streamPlan";
 
-const FONT_TYPES = /font|opentype|truetype|.(ttf|otf|ttc|woff2?)/i;
-
-export type PlayMethod = "DirectPlay" | "DirectStream" | "Transcode";
+export type { PlayMethod };
 
 export interface StreamOptions {
   startTicks: number;
   audioIndex?: number;
   subtitleIndex?: number;
   maxBitrate: number;
+  /** Which version of the title to play (its media source id); the first when unset. */
+  mediaSourceId?: string;
   /** Set after a direct-play failure so the server remuxes or transcodes instead. */
   disableDirectPlay?: boolean;
   /** Burn ASS/SSA in on the server (when the in-browser renderer can't run). */
   burnInSubtitles?: boolean;
   /** Set after a stream played without sound: the server converts the audio to AAC. */
   compatibleAudio?: boolean;
+  /**
+   * The device profile for a player other than this page's own (the Android app's native
+   * player, mpv). Such a player picks audio and subtitle tracks within the file itself.
+   */
+  profile?: Record<string, unknown>;
 }
 
 export interface StreamInfo {
@@ -25,6 +32,8 @@ export interface StreamInfo {
   hls: boolean;
   method: PlayMethod;
   source: MediaSource;
+  /** Every version of the title, for the version menu. */
+  versions: MediaSource[];
   playSessionId: string;
   audioIndex?: number;
   subtitleIndex?: number;
@@ -94,24 +103,24 @@ function withAuth(path: string): string {
   return url.toString();
 }
 
-const clientDelivered = (s: MediaStream) => s.Type === "Subtitle" && (s.DeliveryMethod === "External" || s.DeliveryMethod === "Hls") && Boolean(s.DeliveryUrl);
-
 function textTracksOf(source: MediaSource): StreamInfo["textTracks"] {
   return source.MediaStreams.filter((s) => clientDelivered(s) && !isAssCodec(s.Codec)).map((s) => ({
     index: s.Index,
     label: s.DisplayTitle || s.Language || `Subtitle ${s.Index}`,
     language: s.Language,
-    url: withAuth(s.DeliveryUrl!.replace(/\.(srt|subrip|ass|ssa|ttml)(\?|$)/i, ".vtt$2")),
+    url: withAuth(asVtt(s.DeliveryUrl!)),
   }));
 }
 
 export async function requestStream(item: BaseItem, opts: StreamOptions): Promise<StreamInfo> {
   // The server only honours explicit track choices when the media source is named;
   // without it, it quietly substitutes the user's remembered tracks.
-  const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;
+  const versions = item.MediaSources ?? [];
+  const mediaSourceId = pickSource(versions, opts.mediaSourceId)?.Id ?? item.Id;
+  const external = Boolean(opts.profile);
   const info = await getPlaybackInfo(item.Id, {
     MediaSourceId: mediaSourceId,
-    DeviceProfile: buildDeviceProfile(opts.maxBitrate, { burnInAss: opts.burnInSubtitles, compatibleAudio: opts.compatibleAudio }),
+    DeviceProfile: opts.profile ?? buildDeviceProfile(opts.maxBitrate, { burnInAss: opts.burnInSubtitles, compatibleAudio: opts.compatibleAudio }),
     MaxStreamingBitrate: opts.maxBitrate,
     StartTimeTicks: opts.startTicks,
     AudioStreamIndex: opts.audioIndex,
@@ -132,6 +141,7 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
       NoCompatibleStream: "The server couldn't produce a stream this device can play.",
       RateLimitExceeded: "The server's streaming limit has been reached.",
     };
+    logEvent("playback", `PlaybackInfo error ${info.ErrorCode} for ${item.Id}`, "error");
     throw new Error(messages[info.ErrorCode] ?? `Playback failed (${info.ErrorCode}).`);
   }
   const source = info.MediaSources[0];
@@ -140,24 +150,16 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
   const c = client();
   const audioIndex = opts.audioIndex ?? source.DefaultAudioStreamIndex;
   const subtitleIndex = opts.subtitleIndex ?? source.DefaultSubtitleStreamIndex;
-  // Browsers play a file's own default audio track and can't draw image or styled
-  // (ASS) subtitles. Either choice needs a server-built stream. Note the server echoes
-  // the requested track back as "DefaultAudioStreamIndex", so compare with the file.
-  const audioStreams = source.MediaStreams.filter((s) => s.Type === "Audio");
-  const fileDefaultAudio = (audioStreams.find((s) => s.IsDefault) ?? audioStreams[0])?.Index;
-  const needsServerAudio = audioIndex !== undefined && audioStreams.length > 1 && audioIndex !== fileDefaultAudio;
-  const subtitle = source.MediaStreams.find((s) => s.Type === "Subtitle" && s.Index === subtitleIndex);
-  const needsBurnIn = subtitle?.DeliveryMethod === "Encode";
-  if ((needsServerAudio || needsBurnIn) && !opts.disableDirectPlay && (source.SupportsDirectPlay || !source.TranscodingUrl)) {
+  // A native player switches the file's own tracks itself, so only this page's player
+  // needs the server to build a stream for a track choice.
+  const work = external ? { audio: false, burnIn: false } : serverWork(source, audioIndex, subtitleIndex);
+  if ((work.audio || work.burnIn) && !opts.disableDirectPlay && (source.SupportsDirectPlay || !source.TranscodingUrl)) {
     return requestStream(item, { ...opts, audioIndex, subtitleIndex, disableDirectPlay: true });
   }
 
-  // Same precedence as jellyfin-web: Direct Play, then Direct Stream, then Transcode.
+  const method = deliveryOf(source);
   let url: string;
-  let method: PlayMethod;
-  let hls = false;
-  if (source.SupportsDirectPlay) {
-    method = "DirectPlay";
+  if (method === "DirectPlay") {
     url = c.url(`/Videos/${item.Id}/stream.${(source.Container || "mp4").split(",")[0]}`, {
       static: true,
       mediaSourceId: source.Id,
@@ -166,8 +168,7 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
       Tag: source.ETag,
       ApiKey: c.accessToken ?? "",
     });
-  } else if (source.SupportsDirectStream && !source.TranscodingUrl) {
-    method = "DirectStream";
+  } else if (method === "DirectStream") {
     url = c.url(`/Videos/${item.Id}/stream`, {
       static: true,
       mediaSourceId: source.Id,
@@ -177,36 +178,32 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
       ApiKey: c.accessToken ?? "",
       audioStreamIndex: audioIndex,
     });
-  } else if (source.TranscodingUrl) {
-    url = withAuth(source.TranscodingUrl);
-    hls = source.TranscodingSubProtocol === "hls" || /\.m3u8/.test(source.TranscodingUrl);
-    method = "Transcode";
+  } else if (method === "Transcode") {
+    url = withAuth(source.TranscodingUrl!);
   } else {
     throw new Error("The server didn't offer a playable stream.");
   }
 
-  const params = method === "Transcode" && source.TranscodingUrl ? new URL(withAuth(source.TranscodingUrl)).searchParams : null;
-  const reasons = params?.get("TranscodeReasons")?.split(",") ?? [];
-  // Report the tracks the server actually built the stream with, not just what was asked.
-  const urlAudio = params?.get("AudioStreamIndex");
-  const urlSubtitle = params?.get("SubtitleStreamIndex");
-  const actualAudio = urlAudio ? Number(urlAudio) : audioIndex;
-  const actualSubtitle = params && needsBurnIn ? (urlSubtitle ? Number(urlSubtitle) : -1) : subtitleIndex;
+  const transcodeUrl = method === "Transcode" ? url : null;
+  const built = builtTracks(transcodeUrl, { audioIndex, subtitleIndex }, work.burnIn);
+  logEvent(
+    "playback",
+    `${item.Type} ${item.Id}: ${method}${built.reasons.length ? ` (${built.reasons.join(", ")})` : ""}, ${source.Container}, source ${source.Id}${external ? ", external player" : ""}`,
+  );
 
   return {
     url,
-    hls,
+    hls: method === "Transcode" && (source.TranscodingSubProtocol === "hls" || /\.m3u8/.test(url)),
     method,
     source,
+    versions: versions.length ? versions : [source],
     playSessionId: info.PlaySessionId,
-    audioIndex: actualAudio,
-    subtitleIndex: actualSubtitle,
-    transcodeReasons: reasons,
+    audioIndex: built.audioIndex,
+    subtitleIndex: built.subtitleIndex,
+    transcodeReasons: built.reasons,
     textTracks: textTracksOf(source),
     assTracks: source.MediaStreams.filter((s) => clientDelivered(s) && isAssCodec(s.Codec)).map((s) => ({ index: s.Index, url: withAuth(s.DeliveryUrl!) })),
-    fonts: (source.MediaAttachments ?? [])
-      .filter((a) => a.DeliveryUrl && FONT_TYPES.test(`${a.MimeType ?? ""} ${a.FileName ?? ""}`))
-      .map((a) => withAuth(a.DeliveryUrl!)),
+    fonts: fontAttachments(source).map(withAuth),
   };
 }
 
@@ -214,7 +211,6 @@ export function streamsOfType(source: MediaSource | undefined, type: MediaStream
   return source?.MediaStreams.filter((s) => s.Type === type) ?? [];
 }
 
-/** Whether a subtitle can be shown client-side (WebVTT track) or must be burned in. */
 /** Whether a subtitle is shown client-side (WebVTT track or libass) rather than burned in. */
 export function subtitleIsText(stream: MediaStream): boolean {
   return (

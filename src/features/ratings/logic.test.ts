@@ -5,14 +5,17 @@ import {
   isFinished,
   mergeCustomPrefs,
   mergeStates,
+  moveWithinScore,
   nextEntry,
   normalise,
   ratingStats,
   ratingTarget,
+  setOrder,
   shouldPrompt,
   sortRatings,
   toCustomPrefs,
   toggleShowcase,
+  topTiers,
   type RatingEntry,
 } from "./logic";
 
@@ -127,7 +130,7 @@ describe("server mirror", () => {
       seriesId: "s",
       seasonNumber: 2,
     };
-    const state = { ratings: { a: rich }, skipped: { b: 5 }, removed: { c: 7 }, showcase: { ids: ["a"], at: 3 } };
+    const state = { ratings: { a: rich }, skipped: { b: 5 }, removed: { c: 7 }, showcase: { ids: ["a"], at: 3 }, order: { ids: ["a"], at: 4 } };
     expect(mergeCustomPrefs(emptyRatings(), toCustomPrefs(state))).toEqual(state);
   });
   it("upgrades states saved before newer fields existed", () => {
@@ -173,5 +176,52 @@ describe("profile helpers", () => {
     expect(stats.average).toBeCloseTo(26 / 3);
     expect(stats.distribution[7]).toBe(2);
     expect(stats.distribution[9]).toBe(1);
+  });
+});
+
+describe("ordering within a score", () => {
+  const e = (stars: number, ratedAt: number) => ({ stars, ratedAt, name: `n${stars}-${ratedAt}`, type: "Movie" as const });
+  const entries: [string, ReturnType<typeof e>][] = [
+    ["a", e(10, 1)],
+    ["b", e(10, 2)],
+    ["c", e(10, 3)],
+    ["d", e(9, 4)],
+    ["f", e(9, 5)],
+    ["g", e(8, 6)],
+  ];
+  const ids = (list: [string, unknown][]) => list.map(([id]) => id);
+
+  it("breaks ties by your order, never across scores", () => {
+    expect(ids(sortRatings(entries, "stars"))).toEqual(["c", "b", "a", "f", "d", "g"]);
+    expect(ids(sortRatings(entries, "stars", ["a", "d", "c"]))).toEqual(["a", "c", "b", "d", "f", "g"]);
+    // An order that puts a 9 first still can't lift it above the 10s.
+    expect(ids(sortRatings(entries, "stars", ["g", "d", "a"]))).toEqual(["a", "c", "b", "d", "f", "g"]);
+  });
+
+  it("moves a title one place within its score only", () => {
+    const ranked = sortRatings(entries, "stars");
+    expect(moveWithinScore(ranked, "b", -1)).toEqual(["b", "c", "a", "f", "d", "g"]);
+    expect(moveWithinScore(ranked, "a", 1)).toBeNull(); // the last 10 can't drop into the 9s
+    expect(moveWithinScore(ranked, "f", -1)).toBeNull(); // the first 9 can't rise into the 10s
+    expect(moveWithinScore(ranked, "c", -1)).toBeNull();
+    expect(moveWithinScore(ranked, "missing", 1)).toBeNull();
+  });
+
+  it("shows whole scores around the top 10 cut", () => {
+    const ranked = sortRatings(entries, "stars");
+    const tiers = topTiers(ranked, 4);
+    expect(tiers.map((t) => t.stars)).toEqual([10, 9]);
+    // The 9 at rank 5 is outside the top 4 but can be moved up into it.
+    expect(tiers[1].titles.map((t) => [t.id, t.rank])).toEqual([
+      ["f", 4],
+      ["d", 5],
+    ]);
+  });
+
+  it("syncs the newer order", () => {
+    const local = setOrder(emptyRatings(), ["a"], 10);
+    const remote = toCustomPrefs(setOrder(emptyRatings(), ["b", "a"], 20));
+    expect(mergeCustomPrefs(local, remote).order).toEqual({ ids: ["b", "a"], at: 20 });
+    expect(mergeCustomPrefs(setOrder(emptyRatings(), ["c"], 30), remote).order.ids).toEqual(["c"]);
   });
 });

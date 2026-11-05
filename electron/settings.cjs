@@ -10,6 +10,10 @@ const DEFAULTS = {
   closeToTray: false,
   /** Download updates in the background and install them on quit. */
   autoUpdate: true,
+  /** Play in mpv (when it's installed) instead of the app's own player. */
+  useMpv: false,
+  /** mpv.exe chosen by hand; empty to look in the usual places. */
+  mpvPath: "",
 };
 
 const file = () => path.join(app.getPath("userData"), "settings.json");

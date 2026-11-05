@@ -6,6 +6,10 @@ import { useEffect, useState } from "react";
 export interface DesktopSettings {
   closeToTray: boolean;
   autoUpdate: boolean;
+  /** Play in mpv instead of the app's own player (when mpv is installed). */
+  useMpv: boolean;
+  /** mpv.exe chosen by hand; empty to find it automatically. */
+  mpvPath: string;
 }
 
 export type UpdateStatus =
@@ -19,6 +23,8 @@ export interface DesktopInfo {
   version: string;
   settings: DesktopSettings;
   update: UpdateStatus;
+  /** The mpv that would be used (found or chosen), or null when there is none. */
+  mpv: string | null;
 }
 
 export interface NowPlaying {
@@ -44,6 +50,12 @@ interface DesktopBridge {
   download(url: string): Promise<void>;
   setNowPlaying(info: NowPlaying | null): void;
   onPlayerCommand(fn: (command: PlayerCommand) => void): () => void;
+  /** Plays in mpv; resolves when mpv closes. Absent in desktop apps older than 0.7. */
+  playExternal?(request: unknown): Promise<unknown>;
+  onExternalState?(fn: (state: unknown) => void): () => void;
+  controlExternal?(command: unknown): void;
+  /** Lets the viewer pick mpv.exe; resolves to the new info. */
+  chooseMpv?(): Promise<DesktopInfo>;
 }
 
 export const desktop: DesktopBridge | null = (window as unknown as { argentDesktop?: DesktopBridge }).argentDesktop ?? null;
@@ -65,11 +77,15 @@ export function useDesktopInfo() {
   const setSetting = async <K extends keyof DesktopSettings>(key: K, value: DesktopSettings[K]) => {
     if (!desktop) return;
     setInfo((i) => (i ? { ...i, settings: { ...i.settings, [key]: value } } : i));
-    const settings = await desktop.setSetting(key, value);
-    setInfo((i) => (i ? { ...i, settings } : i));
+    await desktop.setSetting(key, value);
+    // A setting can change what else the app reports (which mpv it found).
+    setInfo(await desktop.getInfo());
+  };
+  const refresh = () => {
+    desktop?.getInfo().then(setInfo);
   };
 
-  return { info, setSetting };
+  return { info, setSetting, refresh };
 }
 
 /** The latest update status alone (for the "restart to update" prompt). */

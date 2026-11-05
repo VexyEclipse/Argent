@@ -28,7 +28,7 @@ export function YearInReview({ data, ratings, items, years, userName, onClose }:
   const [index, setIndex] = useState(0);
   const review = useMemo(() => computeYearReview(data, year), [data, year]);
   const rated = useMemo(
-    () => sortRatings(Object.entries(ratings.ratings), "stars").filter(([, e]) => isTitle(e) && new Date(e.ratedAt).getFullYear() === year),
+    () => sortRatings(Object.entries(ratings.ratings), "stars", ratings.order.ids).filter(([, e]) => isTitle(e) && new Date(e.ratedAt).getFullYear() === year),
     [ratings, year],
   );
   const average = rated.length ? rated.reduce((s, [, e]) => s + e.stars, 0) / rated.length : 0;

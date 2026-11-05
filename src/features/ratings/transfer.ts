@@ -18,7 +18,7 @@ export function fromJson(text: string): RatingsState | null {
     const parsed = JSON.parse(text);
     if (parsed?.app !== "argent" || !parsed.ratings) return null;
     const state = normalise(parsed);
-    return { ...emptyRatings(), ratings: state.ratings, showcase: state.showcase };
+    return { ...emptyRatings(), ratings: state.ratings, showcase: state.showcase, order: state.order };
   } catch {
     return null;
   }

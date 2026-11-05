@@ -1,5 +1,5 @@
 import { pingPlayback, reportPlaybackProgress, reportPlaybackStart, reportPlaybackStopped, stopEncoding } from "@/api/jellyfin";
-import type { PlayMethod } from "./playback";
+import type { PlayMethod } from "./streamPlan";
 
 const TICKS = 10_000_000;
 
@@ -67,6 +67,15 @@ export class PlaybackReporter {
     }
     window.clearInterval(this.timer);
     this.timer = window.setInterval(() => this.tick(), 10_000);
+  }
+
+  /**
+   * Progress plus the transcode keep-alive, for a player outside the page that pushes
+   * its state (a hidden page's own timers get throttled).
+   */
+  heartbeat() {
+    window.clearInterval(this.timer);
+    return this.tick();
   }
 
   private async tick() {

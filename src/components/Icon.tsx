@@ -206,6 +206,35 @@ const PATHS = {
       <path d="m4.5 16.5 4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5M15 9.5h.01" />
     </>
   ),
+  cast: (
+    <>
+      <path d="M3.5 8V6.5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H14" />
+      <path d="M3.5 12a8 8 0 0 1 8 8M3.5 15.5a4.5 4.5 0 0 1 4.5 4.5M3.5 19.5h.01" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="9" cy="8.5" r="3.5" />
+      <path d="M3 19.5a6 6 0 0 1 12 0M16 5.2a3.5 3.5 0 0 1 0 6.6M18 14.2a6 6 0 0 1 3 5.3" />
+    </>
+  ),
+  remote: (
+    <>
+      <rect x="7.5" y="2.5" width="9" height="19" rx="3" />
+      <circle cx="12" cy="8" r="2" />
+      <path d="M10.5 13.5h.01M13.5 13.5h.01M10.5 16.5h.01M13.5 16.5h.01" />
+    </>
+  ),
+  stop: <rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />,
+  layers: <path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4ZM3.5 12.5 12 17l8.5-4.5M3.5 16.5 12 21l8.5-4.5" />,
+  bug: (
+    <>
+      <rect x="7.5" y="7.5" width="9" height="12" rx="4.5" />
+      <path d="M9 7.5a3 3 0 0 1 6 0M12 11v8.5M4 13h3.5M16.5 13H20M5 8.5l2.8 1.5M19 8.5l-2.8 1.5M5 18l2.8-1.5M19 18l-2.8-1.5" />
+    </>
+  ),
+  arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
+  arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,
 } as const;
 
 export type IconName = keyof typeof PATHS;

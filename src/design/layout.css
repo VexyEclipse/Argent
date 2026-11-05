@@ -308,3 +308,15 @@ html[data-shell="desktop-app"] .mb-settings,
 html[data-shell="desktop-app"] .pinfo {
   margin-top: 8px;
 }
+
+/* The header icon: lit while Play goes elsewhere or a group is active. */
+.nav__icon.is-on,
+.together-link.is-on {
+  color: var(--accent-strong);
+  background: var(--bg-4);
+}
+.mnav__end {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}

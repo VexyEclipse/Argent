@@ -6,6 +6,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { FullScreenLoader } from "@/components/States";
 import { Shell, useTvNavigation } from "@/layouts/Shell";
 import { HomePage } from "@/features/home/HomePage";
+import { TogetherRoot } from "@/features/together/TogetherRoot";
 
 // Everything past the home page loads on demand.
 const BrowsePage = lazy(() => import("@/features/library/BrowsePage"));
@@ -18,6 +19,7 @@ const SearchPage = lazy(() => import("@/features/search/SearchPage"));
 const PlayerPage = lazy(() => import("@/features/player/PlayerPage"));
 const ProfilePage = lazy(() => import("@/features/profile/ProfilePage"));
 const WatchlistPage = lazy(() => import("@/features/watchlist/WatchlistPage"));
+const TogetherPage = lazy(() => import("@/features/together/TogetherPage"));
 
 export function App() {
   const { status } = useAuth();
@@ -28,6 +30,7 @@ export function App() {
 
   return (
     <Suspense fallback={<FullScreenLoader />}>
+      <TogetherRoot />
       <Routes>
         <Route
           path="/play/:id"
@@ -50,6 +53,7 @@ export function App() {
           <Route path="person/:id" element={<PersonPage />} />
           <Route path="search" element={<SearchPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="together" element={<TogetherPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

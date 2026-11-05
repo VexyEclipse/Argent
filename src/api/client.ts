@@ -1,7 +1,7 @@
 import type { ImageType } from "./types";
 
 export const APP_NAME = "Argent";
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = __APP_VERSION__;
 
 export class ApiError extends Error {
   constructor(

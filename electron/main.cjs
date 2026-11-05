@@ -3,13 +3,14 @@
 // work), keeps a dark integrated title bar, and opens outside links in the browser.
 // All media, auth and playback still go to the user's Jellyfin server.
 
-const { app, BrowserWindow, Menu, ipcMain, net, protocol, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, net, protocol, screen, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const settings = require("./settings.cjs");
 const updater = require("./updater.cjs");
 const tray = require("./tray.cjs");
+const mpv = require("./mpv.cjs");
 
 // `npm run desktop:dev` loads the Vite dev server instead of the built files.
 const DEV_URL = process.argv.includes("--dev") ? process.env.ARGENT_DEV_URL || "http://localhost:5173" : null;
@@ -96,11 +97,16 @@ function showWindow() {
   mainWindow.focus();
 }
 
-ipcMain.handle("app:info", () => ({
-  version: app.getVersion(),
-  settings: settings.read(),
-  update: updater.status(),
-}));
+async function appInfo() {
+  return {
+    version: app.getVersion(),
+    settings: settings.read(),
+    update: updater.status(),
+    mpv: (await mpv.findMpv(settings.read().mpvPath)) || null,
+  };
+}
+
+ipcMain.handle("app:info", appInfo);
 
 ipcMain.handle("settings:set", (_e, key, value) => {
   const next = settings.set(key, value);
@@ -116,6 +122,30 @@ ipcMain.handle("download", (e, url) => {
   mainWindow.webContents.downloadURL(url);
 });
 ipcMain.handle("update:check", () => updater.check());
+
+// ---- mpv ----------------------------------------------------------------------------------
+
+ipcMain.handle("mpv:play", async (e, request) => {
+  if (!mainWindow || e.sender !== mainWindow.webContents || !request || typeof request.url !== "string" || !/^https?:\/\//i.test(request.url)) {
+    return { reason: "error", error: "Invalid request", position: 0, paused: false, interacted: false };
+  }
+  const exe = await mpv.findMpv(settings.read().mpvPath);
+  if (!exe) return { reason: "error", error: "mpv isn't installed", position: request.startSeconds || 0, paused: false, interacted: false };
+  const result = await mpv.play(exe, request, (state) => mainWindow?.webContents.send("mpv:state", state));
+  // Back to Argent when mpv closes.
+  showWindow();
+  return result;
+});
+ipcMain.on("mpv:control", (_e, command) => mpv.control(command));
+ipcMain.handle("mpv:choose", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose mpv",
+    properties: ["openFile"],
+    filters: [{ name: "mpv", extensions: process.platform === "win32" ? ["exe"] : ["*"] }],
+  });
+  if (!result.canceled && result.filePaths[0]) settings.set("mpvPath", result.filePaths[0]);
+  return appInfo();
+});
 ipcMain.handle("update:install", () => {
   quitting = true;
   updater.install();
@@ -217,6 +247,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
   quitting = true;
+  mpv.stop();
 });
 
 app.on("window-all-closed", () => app.quit());

@@ -4,6 +4,7 @@ import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.app.UiModeManager;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -28,8 +29,12 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -74,6 +79,8 @@ public class MainActivity extends Activity {
         TYPES.put("txt", "text/plain");
     }
 
+    private static WeakReference<MainActivity> instance = new WeakReference<>(null);
+
     private FrameLayout root;
     private WebView web;
     private View fullscreenView;
@@ -83,6 +90,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        instance = new WeakReference<>(this);
         root = new FrameLayout(this);
         root.setBackgroundColor(BACKGROUND);
         setContentView(root);
@@ -205,8 +213,22 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (instance.get() == this) instance = new WeakReference<>(null);
         web.destroy();
         super.onDestroy();
+    }
+
+    /**
+     * Hands an event to the page (an "argent-native" DOM event): the native player's state
+     * and result, and update progress. Safe from any thread.
+     */
+    static void sendEvent(JSONObject detail) {
+        MainActivity a = instance.get();
+        if (a == null) return;
+        String js = "window.dispatchEvent(new CustomEvent('argent-native',{detail:" + detail + "}))";
+        a.runOnUiThread(() -> {
+            if (a.web != null) a.web.evaluateJavascript(js, null);
+        });
     }
 
     /** window.argentAndroid in the page (src/platform/android.ts). */
@@ -214,6 +236,48 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void exit() {
             runOnUiThread(MainActivity.this::finish);
+        }
+
+        @JavascriptInterface
+        public String version() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (PackageManager.NameNotFoundException e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public String capabilities() {
+            return Capabilities.probe(MainActivity.this, isTv());
+        }
+
+        /** Opens the native player with an ExternalRequest (JSON). */
+        @JavascriptInterface
+        public void play(String request) {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(MainActivity.this, PlayerActivity.class).putExtra(PlayerActivity.EXTRA_REQUEST, request);
+                startActivity(intent);
+            });
+        }
+
+        /** A PlayerCommand (JSON) for the open native player: remote control, Stop. */
+        @JavascriptInterface
+        public void control(String command) {
+            runOnUiThread(() -> {
+                PlayerActivity player = PlayerActivity.current();
+                if (player == null) return;
+                try {
+                    player.control(new JSONObject(command));
+                } catch (JSONException ignored) {
+                    // not a command
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void installUpdate(String url, String version) {
+            runOnUiThread(() -> Updater.install(MainActivity.this, url, version));
         }
     }
 

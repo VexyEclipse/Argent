@@ -382,3 +382,8 @@
 html[data-platform="mobile"] .mp-entry {
   grid-template-columns: 52px 1fr;
 }
+.profile__inline-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}

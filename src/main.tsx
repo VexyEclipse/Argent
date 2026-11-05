@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PlatformProvider } from "@/platform/platform";
 import { AuthProvider } from "@/auth/AuthProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { installErrorLogging } from "@/features/diagnostics/log";
 import { App } from "./App";
 import "@/design/tokens.css";
 import "@/design/base.css";
@@ -14,6 +15,9 @@ import "@/design/layout.css";
 // Running inside the Argent desktop app (Electron): the CSS leaves room for the
 // native window buttons and makes the top bar draggable.
 if (navigator.userAgent.includes("Electron/")) document.documentElement.dataset.shell = "desktop-app";
+
+// Uncaught errors go into the diagnostics report (Profile → Settings → Help).
+installErrorLogging();
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -21,6 +21,7 @@ import { ExportDialog } from "./ExportDialog";
 import { tasteInsights, type TasteInsights } from "./insights";
 import { computeWatchStats, fetchAnimeIds, fetchWatchData, ratingBacklog, reviewYears, type WatchStats } from "./watchStats";
 import { YearInReview } from "./YearInReview";
+import { TopOrderDialog } from "./TopOrderDialog";
 import "./media-profile.css";
 
 type Filter = "all" | "movies" | "series" | "anime" | "seasons";
@@ -518,13 +519,14 @@ export function MediaProfile() {
   const years = useMemo(() => (watch.data ? reviewYears(watch.data) : []), [watch.data]);
   const titles = useMemo(() => all.filter(([, e]) => isTitle(e)), [all]);
   const rated = ratingStats(titles.map(([, e]) => e));
-  const top = useMemo(() => sortRatings(titles, "stars"), [titles]);
+  const top = useMemo(() => sortRatings(titles, "stars", state.order.ids), [titles, state.order.ids]);
+  const [ordering, setOrdering] = useState(false);
   const insights = useMemo(() => tasteInsights(all, byId), [all, byId]);
   const hasSeasons = all.length > titles.length;
   const pinned = state.showcase.ids.filter((id) => state.ratings[id]);
 
   const q = search.trim().toLowerCase();
-  const visible = sortRatings(all, sort).filter(([id, e]) => {
+  const visible = sortRatings(all, sort, state.order.ids).filter(([id, e]) => {
     const isAnime = anime.has(id) || Boolean(e.seriesId && anime.has(e.seriesId));
     if (filter === "anime" && !isAnime) return false;
     if (filter === "movies" && (e.type !== "Movie" || (hasAnime && isAnime))) return false;
@@ -583,9 +585,14 @@ export function MediaProfile() {
               loading={items.isPending}
               className="mp-top"
               actions={
-                <Button variant="secondary" size="sm" icon="image" onClick={() => setExporting(true)} disabled={!items.data}>
-                  Export image
-                </Button>
+                <>
+                  <Button variant="secondary" size="sm" icon="list" onClick={() => setOrdering(true)} disabled={top.length < 2}>
+                    Edit order
+                  </Button>
+                  <Button variant="secondary" size="sm" icon="image" onClick={() => setExporting(true)} disabled={!items.data}>
+                    Export image
+                  </Button>
+                </>
               }
             >
               {top.slice(0, 10).map(([id, e]) => {
@@ -659,6 +666,7 @@ export function MediaProfile() {
       <BackupPanel userId={userId} entries={all} items={byId} />
 
       {rateDialog.dialog}
+      {ordering && <TopOrderDialog userId={userId} ranked={top} items={byId} onClose={() => setOrdering(false)} />}
       {exporting && items.data && <ExportDialog entries={top} items={items.data} userName={user?.Name ?? "My"} onClose={() => setExporting(false)} />}
       {reviewing && watch.data && years.length > 0 && (
         <YearInReview data={watch.data} ratings={state} items={byId} years={years} userName={user?.Name ?? "Your"} onClose={() => setReviewing(false)} />

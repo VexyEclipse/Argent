@@ -37,6 +37,11 @@ export interface RatingsState {
   removed: Record<string, number>;
   /** Up to four pinned favourites shown at the top of the Media profile. */
   showcase: { ids: string[]; at: number };
+  /**
+   * Your own order for titles that share a score (best first). It only ever breaks ties:
+   * a 9 can't be ranked above a 10.
+   */
+  order: { ids: string[]; at: number };
 }
 
 export interface RateTarget {
@@ -68,7 +73,7 @@ export const QUICK_TAGS = [
   "Overhyped",
 ];
 
-export const emptyRatings = (): RatingsState => ({ ratings: {}, skipped: {}, removed: {}, showcase: { ids: [], at: 0 } });
+export const emptyRatings = (): RatingsState => ({ ratings: {}, skipped: {}, removed: {}, showcase: { ids: [], at: 0 }, order: { ids: [], at: 0 } });
 
 /** Fills in fields added after a state was first saved. */
 export function normalise(state: Partial<RatingsState> | null | undefined): RatingsState {
@@ -79,6 +84,7 @@ export function normalise(state: Partial<RatingsState> | null | undefined): Rati
     skipped: state.skipped ?? {},
     removed: state.removed ?? {},
     showcase: state.showcase?.ids ? state.showcase : base.showcase,
+    order: Array.isArray(state.order?.ids) ? state.order : base.order,
   };
 }
 
@@ -166,6 +172,8 @@ export function toggleShowcase(state: RatingsState, id: string, now = Date.now()
 const RATING = "r.";
 const SKIP = "s.";
 const SHOWCASE = "showcase";
+const ORDER = "order";
+export const MAX_ORDER = 400;
 
 type Removed = { removedAt: number };
 
@@ -175,6 +183,7 @@ export function toCustomPrefs(state: RatingsState): Record<string, string> {
   for (const [id, at] of Object.entries(state.removed)) if (!state.ratings[id]) out[RATING + id] = JSON.stringify({ removedAt: at } satisfies Removed);
   for (const [id, at] of Object.entries(state.skipped)) out[SKIP + id] = String(at);
   if (state.showcase.at) out[SHOWCASE] = JSON.stringify(state.showcase);
+  if (state.order.at) out[ORDER] = JSON.stringify(state.order);
   return out;
 }
 
@@ -203,9 +212,20 @@ function readEntry(value: Partial<RatingEntry>): RatingEntry | null {
 }
 
 export function mergeCustomPrefs(local: RatingsState, prefs: Record<string, string | null> | undefined): RatingsState {
-  const merged: RatingsState = { ratings: { ...local.ratings }, skipped: { ...local.skipped }, removed: { ...local.removed }, showcase: local.showcase };
+  const merged: RatingsState = { ratings: { ...local.ratings }, skipped: { ...local.skipped }, removed: { ...local.removed }, showcase: local.showcase, order: local.order };
   for (const [key, raw] of Object.entries(prefs ?? {})) {
     if (!raw) continue;
+    if (key === ORDER) {
+      try {
+        const remote = JSON.parse(raw);
+        if (Array.isArray(remote?.ids) && isNum(remote.at) && remote.at > merged.order.at) {
+          merged.order = { ids: remote.ids.filter((x: unknown) => typeof x === "string").slice(0, MAX_ORDER), at: remote.at };
+        }
+      } catch {
+        /* ignore */
+      }
+      continue;
+    }
     if (key === SHOWCASE) {
       try {
         const remote = JSON.parse(raw);
@@ -255,12 +275,56 @@ export const mergeStates = (local: RatingsState, incoming: RatingsState) => merg
 
 export type RatingSort = "stars" | "recent" | "title";
 
-export function sortRatings(entries: [string, RatingEntry][], sort: RatingSort): [string, RatingEntry][] {
+/**
+ * Sorted by title, recency or score. By score, titles with the same score follow your own
+ * order (see moveWithinScore), then the most recently rated first.
+ */
+export function sortRatings(entries: [string, RatingEntry][], sort: RatingSort, order: readonly string[] = []): [string, RatingEntry][] {
   const list = [...entries];
   if (sort === "title") list.sort((a, b) => a[1].name.localeCompare(b[1].name));
   else if (sort === "recent") list.sort((a, b) => b[1].ratedAt - a[1].ratedAt);
-  else list.sort((a, b) => b[1].stars - a[1].stars || b[1].ratedAt - a[1].ratedAt);
+  else {
+    const rank = new Map(order.map((id, i) => [id, i]));
+    const place = (id: string) => rank.get(id) ?? Infinity;
+    list.sort((a, b) => b[1].stars - a[1].stars || place(a[0]) - place(b[0]) || b[1].ratedAt - a[1].ratedAt);
+  }
   return list;
+}
+
+export interface ScoreTier {
+  stars: number;
+  /** Best first, with each title's place in the overall ranking (1-based). */
+  titles: { id: string; entry: RatingEntry; rank: number }[];
+}
+
+/**
+ * The scores that make up the top `size`, each with all its titles, so a title just
+ * outside the list can be moved up within its score and into it.
+ */
+export function topTiers(ranked: readonly [string, RatingEntry][], size = 10): ScoreTier[] {
+  const cut = ranked.slice(0, size);
+  const scores = [...new Set(cut.map(([, e]) => e.stars))];
+  return scores.map((stars) => ({
+    stars,
+    titles: ranked.map(([id, entry], i) => ({ id, entry, rank: i + 1 })).filter((t) => t.entry.stars === stars),
+  }));
+}
+
+/**
+ * Moves a title one place up or down among the titles with its score; it never crosses
+ * into another score. Returns the new order, or null when it's already at that edge.
+ */
+export function moveWithinScore(ranked: readonly [string, RatingEntry][], id: string, direction: -1 | 1): string[] | null {
+  const i = ranked.findIndex(([x]) => x === id);
+  const j = i + direction;
+  if (i < 0 || j < 0 || j >= ranked.length || ranked[j][1].stars !== ranked[i][1].stars) return null;
+  const ids = ranked.map(([x]) => x);
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  return ids.slice(0, MAX_ORDER);
+}
+
+export function setOrder(state: RatingsState, ids: string[], now = Date.now()): RatingsState {
+  return { ...state, order: { ids: ids.slice(0, MAX_ORDER), at: now } };
 }
 
 export function ratingStats(entries: RatingEntry[]) {

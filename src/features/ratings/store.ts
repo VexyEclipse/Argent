@@ -3,7 +3,7 @@
 // to Jellyfin's own UserData.Rating so other clients see it.
 
 import { client, setUserRating } from "@/api/jellyfin";
-import { emptyRatings, mergeCustomPrefs, mergeStates, nextEntry, normalise, toCustomPrefs, toggleShowcase, type RateTarget, type RatingsState } from "./logic";
+import { emptyRatings, mergeCustomPrefs, mergeStates, nextEntry, normalise, setOrder, toCustomPrefs, toggleShowcase, type RateTarget, type RatingsState } from "./logic";
 
 const PREFS_ID = "argent-ratings";
 const PREFS_CLIENT = "Argent";
@@ -117,6 +117,11 @@ export function removeRating(userId: string, itemId: string) {
 
 export function togglePinned(userId: string, itemId: string) {
   write(userId, toggleShowcase(readRatings(userId), itemId));
+}
+
+/** Your order for titles that share a score (see moveWithinScore). */
+export function saveOrder(userId: string, ids: string[]) {
+  write(userId, setOrder(readRatings(userId), ids));
 }
 
 /** Folds imported ratings in; a newer rating already here is kept. Returns how many changed. */

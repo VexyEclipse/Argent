@@ -12,6 +12,8 @@ import { openMenu } from "@/features/manage/store";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
+import { rememberedVersion, rememberVersion } from "@/features/player/prefs";
+import { pickSource, versionOption } from "@/features/player/streamPlan";
 import { TrailerModal, useTrailer } from "./Trailer";
 import { useItemActions } from "./useItemActions";
 
@@ -61,7 +63,15 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const resumeTicks = target?.UserData?.PlaybackPositionTicks ?? 0;
   const canResume = progress > 0 && progress < 98;
   const placeholder = blurHashToDataUrl(backdrop?.blurHash);
-  const streams = item.MediaSources?.[0]?.MediaStreams ?? item.MediaStreams;
+  // A title with several files (4K and 1080p, theatrical and extended) plays the one chosen here.
+  const versions = target === item ? (item.MediaSources ?? []) : [];
+  const [versionId, setVersionId] = useState(() => rememberedVersion(item.Id));
+  const version = pickSource(versions, versionId);
+  const streams = (version ?? item.MediaSources?.[0])?.MediaStreams ?? item.MediaStreams;
+  const playUrl = (fromStart: boolean) => {
+    const query = [fromStart && "start=0", versions.length > 1 && version && `version=${version.Id}`].filter(Boolean).join("&");
+    return `/play/${target!.Id}${query ? `?${query}` : ""}`;
+  };
 
   const meta: ReactNode[] = [];
   const years = yearRange(item);
@@ -138,12 +148,12 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
 
           <div className="hero__actions">
             {target && (
-              <Button variant="primary" size="lg" icon="play" onClick={() => navigate(`/play/${target.Id}${canResume ? "" : "?start=0"}`)} data-autofocus>
+              <Button variant="primary" size="lg" icon="play" onClick={() => navigate(playUrl(!canResume))} data-autofocus>
                 {playLabel ?? (canResume ? `Resume ${formatClock(resumeTicks / TICKS_PER_SECOND)}` : "Play")}
               </Button>
             )}
             {target && canResume && (
-              <Button variant="secondary" size="lg" onClick={() => navigate(`/play/${target.Id}?start=0`)}>
+              <Button variant="secondary" size="lg" onClick={() => navigate(playUrl(true))}>
                 From start
               </Button>
             )}
@@ -208,6 +218,30 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
               />
             )}
           </div>
+          {versions.length > 1 && version && (
+            <label className="hero__version">
+              <span className="hero__version-label">
+                <Icon name="layers" size={15} /> Version
+              </span>
+              <select
+                className="select select--compact"
+                value={version.Id}
+                onChange={(e) => {
+                  setVersionId(e.target.value);
+                  rememberVersion(item.Id, e.target.value);
+                }}
+              >
+                {versions.map((v, i) => {
+                  const { label, detail } = versionOption(v, i);
+                  return (
+                    <option key={v.Id} value={v.Id}>
+                      {detail ? `${label} — ${detail}` : label}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          )}
           {canResume && (
             <div className="hero__progress" aria-label={`${Math.round(progress)}% watched`}>
               <span style={{ width: `${progress}%` }} />
