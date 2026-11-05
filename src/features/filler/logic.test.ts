@@ -64,3 +64,12 @@ describe("numbering", () => {
     expect([...ids].sort()).toEqual(["s1e2", "s2e2"]);
   });
 });
+
+describe("jikan-edge's camelCase format", () => {
+  it("reads episodes, paging, a flat sequel list and start dates", () => {
+    const page = { data: [{ number: 1, filler: false }, { number: 2, filler: true }], meta: { pagination: { hasNextPage: false } } };
+    expect(parseEpisodePage(page)).toEqual({ filler: [2], last: 2, more: false });
+    expect(parseSequel({ data: [{ relation: "Sequel", malId: 22043, type: "anime" }, { relation: "Adaptation", malId: 598, type: "manga" }] })).toBe(22043);
+    expect(pickSearchMatch({ data: [{ malId: 20, title: "Naruto", startDate: "2002-10-03" }] }, "Naruto", 2002)).toBe(20);
+  });
+});

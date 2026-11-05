@@ -1,7 +1,9 @@
-// Filler episodes for anime, from MyAnimeList through the free Jikan API (api.jikan.moe).
-// A show is looked up by the MyAnimeList id in its metadata (or via AniList, or a careful
-// title search), and its episode list read once a week. Requests carry no cookies, no
-// Jellyfin token and no referrer; results are cached on this device only.
+// Filler episodes for anime, from MyAnimeList's episode lists. Jikan's public API, which
+// served them, shut down in October 2026; two free services carry its format on:
+// jikan-edge (open source, jikan.lucashdo.com) first, and Tenrai (api.tenrai.org) when it
+// can't answer. A show is looked up by the MyAnimeList id in its metadata (or via AniList,
+// or a careful title search), and its episode list read once a week. Requests carry no
+// cookies, no Jellyfin token and no referrer; results are cached on this device only.
 
 import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,11 +12,16 @@ import { isAnimeLibrary } from "@/api/libraries";
 import type { BaseItem } from "@/api/types";
 import { absoluteNumbers, aniListIdOf, fillerEpisodeIds, hasAnimeIds, isTvEntry, malIdOf, parseEpisodePage, parseSequel, pickSearchMatch, type MalPart } from "./logic";
 
-const JIKAN = "https://api.jikan.moe/v4";
+/** In order of preference. Each allows at least 60 requests a minute; stay under that. */
+const SERVICES = [
+  { name: "jikan-edge", base: "https://jikan.lucashdo.com/v1" },
+  { name: "Tenrai", base: "https://api.tenrai.org/v1" },
+];
 const ANILIST = "https://graphql.anilist.co";
-/** Jikan allows 3 requests a second and 60 a minute; stay well under. */
 const MIN_GAP_MS = 1100;
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 8_000;
+/** A service that failed is skipped for this long. */
+const DOWN_FOR_MS = 10 * 60_000;
 const DAY = 86_400_000;
 const FRESH_FOR = 7 * DAY;
 /** Not anime, or not found: asked again after this. */
@@ -104,24 +111,55 @@ function writeCache(seriesId: string, value: Cached) {
 
 // ---- network ------------------------------------------------------------------------------
 
-let lastCall = 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const lastCall = SERVICES.map(() => 0);
+const downUntil = SERVICES.map(() => 0);
 
+/** One request to one service, spaced to stay inside its rate limit. Null for "no such entry". */
+async function ask(service: number, path: string): Promise<unknown | null> {
+  const wait = lastCall[service] + MIN_GAP_MS - Date.now();
+  lastCall[service] = Math.max(Date.now(), lastCall[service] + MIN_GAP_MS);
+  if (wait > 0) await sleep(wait);
+  const response = await fetch(`${SERVICES[service].base}${path}`, { credentials: "omit", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(TIMEOUT_MS) });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`${SERVICES[service].name} ${response.status}`);
+  return response.json();
+}
+
+/**
+ * A request to the first service that answers. One that times out, is rate limited or
+ * errors is set aside for a while, so a dead service costs one wait, not one per request.
+ */
 async function jikan(path: string): Promise<unknown | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const wait = lastCall + MIN_GAP_MS - Date.now();
-    lastCall = Math.max(Date.now(), lastCall + MIN_GAP_MS);
-    if (wait > 0) await sleep(wait);
-    const response = await fetch(`${JIKAN}${path}`, { credentials: "omit", referrerPolicy: "no-referrer", signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if (response.status === 404) return null;
-    if (response.status === 429 || response.status >= 500) {
-      await sleep(3000 * (attempt + 1));
-      continue;
+  let lastError: unknown = new Error("No filler service is reachable");
+  for (let i = 0; i < SERVICES.length; i++) {
+    if (Date.now() < downUntil[i]) continue;
+    try {
+      return await ask(i, path);
+    } catch (e) {
+      downUntil[i] = Date.now() + DOWN_FOR_MS;
+      lastError = e;
     }
-    if (!response.ok) throw new Error(`Jikan ${response.status}`);
-    return response.json();
   }
-  throw new Error("Jikan unavailable");
+  throw lastError;
+}
+
+/** A title search on each service until one finds the show (jikan-edge lists fewer alternative titles). */
+async function search(query: string, name: string, year?: number): Promise<number | null> {
+  let answered = false;
+  for (let i = 0; i < SERVICES.length; i++) {
+    if (Date.now() < downUntil[i]) continue;
+    try {
+      const id = pickSearchMatch(await ask(i, `/anime?q=${encodeURIComponent(query)}&type=tv`), name, year);
+      answered = true;
+      if (id) return id;
+    } catch {
+      downUntil[i] = Date.now() + DOWN_FOR_MS;
+    }
+  }
+  // Nobody answered: that's not "not found", so it mustn't be remembered as one.
+  if (!answered) throw new Error("No filler service is reachable");
+  return null;
 }
 
 async function malFromAniList(id: number): Promise<number | null> {
@@ -147,10 +185,10 @@ async function findMalId(series: BaseItem): Promise<number | null> {
     const viaAniList = await malFromAniList(aniList).catch(() => null);
     if (viaAniList) return viaAniList;
   }
-  const q = encodeURIComponent(series.OriginalTitle && /[a-z]/i.test(series.OriginalTitle) ? series.OriginalTitle : series.Name);
-  let id = pickSearchMatch(await jikan(`/anime?q=${q}&type=tv&limit=10`), series.Name, series.ProductionYear);
-  if (!id && series.OriginalTitle && series.OriginalTitle !== series.Name)
-    id = pickSearchMatch(await jikan(`/anime?q=${encodeURIComponent(series.Name)}&type=tv&limit=10`), series.Name, series.ProductionYear);
+  let id = await search(series.Name, series.Name, series.ProductionYear);
+  // Libraries often name a show in English while MyAnimeList uses its romanised title.
+  if (!id && series.OriginalTitle && series.OriginalTitle !== series.Name && /[a-z]/i.test(series.OriginalTitle))
+    id = await search(series.OriginalTitle, series.OriginalTitle, series.ProductionYear);
   return id;
 }
 
@@ -209,18 +247,19 @@ export function fillerIds(seriesId: string): Promise<Set<string>> {
       writeCache(seriesId, { at: now, miss: true });
       return new Set<string>();
     }
-    const malId = await findMalId(series);
-    if (!malId) {
-      writeCache(seriesId, { at: now, miss: true });
-      return new Set<string>();
-    }
-    const total = Math.max(0, ...absoluteNumbers(episodes).values());
     try {
+      // A show matched before keeps its entry; only the episode list is read again.
+      const malId = (cached && "parts" in cached ? cached.parts[0]?.malId : undefined) ?? (await findMalId(series));
+      if (!malId) {
+        writeCache(seriesId, { at: now, miss: true });
+        return new Set<string>();
+      }
+      const total = Math.max(0, ...absoluteNumbers(episodes).values());
       const parts = await readRun(malId, total);
       writeCache(seriesId, { at: now, parts });
       return fillerEpisodeIds(episodes, parts);
     } catch {
-      // Jikan unreachable: use what we had, however old.
+      // No service reachable: use what we had, however old, and look again next time.
       return cached && "parts" in cached ? fillerEpisodeIds(episodes, cached.parts) : new Set<string>();
     }
   })().finally(() => inFlight.delete(seriesId));

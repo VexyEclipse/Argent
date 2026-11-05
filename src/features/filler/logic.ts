@@ -1,5 +1,6 @@
-// Pure filler rules: finding a show on MyAnimeList, reading its episode list, and matching
-// Jellyfin's season/episode numbers to MyAnimeList's running numbers. No DOM, no network.
+// Pure filler rules: finding a show on MyAnimeList, reading its episode list (from a
+// Jikan-style service), and matching Jellyfin's season/episode numbers to MyAnimeList's
+// running numbers. No DOM, no network.
 
 import type { BaseItem } from "@/api/types";
 
@@ -38,6 +39,20 @@ const normalise = (s: string) =>
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
+// The two services speak slightly different dialects of Jikan's format: Tenrai keeps
+// Jikan's snake_case (mal_id, has_next_page), jikan-edge uses camelCase (malId, number).
+// The readers below accept both.
+
+const idOf = (r: Record<string, unknown>) => (typeof r.mal_id === "number" ? r.mal_id : typeof r.malId === "number" ? r.malId : undefined);
+
+function yearOf(r: Record<string, unknown>): number | undefined {
+  if (typeof r.year === "number") return r.year;
+  const aired = isObj(r.aired) && isObj(r.aired.prop) && isObj(r.aired.prop.from) ? r.aired.prop.from.year : undefined;
+  if (typeof aired === "number") return aired;
+  const start = typeof r.startDate === "string" ? Number(r.startDate.slice(0, 4)) : NaN;
+  return Number.isInteger(start) && start > 1900 ? start : undefined;
+}
+
 /**
  * The search result that is clearly this show: same title (any of its titles) and the
  * same start year, give or take one. Nothing when unsure: a wrong match would mark the
@@ -49,12 +64,14 @@ export function pickSearchMatch(json: unknown, name: string, year?: number): num
   if (!want) return null;
   const matches: { id: number; year?: number }[] = [];
   for (const r of json.data) {
-    if (!isObj(r) || typeof r.mal_id !== "number") continue;
-    const titles = [r.title, r.title_english, r.title_japanese, ...(Array.isArray(r.title_synonyms) ? r.title_synonyms : [])];
+    if (!isObj(r)) continue;
+    const id = idOf(r);
+    if (id === undefined) continue;
+    const synonyms = Array.isArray(r.title_synonyms) ? r.title_synonyms : Array.isArray(r.titleSynonyms) ? r.titleSynonyms : [];
+    const titles = [r.title, r.title_english, r.titleEnglish, r.title_japanese, r.titleJapanese, ...synonyms];
     if (Array.isArray(r.titles)) for (const t of r.titles) if (isObj(t)) titles.push(t.title);
     if (!titles.some((t) => typeof t === "string" && normalise(t) === want)) continue;
-    const aired = isObj(r.aired) && isObj(r.aired.prop) && isObj(r.aired.prop.from) ? r.aired.prop.from.year : undefined;
-    matches.push({ id: r.mal_id, year: typeof r.year === "number" ? r.year : typeof aired === "number" ? aired : undefined });
+    matches.push({ id, year: yearOf(r) });
   }
   if (year) {
     const dated = matches.find((m) => m.year !== undefined && Math.abs(m.year - year) <= 1);
@@ -69,11 +86,14 @@ export function parseEpisodePage(json: unknown): { filler: number[]; last: numbe
   const filler: number[] = [];
   let last = 0;
   for (const e of json.data) {
-    if (!isObj(e) || typeof e.mal_id !== "number" || !Number.isInteger(e.mal_id) || e.mal_id <= 0 || e.mal_id > 100_000) continue;
-    last = Math.max(last, e.mal_id);
-    if (e.filler === true) filler.push(e.mal_id);
+    if (!isObj(e)) continue;
+    const n = typeof e.mal_id === "number" ? e.mal_id : e.number;
+    if (typeof n !== "number" || !Number.isInteger(n) || n <= 0 || n > 100_000) continue;
+    last = Math.max(last, n);
+    if (e.filler === true) filler.push(n);
   }
-  const more = isObj(json.pagination) && json.pagination.has_next_page === true;
+  const paging = isObj(json.pagination) ? json.pagination : isObj(json.meta) && isObj(json.meta.pagination) ? json.meta.pagination : {};
+  const more = paging.has_next_page === true || paging.hasNextPage === true;
   return { filler, last, more };
 }
 
@@ -81,8 +101,10 @@ export function parseEpisodePage(json: unknown): { filler: number[]; last: numbe
 export function parseSequel(json: unknown): number | null {
   if (!isObj(json) || !Array.isArray(json.data)) return null;
   for (const rel of json.data) {
-    if (!isObj(rel) || rel.relation !== "Sequel" || !Array.isArray(rel.entry)) continue;
-    for (const e of rel.entry) if (isObj(e) && e.type === "anime" && typeof e.mal_id === "number") return e.mal_id;
+    if (!isObj(rel) || rel.relation !== "Sequel") continue;
+    // Jikan's shape groups entries under each relation; jikan-edge lists them flat.
+    const entries = Array.isArray(rel.entry) ? rel.entry : [rel];
+    for (const e of entries) if (isObj(e) && e.type === "anime" && idOf(e) !== undefined) return idOf(e)!;
   }
   return null;
 }

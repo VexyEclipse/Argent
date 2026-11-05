@@ -110,7 +110,7 @@ function SkippingSection() {
       />
       <Toggle
         label="Mark filler episodes"
-        hint="A Filler badge on anime episodes outside the source story. Each show is looked up on MyAnimeList (through Jikan) by its ids or title; nothing about you is sent."
+        hint="A Filler badge on anime episodes outside the source story. Each show's MyAnimeList episode list is read through jikan-edge (or Tenrai as a backup) by its ids or title; nothing about you is sent."
         checked={filler.badges}
         onChange={(v) => setFillerPref("badges", v)}
       />
