@@ -79,7 +79,9 @@ const PATHS = {
   ),
   audio: (
     <>
-      <path d="M4 14v-3M8 17V8M12 20V5M16 16V9M20 13v-1" />
+      <path d="M4.5 17v-4.5a7.5 7.5 0 0 1 15 0V17" />
+      <rect x="3.5" y="13.5" width="4" height="6" rx="1.5" />
+      <rect x="16.5" y="13.5" width="4" height="6" rx="1.5" />
     </>
   ),
   fullscreen: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
