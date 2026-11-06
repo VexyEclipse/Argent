@@ -15,7 +15,7 @@ const letters = (s: string) =>
 
 /** Release and format tags that file names carry: they're never part of a title. */
 const TAGS =
-  /\b(?:(?:bd|dvd|web|hd)?\d{3,4}p|[xh]\s?26[45]|hevc|avc|av1|aac|flac|opus|e?ac3|ddp?\d?|dts|10\s?bit|8\s?bit|bd(?:rip)?|dvd(?:rip)?|blu\s?ray|web(?:\s?dl|rip)?|hdtv|dual\s?audio|multi\s?subs?|uncensored|v\d)\b/gi;
+  /\b(?:(?:bd|dvd|web|hd)?\d{3,4}p|[xh]\s?26[45]|hevc|avc|av1|aac\d?|flac\d?|opus|e?ac3|ddp?\d?|dts|(?:10|8)\s?b(?:its?)?|hi10p?|bd(?:rip)?|dvd(?:rip)?|blu\s?ray|web(?:\s?dl|rip)?|hdtv|dual\s?audio|multi\s?subs?|uncensored|v\d)\b/gi;
 
 /** What's left of a bit of a title once numbers and release tags are taken out. */
 const wordsOf = (s: string) => letters(s.replace(TAGS, " ").replace(/\d+/g, " "));
@@ -46,13 +46,14 @@ export function looksUnnamed(e: Pick<BaseItem, "Name" | "SeriesName">): boolean 
   return rest.length === 0;
 }
 
-/** Whether a file is inside one of the library's folders; null when the folders aren't known. */
-function inLibrary(e: BaseItem, roots: readonly string[] | null): boolean | null {
-  const path = e.MediaSources?.[0]?.Path;
+/** Whether a path is inside one of the library's folders; null when either isn't known. */
+export function inLibraryPath(path: string | undefined, roots: readonly string[] | null): boolean | null {
   if (!roots?.length || !path) return null;
   const p = path.replace(/\\/g, "/").toLowerCase();
   return roots.some((r) => p.startsWith(r.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() + "/"));
 }
+
+const inLibrary = (e: BaseItem, roots: readonly string[] | null) => inLibraryPath(e.MediaSources?.[0]?.Path ?? e.Path, roots);
 
 /** A copy with both a picture track and a sound track (a cut-off or broken file may lack one). */
 function isWhole(e: BaseItem): boolean {

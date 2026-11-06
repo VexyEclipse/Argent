@@ -178,6 +178,8 @@ export interface BaseItem {
   LocationType?: string;
   Chapters?: { StartPositionTicks: number; Name?: string; ImageTag?: string }[];
   ProductionLocations?: string[];
+  /** The file or folder on the server (administrators). */
+  Path?: string;
   /** Special features: "BehindTheScenes", "DeletedScene", "Featurette", "Interview"… */
   ExtraType?: string;
   /** Argent's own: other library items for the same episode, hidden behind this one (see api/duplicates.ts). */

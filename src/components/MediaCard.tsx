@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import type { BaseItem } from "@/api/types";
 import { landscapeImage, posterImage } from "@/api/images";
-import { hasCopies, subscribeCopies, unwatchedCount } from "@/api/duplicates";
+import { hasCopies, inLibraryPath, subscribeCopies, unwatchedCount } from "@/api/duplicates";
 import { cardSubtitle, progressOf } from "@/api/format";
-import { getEpisodes } from "@/api/jellyfin";
+import { getEpisodes, getLibraryRoots } from "@/api/jellyfin";
 import { useAuth } from "@/auth/AuthProvider";
 import { openMenu, toggleSelected, useIsSelected, useSelecting } from "@/features/manage/store";
 import { usePosterScore } from "@/features/ratings/prefs";
@@ -57,6 +57,27 @@ function useUnwatched(item: BaseItem): number | undefined {
   return copies && episodes.data ? unwatchedCount(episodes.data) : item.UserData?.UnplayedItemCount;
 }
 
+/**
+ * The copy of an episode that the show's episode list shows. Jellyfin's own rows (Next Up,
+ * Continue Watching, Recently Added) can hand over a copy left behind by a removed folder,
+ * whose picture is gone; for an episode like that, or one of a show known to have copies,
+ * the card shows the copy in the library instead.
+ */
+function useShownCopy(item: BaseItem): BaseItem {
+  const episode = item.Type === "Episode" && Boolean(item.SeriesId);
+  const known = useSyncExternalStore(subscribeCopies, () => episode && hasCopies(item.SeriesId!));
+  const roots = useQuery({ queryKey: ["library-roots"], queryFn: getLibraryRoots, enabled: episode && Boolean(item.Path), staleTime: Infinity });
+  const leftOver = episode && inLibraryPath(item.Path, roots.data ?? null) === false;
+  const list = useQuery({
+    queryKey: ["episodes", item.SeriesId, "all"],
+    queryFn: () => getEpisodes(item.SeriesId!).then((r) => r.Items),
+    enabled: known || leftOver,
+    staleTime: 60_000,
+  });
+  if (!list.data) return item;
+  return list.data.find((e) => e.Id === item.Id || e.Copies?.some((c) => c.Id === item.Id)) ?? item;
+}
+
 export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
   if (item.Type === "Person") return `/person/${item.Id}`;
   if (item.Type === "Genre") return `/genre/${item.Id}`;
@@ -78,6 +99,8 @@ export const MediaCard = memo(function MediaCard({
   remind,
 }: Props) {
   const navigate = useNavigate();
+  // What the card shows and opens; `item` stays what the row was given (for dismissing it).
+  const shown = useShownCopy(item);
   const myScore = usePosterScore(item.Id);
   const watchlist = useWatchlistToggle(item);
   const score = rating ?? myScore;
@@ -86,13 +109,13 @@ export const MediaCard = memo(function MediaCard({
   const reminder = useReminder(
     !remind ? undefined : item.Type === "Episode" && item.SeriesId ? { Id: item.SeriesId, Name: item.SeriesName ?? item.Name, Type: "Series" } : item,
   );
-  const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
-  const progress = showProgress ? progressOf(item) : 0;
-  const played = item.UserData?.Played;
+  const image = variant === "poster" ? posterImage(shown, 360) : landscapeImage(shown, 640);
+  const progress = showProgress ? progressOf(shown) : 0;
+  const played = shown.UserData?.Played;
   const unplayed = useUnwatched(item);
-  const title = item.Type === "Episode" && variant === "landscape" ? item.Name : item.SeriesName && variant === "poster" ? item.SeriesName : item.Name;
-  const sub = subtitle ?? (item.Type === "Episode" && variant === "poster" ? item.Name : cardSubtitle(item));
-  const to = playOnClick ? `/play/${item.Id}` : detailsPath(item);
+  const title = shown.Type === "Episode" && variant === "landscape" ? shown.Name : shown.SeriesName && variant === "poster" ? shown.SeriesName : shown.Name;
+  const sub = subtitle ?? (shown.Type === "Episode" && variant === "poster" ? shown.Name : cardSubtitle(shown));
+  const to = playOnClick ? `/play/${shown.Id}` : detailsPath(shown);
   // Series and collections resolve to the right episode or film in the player.
   // Virtual items (upcoming or missing episodes) have nothing to play yet.
   const playable = !noPlay && item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
@@ -138,7 +161,7 @@ export const MediaCard = memo(function MediaCard({
   const play = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    navigate(`/play/${item.Id}`);
+    navigate(`/play/${shown.Id}`);
   };
 
   return (

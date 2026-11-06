@@ -34,8 +34,8 @@ function uid(): string {
   return id;
 }
 
-/** Fields needed to render a card (poster, title, year, progress, genres). */
-export const CARD_FIELDS = ["PrimaryImageAspectRatio", "Genres", "ChildCount", "Overview"];
+/** Fields needed to render a card (poster, title, year, progress, genres; the file, to spot a left-over copy). */
+export const CARD_FIELDS = ["PrimaryImageAspectRatio", "Genres", "ChildCount", "Overview", "Path"];
 /** Fields the recommendation engine scores on. */
 export const PROFILE_FIELDS = [
   "Genres",

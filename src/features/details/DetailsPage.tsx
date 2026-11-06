@@ -16,6 +16,7 @@ import { shuffleEpisode } from "@/features/player/shuffle";
 import type { RateTarget } from "@/features/ratings/logic";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
+import { useEpisodeStills } from "@/features/manage/stills";
 import { openMenu } from "@/features/manage/store";
 import { useAuth } from "@/auth/AuthProvider";
 import { FillerBadge } from "@/features/filler/FillerBadge";
@@ -251,6 +252,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
   });
   const filler = useFillerIds(seriesId);
   const names = useEpisodeNames(seriesId);
+  const stills = useEpisodeStills(seriesId, episodes.data);
 
   const toggleEpisode = async (ep: BaseItem) => {
     const value = !ep.UserData?.Played;
@@ -269,6 +271,12 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
   if (!episodes.data?.length) return <p className="muted">No episodes in this season.</p>;
 
   return (
+    <>
+      {stills.left > 0 && (
+        <p className="episodes__status" role="status">
+          Getting episode pictures from TheMovieDb… {stills.total - stills.left} of {stills.total}
+        </p>
+      )}
     <ol className="episodes">
       {episodes.data.map((ep) => {
         const progress = progressOf(ep);
@@ -360,6 +368,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
         );
       })}
     </ol>
+    </>
   );
 }
 

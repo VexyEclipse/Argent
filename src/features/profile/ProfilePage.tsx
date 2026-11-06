@@ -17,6 +17,7 @@ import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
 import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/features/player/prefs";
+import { setStillsPref, useStillsPref } from "@/features/manage/stills";
 import { AndroidSection, HelpSection } from "./DeviceSections";
 import { MediaProfile } from "./MediaProfile";
 import { Toggle } from "./Toggle";
@@ -126,6 +127,23 @@ function SkippingSection() {
         hint="Next episode, autoplay and a show's Play button pass over filler. You can still pick a filler episode yourself."
         checked={filler.skip}
         onChange={(v) => setFillerPref("skip", v)}
+      />
+    </section>
+  );
+}
+
+/** Library upkeep that only administrators can do. */
+function LibrarySection() {
+  const stills = useStillsPref();
+  return (
+    <section className="panel profile__section">
+      <h2 className="profile__title">Library</h2>
+      <p className="profile__desc">For administrators. Changes are saved in Jellyfin, so every app and every user sees them.</p>
+      <Toggle
+        label="Use episode stills"
+        hint="As you open a season, each episode's picture is replaced, once, with its still from TheMovieDb instead of a frame grabbed from the video. If the library saves artwork into media folders, this replaces the -thumb.jpg beside each video."
+        checked={stills}
+        onChange={setStillsPref}
       />
     </section>
   );
@@ -374,6 +392,8 @@ export default function ProfilePage() {
           </section>
 
           <SkippingSection />
+
+          {isAdmin && <LibrarySection />}
 
           <ComingUpSection userId={user.Id} />
 

@@ -97,6 +97,11 @@ describe("choosing and completing a copy", () => {
     expect(unnamed("Ghost in the Shell (S.A.C) - S02 E18 - DI - Trans Parent", "Ghost in The Shell Collection")).toBe(false);
     expect(unnamed("Drifters 14v2 OVA Bring on a War", "Drifters")).toBe(false);
     expect(unnamed("S01E12-Overload", "SAKAMOTO DAYS")).toBe(false);
+    expect(unnamed("[Judas] x265 10b", "Boruto: Naruto Next Generations")).toBe(true);
+    expect(unnamed("Solo.Leveling.S01E01.1080p.Dual.Audio.BDRip.10.bits.DD+.x265-EMBER", "Solo Leveling")).toBe(true);
+    expect(unnamed("Canaan.S01E01.1080p-Hi10p.BluRay.FLAC5.1.x264-CTR", "Canaan")).toBe(true);
+    expect(unnamed("[Hakata Ramen] Arcane: League of Legends S01E01 Welcome to the Playground [Netflix 1080p x265 OPUS 5.1]", "Arcane")).toBe(false);
+    expect(unnamed("[RH] Kaiba - 09 [BDRip] [Hi10] [1080p]", "Kaiba")).toBe(true);
     expect(unnamed("Lazarus.S01E06.1080p.Dual.Audio.WEBRip.DD+.x265-EMBER", "Lazarus")).toBe(true);
   });
 });
