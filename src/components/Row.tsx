@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Icon } from "./Icon";
 import { CardSkeleton, type CardVariant } from "./MediaCard";
@@ -21,15 +21,27 @@ interface Props {
 export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", children, className = "", actions }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: true });
+  // Whether the row is at its first card. Only scrolling it changes that.
+  const atStart = useRef(true);
 
   const measure = useCallback(() => {
     const el = track.current;
     if (!el) return;
+    atStart.current = el.scrollLeft <= 4;
     setEdges({
       start: el.scrollLeft <= 4,
       end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4,
     });
   }, []);
+
+  // When the cards change (a refresh reorders them, new ones arrive in front), the browser
+  // keeps the row snapped to the card it showed and follows it to its new place, leaving
+  // the row part-way along. A row that hadn't been scrolled goes back to its first card,
+  // before it's drawn; one that had keeps its place.
+  useLayoutEffect(() => {
+    const el = track.current;
+    if (el && atStart.current && el.scrollLeft > 0) el.scrollLeft = 0;
+  }, [children, loading]);
 
   useEffect(() => {
     measure();
