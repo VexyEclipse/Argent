@@ -215,7 +215,8 @@ export const getEpisodes = (seriesId: string, seasonId?: string) =>
       query: {
         userId: uid(),
         seasonId,
-        fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources"],
+        // DateCreated: when each episode arrived (filler checks).
+        fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources", "DateCreated"],
         enableImageTypes: IMAGE_TYPES,
         enableUserData: true,
       },

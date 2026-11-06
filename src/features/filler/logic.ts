@@ -80,21 +80,31 @@ export function pickSearchMatch(json: unknown, name: string, year?: number): num
   return matches.length === 1 && (!year || matches[0].year === undefined) ? matches[0].id : null;
 }
 
-/** One page of `/anime/{id}/episodes`: the filler episode numbers, the highest number, and whether more pages follow. */
-export function parseEpisodePage(json: unknown): { filler: number[]; last: number; more: boolean } | null {
+/** One page of an entry's episode list: the filler episode numbers, the lowest and highest number, and whether more pages follow. */
+export interface EpisodePage {
+  filler: number[];
+  first: number;
+  last: number;
+  more: boolean;
+}
+
+/** One page of `/anime/{id}/episodes`. */
+export function parseEpisodePage(json: unknown): EpisodePage | null {
   if (!isObj(json) || !Array.isArray(json.data)) return null;
   const filler: number[] = [];
+  let first = 0;
   let last = 0;
   for (const e of json.data) {
     if (!isObj(e)) continue;
     const n = typeof e.mal_id === "number" ? e.mal_id : e.number;
     if (typeof n !== "number" || !Number.isInteger(n) || n <= 0 || n > 100_000) continue;
     last = Math.max(last, n);
+    first = first ? Math.min(first, n) : n;
     if (e.filler === true) filler.push(n);
   }
   const paging = isObj(json.pagination) ? json.pagination : isObj(json.meta) && isObj(json.meta.pagination) ? json.meta.pagination : {};
   const more = paging.has_next_page === true || paging.hasNextPage === true;
-  return { filler, last, more };
+  return { filler, first, last, more };
 }
 
 /** The sequel entry (a following TV season) from `/anime/{id}/relations`. */
@@ -163,3 +173,65 @@ export function fillerEpisodeIds(episodes: Ep[], parts: MalPart[]): Set<string> 
   for (const [id, n] of absoluteNumbers(episodes)) if (filler.has(n)) ids.add(id);
   return ids;
 }
+
+// ---- keeping a saved list current -------------------------------------------------------
+
+/** Episodes per page of an entry's episode list (both services). */
+export const EPISODES_PER_PAGE = 100;
+
+/** The page to read again to pick up an entry's newest episodes: the one its last episode is on. */
+export const tailPage = (part: Pick<MalPart, "episodes">) => Math.floor((Math.max(1, part.episodes) - 1) / EPISODES_PER_PAGE) + 1;
+
+/**
+ * An entry after reading some of its pages again: the pages read replace what was saved
+ * for their episodes (a filler mark can be added or taken back), the rest stays.
+ */
+export function mergePages(part: MalPart, pages: EpisodePage[]): MalPart {
+  const read = pages.filter((p) => p.first > 0);
+  if (!read.length) return part;
+  const from = Math.min(...read.map((p) => p.first));
+  const filler = new Set(part.filler.filter((n) => n < from));
+  for (const p of read) p.filler.forEach((n) => filler.add(n));
+  return { ...part, episodes: Math.max(part.episodes, ...read.map((p) => p.last)), filler: [...filler].sort((a, b) => a - b) };
+}
+
+/** A show's saved filler list and when it was last checked. */
+export interface SavedRun {
+  /** Last time anything was read for it (ms). */
+  at: number;
+  parts: MalPart[];
+  /** Jellyfin's status for the show then: "Continuing", "Ended"… */
+  status?: string;
+  /** Episodes the library had then (running numbers). */
+  libraryEpisodes?: number;
+  /** A finished show has had its last check (a month after its final episode arrived). */
+  settled?: boolean;
+}
+
+export type CheckKind = "none" | "newEpisodes" | "weekly" | "final";
+
+const ONE_DAY = 86_400_000;
+export const WEEKLY_MS = 7 * ONE_DAY;
+/** Late filler marks on a finished show are caught by one check this long after its last episode arrived. */
+export const SETTLE_MS = 30 * ONE_DAY;
+
+/**
+ * Whether a saved list needs reading again, and why. New episodes in the library are read
+ * as they arrive; a show still airing has its newest page rechecked weekly; a finished one
+ * once more, a month after its last episode arrived, and then never.
+ */
+export function checkNeeded(saved: SavedRun, library: { episodes: number; newestAdded?: number; status?: string }, now = Date.now()): CheckKind {
+  const covered = saved.parts.reduce((n, p) => n + p.episodes, 0);
+  const since = now - saved.at;
+  // Past the list: at once when they've just arrived; if MyAnimeList hadn't listed them
+  // yet, again a week later.
+  if (library.episodes > covered && (library.episodes > (saved.libraryEpisodes ?? 0) || since >= WEEKLY_MS)) return "newEpisodes";
+  const status = library.status ?? saved.status;
+  if (status !== "Ended") return since >= WEEKLY_MS ? "weekly" : "none";
+  if (saved.settled) return "none";
+  const settleAt = (library.newestAdded ?? 0) + SETTLE_MS;
+  return now >= settleAt && saved.at < settleAt ? "final" : "none";
+}
+
+/** Whether a finished show's list needs no more checks once it's read now. */
+export const isSettled = (status: string | undefined, newestAdded: number | undefined, now = Date.now()) => status === "Ended" && now >= (newestAdded ?? 0) + SETTLE_MS;

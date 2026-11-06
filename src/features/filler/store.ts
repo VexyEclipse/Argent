@@ -10,7 +10,24 @@ import { useQuery } from "@tanstack/react-query";
 import { client, getEpisodes, getItem } from "@/api/jellyfin";
 import { isAnimeLibrary } from "@/api/libraries";
 import type { BaseItem } from "@/api/types";
-import { absoluteNumbers, aniListIdOf, fillerEpisodeIds, hasAnimeIds, isTvEntry, malIdOf, parseEpisodePage, parseSequel, pickSearchMatch, type MalPart } from "./logic";
+import {
+  absoluteNumbers,
+  aniListIdOf,
+  checkNeeded,
+  fillerEpisodeIds,
+  hasAnimeIds,
+  isSettled,
+  isTvEntry,
+  malIdOf,
+  mergePages,
+  parseEpisodePage,
+  parseSequel,
+  pickSearchMatch,
+  tailPage,
+  type EpisodePage,
+  type MalPart,
+  type SavedRun,
+} from "./logic";
 
 /** In order of preference. Each allows at least 60 requests a minute; stay under that. */
 const SERVICES = [
@@ -23,7 +40,6 @@ const TIMEOUT_MS = 8_000;
 /** A service that failed is skipped for this long. */
 const DOWN_FOR_MS = 10 * 60_000;
 const DAY = 86_400_000;
-const FRESH_FOR = 7 * DAY;
 /** Not anime, or not found: asked again after this. */
 const MISS_FOR = 30 * DAY;
 const MAX_PARTS = 6;
@@ -85,7 +101,7 @@ const enabled = () => {
 
 // ---- cache --------------------------------------------------------------------------------
 
-type Cached = { at: number; parts: MalPart[] } | { at: number; miss: true };
+type Cached = SavedRun | { at: number; miss: true };
 const CACHE_KEY = "argent.filler";
 
 function readCache(): Record<string, Cached> {
@@ -192,33 +208,45 @@ async function findMalId(series: BaseItem): Promise<number | null> {
   return id;
 }
 
-/** One entry's episodes (every page). */
-async function readPart(malId: number): Promise<MalPart | null> {
-  const filler: number[] = [];
-  let last = 0;
-  for (let page = 1; page <= 30; page++) {
+/** An entry's episode list from a page onwards, until the last page. */
+async function readPages(malId: number, fromPage: number): Promise<EpisodePage[]> {
+  const pages: EpisodePage[] = [];
+  for (let page = fromPage; page < fromPage + 30; page++) {
     const parsed = parseEpisodePage(await jikan(`/anime/${malId}/episodes?page=${page}`));
     if (!parsed) break;
-    filler.push(...parsed.filler);
-    last = Math.max(last, parsed.last);
+    pages.push(parsed);
     if (!parsed.more) break;
   }
-  return last ? { malId, episodes: last, filler } : null;
+  return pages;
 }
 
-/** The show's run on MyAnimeList: its entry, then TV sequels until the library's episodes are covered. */
-async function readRun(malId: number, libraryEpisodes: number): Promise<MalPart[]> {
-  const parts: MalPart[] = [];
-  let id: number | null = malId;
-  let covered = 0;
-  while (id && parts.length < MAX_PARTS) {
-    const part = await readPart(id);
-    if (!part) break;
+/** The next TV season after an entry, when MyAnimeList lists it as an entry of its own. */
+async function sequelOf(malId: number): Promise<number | null> {
+  const sequel = parseSequel(await jikan(`/anime/${malId}/relations`));
+  return sequel && isTvEntry(await jikan(`/anime/${sequel}`)) ? sequel : null;
+}
+
+/**
+ * A show's run on MyAnimeList, brought up to date. A new run reads its entry, then TV
+ * sequels until the library's episodes are covered. A saved run only has its newest page
+ * read again (new episodes, late filler marks), then sequels if the library has gone past it.
+ */
+async function updateRun(saved: MalPart[], malId: number, libraryEpisodes: number): Promise<MalPart[]> {
+  const parts = [...saved];
+  if (parts.length) {
+    const last = parts[parts.length - 1];
+    parts[parts.length - 1] = mergePages(last, await readPages(last.malId, tailPage(last)));
+  } else {
+    const first = mergePages({ malId, episodes: 0, filler: [] }, await readPages(malId, 1));
+    if (!first.episodes) return [];
+    parts.push(first);
+  }
+  while (parts.reduce((n, p) => n + p.episodes, 0) < libraryEpisodes && parts.length < MAX_PARTS) {
+    const sequel = await sequelOf(parts[parts.length - 1].malId);
+    if (!sequel) break;
+    const part = mergePages({ malId: sequel, episodes: 0, filler: [] }, await readPages(sequel, 1));
+    if (!part.episodes) break;
     parts.push(part);
-    covered += part.episodes;
-    if (covered >= libraryEpisodes) break;
-    const sequel = parseSequel(await jikan(`/anime/${id}/relations`));
-    id = sequel && isTvEntry(await jikan(`/anime/${sequel}`)) ? sequel : null;
   }
   return parts;
 }
@@ -231,7 +259,11 @@ async function isAnimeSeries(series: BaseItem): Promise<boolean> {
 
 const inFlight = new Map<string, Promise<Set<string>>>();
 
-/** Ids of a series' filler episodes (empty when it isn't anime, isn't found, or the lookup is off). */
+/**
+ * Ids of a series' filler episodes (empty when it isn't anime, isn't found, or the lookup
+ * is off). A saved list is used as it is unless the rules in `checkNeeded` say otherwise,
+ * so a finished show is read once and then only when the library gains episodes.
+ */
 export function fillerIds(seriesId: string): Promise<Set<string>> {
   if (!enabled()) return Promise.resolve(new Set());
   const running = inFlight.get(seriesId);
@@ -241,26 +273,28 @@ export function fillerIds(seriesId: string): Promise<Set<string>> {
     const cached = readCache()[seriesId];
     const now = Date.now();
     if (cached && "miss" in cached && now - cached.at < MISS_FOR) return new Set<string>();
-    if (cached && "parts" in cached && now - cached.at < FRESH_FOR) return fillerEpisodeIds(episodes, cached.parts);
+    const saved = cached && "parts" in cached ? cached : null;
+    const libraryEpisodes = Math.max(0, ...absoluteNumbers(episodes).values());
+    const newestAdded = Math.max(0, ...episodes.map((e) => Date.parse(e.DateCreated ?? "") || 0));
+    if (saved && checkNeeded(saved, { episodes: libraryEpisodes, newestAdded }, now) === "none") return fillerEpisodeIds(episodes, saved.parts);
+
     const series = await getItem(seriesId, ["ProviderIds", "ProductionYear", "OriginalTitle"]);
-    if (!(await isAnimeSeries(series))) {
+    if (!saved && !(await isAnimeSeries(series))) {
       writeCache(seriesId, { at: now, miss: true });
       return new Set<string>();
     }
     try {
-      // A show matched before keeps its entry; only the episode list is read again.
-      const malId = (cached && "parts" in cached ? cached.parts[0]?.malId : undefined) ?? (await findMalId(series));
+      const malId = saved?.parts[0]?.malId ?? (await findMalId(series));
       if (!malId) {
         writeCache(seriesId, { at: now, miss: true });
         return new Set<string>();
       }
-      const total = Math.max(0, ...absoluteNumbers(episodes).values());
-      const parts = await readRun(malId, total);
-      writeCache(seriesId, { at: now, parts });
+      const parts = await updateRun(saved?.parts ?? [], malId, libraryEpisodes);
+      writeCache(seriesId, { at: now, parts, status: series.Status, libraryEpisodes, settled: isSettled(series.Status, newestAdded, now) });
       return fillerEpisodeIds(episodes, parts);
     } catch {
       // No service reachable: use what we had, however old, and look again next time.
-      return cached && "parts" in cached ? fillerEpisodeIds(episodes, cached.parts) : new Set<string>();
+      return saved ? fillerEpisodeIds(episodes, saved.parts) : new Set<string>();
     }
   })().finally(() => inFlight.delete(seriesId));
   inFlight.set(seriesId, job);
