@@ -26,6 +26,7 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
   // move it on its own (it keeps a snapped row on the card it showed when cards are
   // reordered, added in front or change size), and that is undone straight away.
   const moved = useRef(false);
+  const settle = useRef(0);
 
   const holdStart = useCallback(() => {
     const el = track.current;
@@ -36,8 +37,13 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
     const el = track.current;
     if (!el) return;
     holdStart();
-    // Back at the start by the viewer's own doing: hold it there again.
-    if (el.scrollLeft <= 4) moved.current = false;
+    // Scrolled back to the start by the viewer: hold it there again, once it has stayed
+    // there. Not at once: every scroll begins within a few pixels of the start.
+    window.clearTimeout(settle.current);
+    if (el.scrollLeft <= 4)
+      settle.current = window.setTimeout(() => {
+        if ((track.current?.scrollLeft ?? 0) <= 4) moved.current = false;
+      }, 600);
     setEdges({
       start: el.scrollLeft <= 4,
       end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4,
