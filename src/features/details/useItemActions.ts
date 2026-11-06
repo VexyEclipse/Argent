@@ -73,18 +73,3 @@ export function useBulkPlayed() {
     },
   });
 }
-
-/** Lightweight toggle for list rows (episodes) without a dedicated item cache. */
-export function useTogglePlayed() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, value }: { id: string; value: boolean }) => setPlayed(id, value),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["episodes"] });
-      qc.invalidateQueries({ queryKey: ["seasons"] });
-      qc.invalidateQueries({ queryKey: ["nextup"] });
-      qc.invalidateQueries({ queryKey: ["home"] });
-      qc.invalidateQueries({ queryKey: ["rec", "history"] });
-    },
-  });
-}

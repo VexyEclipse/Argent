@@ -1,4 +1,5 @@
 import { JellyfinClient, type Query } from "./client";
+import { mergeDuplicateEpisodes } from "./duplicates";
 import type {
   AuthenticationResult,
   BaseItem,
@@ -207,16 +208,19 @@ export const getSeasons = (seriesId: string) =>
     query: { userId: uid(), fields: ["ChildCount", "Overview", "PrimaryImageAspectRatio"], enableUserData: true },
   });
 
+/** A show's episodes (or one season's), with an episode that's in the library more than once shown once. */
 export const getEpisodes = (seriesId: string, seasonId?: string) =>
-  client().request<ItemsResult>(`/Shows/${seriesId}/Episodes`, {
-    query: {
-      userId: uid(),
-      seasonId,
-      fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources"],
-      enableImageTypes: IMAGE_TYPES,
-      enableUserData: true,
-    },
-  });
+  client()
+    .request<ItemsResult>(`/Shows/${seriesId}/Episodes`, {
+      query: {
+        userId: uid(),
+        seasonId,
+        fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources"],
+        enableImageTypes: IMAGE_TYPES,
+        enableUserData: true,
+      },
+    })
+    .then((r) => ({ ...r, Items: mergeDuplicateEpisodes(r.Items) }));
 
 export const getLocalTrailers = (id: string) => client().request<BaseItem[]>(`/Items/${id}/LocalTrailers`, { query: { userId: uid() } });
 

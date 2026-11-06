@@ -684,3 +684,12 @@ html[data-platform="tv"] .episode__thumb:focus-visible {
   width: 30px;
   height: 30px;
 }
+.episode__copies {
+  margin-left: 10px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--line-3);
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  cursor: help;
+}

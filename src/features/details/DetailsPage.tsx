@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { copyIds } from "@/api/duplicates";
 import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getSeasons } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, formatRuntime, progressOf } from "@/api/format";
@@ -25,7 +26,7 @@ import { downloadsSupported } from "@/features/downloads/store";
 import { Hero } from "./Hero";
 import { CastRow, ExtrasRow, InfoTable, SimilarRow } from "./Sections";
 import { earlierUnwatched } from "./episodes";
-import { useBulkPlayed, useTogglePlayed } from "./useItemActions";
+import { useBulkPlayed } from "./useItemActions";
 import "./details.css";
 
 export default function DetailsPage() {
@@ -239,10 +240,9 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const toggle = useTogglePlayed();
   const bulk = useBulkPlayed();
   // After marking one episode watched: offer to mark the unwatched ones before it too.
-  const [offer, setOffer] = useState<{ episodeId: string; ids: string[] } | null>(null);
+  const [offer, setOffer] = useState<{ episodeId: string; ids: string[]; count: number } | null>(null);
   const episodes = useQuery({
     queryKey: ["episodes", seriesId, seasonId],
     queryFn: () => getEpisodes(seriesId, seasonId).then((r) => r.Items),
@@ -252,14 +252,15 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
 
   const toggleEpisode = async (ep: BaseItem) => {
     const value = !ep.UserData?.Played;
-    toggle.mutate({ id: ep.Id, value });
+    // Every copy of the episode, so a hidden duplicate doesn't stay "next".
+    bulk.mutate({ ids: copyIds(ep), value });
     setOffer(null);
     if (!value) return;
     const all = await qc
       .fetchQuery({ queryKey: ["episodes", seriesId, "all"], queryFn: () => getEpisodes(seriesId).then((r) => r.Items), staleTime: 60_000 })
       .catch(() => [] as BaseItem[]);
     const earlier = earlierUnwatched(all, ep.Id);
-    if (earlier.length) setOffer({ episodeId: ep.Id, ids: earlier.map((e) => e.Id) });
+    if (earlier.length) setOffer({ episodeId: ep.Id, ids: earlier.flatMap(copyIds), count: earlier.length });
   };
 
   if (episodes.isPending) return <Spinner />;
@@ -321,12 +322,20 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
                 ]
                   .filter(Boolean)
                   .join("  ·  ")}
+                {isAdmin && ep.Copies && (
+                  <span
+                    className="episode__copies"
+                    title={`This episode is in the library ${ep.Copies.length + 1} times. Shown here: ${ep.MediaSources?.[0]?.Path ?? "this copy"}. Also: ${ep.Copies.map((c) => c.Path ?? c.Id).join(", ")}`}
+                  >
+                    {ep.Copies.length + 1} copies
+                  </span>
+                )}
               </div>
               {ep.Overview && <p className="episode__overview">{ep.Overview}</p>}
               {offer?.episodeId === ep.Id && (
                 <div className="episode__offer" role="status">
                   <span>
-                    Mark the {offer.ids.length === 1 ? "earlier episode" : `${offer.ids.length} earlier episodes`} watched too?
+                    Mark the {offer.count === 1 ? "earlier episode" : `${offer.count} earlier episodes`} watched too?
                   </span>
                   <div className="episode__offer-actions">
                     <Button

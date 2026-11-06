@@ -83,6 +83,11 @@ export async function seriesPlayTarget(seriesId: string): Promise<BaseItem | nul
 
 export async function resolvePlayable(id: string): Promise<BaseItem> {
   const item = await getItemFull(id);
+  // A hidden duplicate (Next Up can offer one): play the copy shown in the episode list.
+  if (item.Type === "Episode" && item.SeriesId) {
+    const shown = (await getEpisodes(item.SeriesId, item.SeasonId).catch(() => ({ Items: [] as BaseItem[] }))).Items.find((e) => e.Copies?.some((c) => c.Id === item.Id));
+    if (shown) return getItemFull(shown.Id);
+  }
   if (item.Type === "Series") {
     const target = await seriesPlayTarget(id);
     if (!target) throw new Error("This series has no playable episodes.");

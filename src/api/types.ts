@@ -180,6 +180,8 @@ export interface BaseItem {
   ProductionLocations?: string[];
   /** Special features: "BehindTheScenes", "DeletedScene", "Featurette", "Interview"… */
   ExtraType?: string;
+  /** Argent's own: other library items for the same episode, hidden behind this one (see api/duplicates.ts). */
+  Copies?: { Id: string; Path?: string }[];
 }
 
 export interface ItemsResult<T = BaseItem> {
