@@ -41,6 +41,11 @@ describe("ratingTarget", () => {
   });
   it("rates the series after its final episode", () => {
     expect(ratingTarget(episode, null)).toEqual({ id: "s1", name: "Dark", type: "Series" });
+    expect(ratingTarget(episode, null, { seriesStatus: "Ended" })).toEqual({ id: "s1", name: "Dark", type: "Series" });
+  });
+  it("doesn't rate a series that's still airing when you catch up", () => {
+    expect(ratingTarget(episode, null, { seriesStatus: "Continuing" })).toBeNull();
+    expect(ratingTarget(episode, null, { seasons: true, seriesStatus: "Continuing" })).toBeNull();
   });
   it("asks nothing mid-season or while the episode list is loading", () => {
     expect(ratingTarget(episode, nextEp, { seasons: true })).toBeNull();

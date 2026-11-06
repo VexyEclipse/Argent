@@ -92,12 +92,16 @@ export function normalise(state: Partial<RatingsState> | null | undefined): Rati
  * What finishing `item` asks you to rate: the film itself, the whole series after its
  * final episode, or (when `seasons` is on) the season after its last episode. `next`
  * is undefined while the episode list is still loading, and then nothing is asked
- * rather than guessing.
+ * rather than guessing. A series still airing (`seriesStatus` "Continuing") isn't
+ * asked about when you catch up: its final episode hasn't come out yet.
  */
-export function ratingTarget(item: BaseItem, next: BaseItem | null | undefined, opts: { seasons?: boolean } = {}): RateTarget | null {
+export function ratingTarget(item: BaseItem, next: BaseItem | null | undefined, opts: { seasons?: boolean; seriesStatus?: string } = {}): RateTarget | null {
   if (item.Type === "Movie") return { id: item.Id, name: item.Name, type: "Movie" };
   if (item.Type !== "Episode" || next === undefined) return null;
-  if (next === null) return item.SeriesId ? { id: item.SeriesId, name: item.SeriesName ?? item.Name, type: "Series" } : null;
+  if (next === null) {
+    if (opts.seriesStatus === "Continuing") return null;
+    return item.SeriesId ? { id: item.SeriesId, name: item.SeriesName ?? item.Name, type: "Series" } : null;
+  }
   const seasonEnds = item.SeasonId && next.SeasonId !== item.SeasonId;
   const special = item.ParentIndexNumber === 0;
   if (opts.seasons && seasonEnds && !special && item.SeriesId) {

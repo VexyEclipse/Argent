@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type Hls from "hls.js";
-import { getEpisodes, getMediaSegments } from "@/api/jellyfin";
+import { getEpisodes, getItem, getMediaSegments } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, TICKS_PER_SECOND } from "@/api/format";
 import { remotePlay, syncPlay } from "@/api/sessions";
@@ -116,6 +116,13 @@ function PlayerRoute({ id }: { id: string }) {
     enabled: item?.Type === "Episode",
     staleTime: shuffle ? Infinity : 60_000,
   });
+  // Whether the show is still airing: catching up on one isn't finishing it.
+  const series = useQuery({
+    queryKey: ["play", "series", item?.SeriesId],
+    queryFn: () => getItem(item!.SeriesId!, []),
+    enabled: item?.Type === "Episode" && Boolean(item.SeriesId),
+    staleTime: 30 * 60_000,
+  });
   const segments = useQuery({
     queryKey: ["segments", item?.Id],
     queryFn: () =>
@@ -186,7 +193,10 @@ function PlayerRoute({ id }: { id: string }) {
   const rateCheck = useRef(() => {});
   rateCheck.current = () => {
     if (!item || !user || route.kind === "remote" || route.kind === "pending") return;
-    const target = ratingTarget(item, neighbours.data ? neighbours.data.next : undefined, { seasons: readRatingPrefs().rateSeasons });
+    // The last episode out only counts once we know whether more are coming.
+    let next = neighbours.data ? neighbours.data.next : undefined;
+    if (next === null && item.SeriesId && !series.isSuccess && !series.isError) next = undefined;
+    const target = ratingTarget(item, next, { seasons: readRatingPrefs().rateSeasons, seriesStatus: series.data?.Status });
     if (isFinished(position.current, duration, outroStart(segments.data)) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
   };
   useEffect(
