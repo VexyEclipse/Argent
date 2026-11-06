@@ -20,7 +20,9 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { Spinner } from "@/components/States";
 import { showToast } from "@/components/Toast";
+import { useAuth } from "@/auth/AuthProvider";
 import { Dialog, namesOf } from "./Dialog";
+import { canFixEpisodes, fixEpisodes } from "./episodeFixes";
 import { closeDialog, endSelection } from "./store";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
@@ -128,16 +130,27 @@ const REFRESH_MODES: { value: RefreshMode; label: string; hint: string }[] = [
 
 export function RefreshDialog({ items }: { items: BaseItem[] }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [mode, setMode] = useState<RefreshMode>("missing");
   const [replaceImages, setReplaceImages] = useState(false);
   const [trickplay, setTrickplay] = useState(false);
+  const [fixEpisodesToo, setFixEpisodesToo] = useState(false);
   const [busy, setBusy] = useState(false);
+  const episodic = canFixEpisodes(items);
 
   const run = async () => {
     setBusy(true);
     const failed = await forEach(items, (i) => refreshItem(i.Id, mode, { replaceImages, regenerateTrickplay: trickplay }));
     setBusy(false);
-    showToast(failed ? `Couldn't refresh ${failed} of ${items.length}` : "Refreshing. Changes appear in a moment.");
+    showToast(
+      failed
+        ? `Couldn't refresh ${failed} of ${items.length}`
+        : fixEpisodesToo && episodic
+          ? "Refreshing. Episode titles and pictures follow once Jellyfin is done."
+          : "Refreshing. Changes appear in a moment.",
+    );
+    // After Jellyfin's refresh, so it doesn't overwrite them; runs on after the dialog closes.
+    if (fixEpisodesToo && episodic && user) fixEpisodes(items, { userId: user.Id, afterScanOnly: mode === "scan", queryClient: qc });
     // The server works in the background; pick up its results shortly.
     window.setTimeout(() => qc.invalidateQueries(), 5000);
     endSelection();
@@ -171,6 +184,19 @@ export function RefreshDialog({ items }: { items: BaseItem[] }) {
           </button>
         ))}
       </div>
+      {episodic && (
+        <div className="mdialog__checks">
+          <label className="check">
+            <input type="checkbox" checked={fixEpisodesToo} onChange={(e) => setFixEpisodesToo(e.target.checked)} />
+            <span>
+              Fix episode titles and pictures
+              <span className="check__hint">
+                Titles that are only a file name get their proper title; every episode gets its still from TheMovieDb (replacing the -thumb.jpg beside each video when artwork is kept in media folders).
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
       {mode !== "scan" && (
         <div className="mdialog__checks">
           <label className="check">

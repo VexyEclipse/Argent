@@ -51,9 +51,9 @@ const unnamed = (episodes: BaseItem[]) =>
  * Titles for a show's unnamed episodes, by episode id: from another copy of the episode
  * when one has a proper title, else from MyAnimeList by the episode's number (reading only
  * the pages those episodes are on, once). With `save`, each title is written to the episode
- * itself in Jellyfin (administrators).
+ * itself in Jellyfin (administrators); with `force` as well, even one saved before.
  */
-export async function episodeNames(seriesId: string, save: boolean): Promise<Map<string, string>> {
+export async function episodeNames(seriesId: string, save: boolean, force = false): Promise<Map<string, string>> {
   const episodes = (await getEpisodes(seriesId)).Items;
   const want = unnamed(episodes);
   if (!want.length) return new Map();
@@ -91,7 +91,8 @@ export async function episodeNames(seriesId: string, save: boolean): Promise<Map
     let saved = 0;
     for (const e of want) {
       const entry = names[e.Id];
-      if (!entry || entry.saved) continue;
+      // `force`: saved before, but the episode has a file-name title again (a metadata refresh replaced it).
+      if (!entry || (entry.saved && !force)) continue;
       try {
         await updateItemMetadata(e.Id, { Name: entry.name });
         entry.saved = true;

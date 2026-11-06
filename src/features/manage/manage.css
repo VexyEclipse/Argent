@@ -355,6 +355,21 @@ html[data-platform="mobile"] .selbar .btn__label {
   height: 16px;
   accent-color: var(--silver-100);
 }
+/* A checkbox with an explanation under its label. */
+.check:has(.check__hint) {
+  align-items: flex-start;
+}
+.check:has(.check__hint) input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+.check__hint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  line-height: var(--lh-body);
+}
 .field__hint {
   display: block;
   font-size: var(--fs-micro);

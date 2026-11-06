@@ -186,7 +186,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
                 </button>
               )}
             </div>
-            {selectedId && <EpisodeList seriesId={item.Id} seasonId={selectedId} highlightId={nextUp.data?.Id} />}
+            {selectedId && <EpisodeList seriesId={item.Id} seasonId={selectedId} highlightId={nextUp.data?.Id} seriesIds={item.ProviderIds} />}
           </section>
         )}
         <CastRow people={item.People} />
@@ -239,7 +239,18 @@ function SeasonScores({ series, seasons, onRate }: { series: BaseItem; seasons: 
   );
 }
 
-function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; seasonId: string; highlightId?: string }) {
+function EpisodeList({
+  seriesId,
+  seasonId,
+  highlightId,
+  seriesIds,
+}: {
+  seriesId: string;
+  seasonId: string;
+  highlightId?: string;
+  /** The show's provider ids, to notice when it's been re-identified (its episode stills are fetched again). */
+  seriesIds?: Record<string, string>;
+}) {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
@@ -253,7 +264,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
   });
   const filler = useFillerIds(seriesId);
   const names = useEpisodeNames(seriesId);
-  const stills = useEpisodeStills(seriesId, episodes.data);
+  const stills = useEpisodeStills(seriesId, episodes.data, seriesIds);
 
   const toggleEpisode = async (ep: BaseItem) => {
     const value = !ep.UserData?.Played;

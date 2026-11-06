@@ -16,8 +16,13 @@ interface Props {
  * Missing artwork shows a typographic placeholder instead of a broken image.
  */
 export function Artwork({ image, alt = "", className = "", fallbackLabel, eager, style }: Props) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Loading state belongs to one picture: a card that switches to another (the copy of an
+  // episode that's in the library, a new still) starts over rather than staying blank.
+  const url = image?.url;
+  const [status, setStatus] = useState({ url, loaded: false, failed: false });
+  if (status.url !== url) setStatus({ url, loaded: false, failed: false });
+  const loaded = status.url === url && status.loaded;
+  const failed = status.url === url && status.failed;
   const placeholder = blurHashToDataUrl(image?.blurHash);
 
   if (!image || failed) {
@@ -39,8 +44,8 @@ export function Artwork({ image, alt = "", className = "", fallbackLabel, eager,
         loading={eager ? "eager" : "lazy"}
         decoding="async"
         draggable={false}
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
+        onLoad={() => setStatus((s) => (s.url === url ? { ...s, loaded: true } : s))}
+        onError={() => setStatus((s) => (s.url === url ? { ...s, failed: true } : s))}
       />
     </div>
   );
