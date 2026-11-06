@@ -10,6 +10,8 @@ export interface DesktopSettings {
   useMpv: boolean;
   /** mpv.exe chosen by hand; empty to find it automatically. */
   mpvPath: string;
+  /** Keep wide movies from stretching when full screen turns on or off. Absent before 0.8.14. */
+  steadyFullscreenVideo?: boolean;
 }
 
 export type UpdateStatus =
@@ -25,6 +27,8 @@ export interface DesktopInfo {
   update: UpdateStatus;
   /** The mpv that would be used (found or chosen), or null when there is none. */
   mpv: string | null;
+  /** A setting changed that only takes effect after a restart. */
+  restartNeeded?: boolean;
 }
 
 export interface NowPlaying {
@@ -45,6 +49,8 @@ interface DesktopBridge {
   setSetting<K extends keyof DesktopSettings>(key: K, value: DesktopSettings[K]): Promise<DesktopSettings>;
   checkForUpdates(): Promise<void>;
   installUpdate(): Promise<void>;
+  /** Closes and reopens Argent. Absent before 0.8.14. */
+  relaunch?(): Promise<void>;
   onUpdateStatus(fn: (status: UpdateStatus) => void): () => void;
   showWindow(): Promise<void>;
   download(url: string): Promise<void>;

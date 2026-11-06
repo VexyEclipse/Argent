@@ -26,8 +26,10 @@ protocol.registerSchemesAsPrivileged([
 
 // Chromium hands video to Windows' compositor as a separate layer, which keeps the old
 // size for a few seconds after the window resizes: entering or leaving full screen
-// showed the picture stretched. Drawing video with the rest of the page avoids it.
-app.commandLine.appendSwitch("disable-direct-composition");
+// showed wide movies stretched. Drawing video with the rest of the page avoids it.
+// Chromium only reads this before it starts, so changing the setting needs a restart.
+const STEADY_VIDEO = settings.read().steadyFullscreenVideo;
+if (STEADY_VIDEO) app.commandLine.appendSwitch("disable-direct-composition");
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.setAppUserModelId("com.vexyeclipse.argent");
@@ -108,6 +110,8 @@ async function appInfo() {
     settings: settings.read(),
     update: updater.status(),
     mpv: (await mpv.findMpv(settings.read().mpvPath)) || null,
+    /** A setting changed that only takes effect after a restart. */
+    restartNeeded: settings.read().steadyFullscreenVideo !== STEADY_VIDEO,
   };
 }
 
@@ -177,6 +181,12 @@ ipcMain.handle("mpv:choose", async () => {
 ipcMain.handle("update:install", () => {
   quitting = true;
   updater.install();
+});
+ipcMain.handle("app:relaunch", (e) => {
+  if (!mainWindow || e.sender !== mainWindow.webContents) return;
+  quitting = true;
+  app.relaunch();
+  app.quit();
 });
 
 ipcMain.on("now-playing", (_e, info) => {

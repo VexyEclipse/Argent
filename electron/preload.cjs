@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   setSetting: (key, value) => ipcRenderer.invoke("settings:set", key, value),
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
+  /** Closes and reopens Argent (for settings read at startup). */
+  relaunch: () => ipcRenderer.invoke("app:relaunch"),
   onUpdateStatus: (fn) => subscribe("update:status", fn),
   /** Brings the window forward (e.g. when a notification is clicked). */
   showWindow: () => ipcRenderer.invoke("app:show"),

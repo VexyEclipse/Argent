@@ -184,6 +184,27 @@ function DesktopSection({ info, setSetting, refresh }: { info: DesktopInfo; setS
         checked={settings.closeToTray}
         onChange={(v) => setSetting("closeToTray", v)}
       />
+      {settings.steadyFullscreenVideo !== undefined && (
+        <Toggle
+          label="Keep wide movies in shape in full screen"
+          hint="Stops movies with black bars stretching for a few seconds when full screen turns on or off. Turn off if playback stutters. Applies after Argent restarts."
+          checked={settings.steadyFullscreenVideo}
+          onChange={(v) => setSetting("steadyFullscreenVideo", v)}
+        />
+      )}
+      {info.restartNeeded && (
+        <div className="setting">
+          <div className="setting__text">
+            <span className="setting__label">Restart to apply</span>
+            <span className="setting__hint">Argent closes and opens again. Anything playing stops.</span>
+          </div>
+          {desktop?.relaunch && (
+            <Button variant="primary" size="sm" onClick={() => desktop?.relaunch?.()}>
+              Restart now
+            </Button>
+          )}
+        </div>
+      )}
       {/* Desktop apps before 0.7 have no mpv support. */}
       {settings.useMpv !== undefined && (
         <>

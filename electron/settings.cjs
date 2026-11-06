@@ -14,6 +14,12 @@ const DEFAULTS = {
   useMpv: false,
   /** mpv.exe chosen by hand; empty to look in the usual places. */
   mpvPath: "",
+  /**
+   * Draw video with the rest of the page instead of as a separate Windows layer, so wide
+   * movies don't stretch for a few seconds when full screen turns on or off. Read once at
+   * startup.
+   */
+  steadyFullscreenVideo: true,
 };
 
 const file = () => path.join(app.getPath("userData"), "settings.json");
