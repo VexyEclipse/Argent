@@ -235,3 +235,28 @@ export function checkNeeded(saved: SavedRun, library: { episodes: number; newest
 
 /** Whether a finished show's list needs no more checks once it's read now. */
 export const isSettled = (status: string | undefined, newestAdded: number | undefined, now = Date.now()) => status === "Ended" && now >= (newestAdded ?? 0) + SETTLE_MS;
+
+// ---- episode titles ----------------------------------------------------------------------
+
+/** Titles on one page of `/anime/{id}/episodes`, by episode number (English title, else romanised). */
+export function parseEpisodeTitles(json: unknown): Record<number, string> {
+  const out: Record<number, string> = {};
+  if (!isObj(json) || !Array.isArray(json.data)) return out;
+  for (const e of json.data) {
+    if (!isObj(e)) continue;
+    const n = typeof e.mal_id === "number" ? e.mal_id : e.number;
+    const title = [e.title, e.title_romanji, e.titleRomanji].find((t) => typeof t === "string" && t.trim());
+    if (typeof n === "number" && Number.isInteger(n) && n > 0 && typeof title === "string") out[n] = title.trim().slice(0, 200);
+  }
+  return out;
+}
+
+/** Which entry of a run a running episode number falls in, and its number within that entry. */
+export function locate(n: number, parts: Pick<MalPart, "malId" | "episodes">[]): { malId: number; number: number } | null {
+  let offset = 0;
+  for (const p of parts) {
+    if (n > offset && n <= offset + p.episodes) return { malId: p.malId, number: n - offset };
+    offset += p.episodes;
+  }
+  return null;
+}

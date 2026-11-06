@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyIds, mergeDuplicateEpisodes } from "./duplicates";
+import { copyIds, hasCopies, looksUnnamed, mergeDuplicateEpisodes, noteCopies, unwatchedCount } from "./duplicates";
 import type { BaseItem } from "./types";
 
 const ep = (Id: string, s: number, e: number, extra: Partial<BaseItem> = {}): BaseItem => ({ Id, Name: Id, Type: "Episode", ParentIndexNumber: s, IndexNumber: e, ...extra });
@@ -42,5 +42,72 @@ describe("duplicate episodes", () => {
   it("never merges episodes without a number, or a double episode with a single one", () => {
     const list = mergeDuplicateEpisodes([ep("a", 1, 1), { Id: "n1", Name: "n1", Type: "Episode" }, { Id: "n2", Name: "n2", Type: "Episode" }, ep("ab", 1, 1, { IndexNumberEnd: 2 })]);
     expect(list.map((e) => e.Id)).toEqual(["a", "n1", "n2", "ab"]);
+  });
+});
+
+describe("choosing and completing a copy", () => {
+  const source = (path: string, types: ("Video" | "Audio")[]) => ({
+    Id: path,
+    Path: path,
+    SupportsDirectPlay: true,
+    SupportsDirectStream: true,
+    SupportsTranscoding: true,
+    MediaStreams: types.map((Type, Index) => ({ Index, Type })),
+  });
+
+  it("prefers a whole file over a picture, and borrows the picture", () => {
+    const [kept] = mergeDuplicateEpisodes([
+      ep("broken", 1, 2, { ImageTags: { Primary: "pic" }, MediaSources: [source("a.mkv", ["Video"])] }),
+      ep("whole", 1, 2, { MediaSources: [source("b.mkv", ["Video", "Audio"])] }),
+    ]);
+    expect(kept.Id).toBe("whole");
+    expect(kept.ImageTags?.Primary).toBe("pic");
+    expect(kept.PrimaryImageItemId).toBe("broken");
+  });
+
+  it("prefers the copy with a picture when both are whole, and takes a proper title from the other", () => {
+    const [kept] = mergeDuplicateEpisodes([
+      ep("titled", 1, 2, { Name: "Confrontation", SeriesName: "Death Note", Overview: "L meets…" }),
+      ep("pictured", 1, 2, { Name: "Death Note - 02", SeriesName: "Death Note", ImageTags: { Primary: "pic" } }),
+    ]);
+    expect(kept.Id).toBe("pictured");
+    expect(kept.Name).toBe("Confrontation");
+    expect(kept.Overview).toBe("L meets…");
+    expect(kept.PrimaryImageItemId).toBeUndefined();
+  });
+
+  it("recognises titles that are only a file name or a number", () => {
+    const named = (Name: string, path = "") => looksUnnamed({ Name, SeriesName: "Death Note", MediaSources: path ? [source(path, [])] : undefined });
+    expect(named("Death Note - 01")).toBe(true);
+    expect(named("Episode 3")).toBe(true);
+    expect(named("S01E03")).toBe(true);
+    expect(named("(CBB) Tokyo Ghoul - 03 (1080p)", "D:/Anime/(CBB) Tokyo Ghoul - 03 (1080p).mkv")).toBe(true);
+    expect(named("Confrontation")).toBe(false);
+    expect(named("03 - Dove")).toBe(false);
+    expect(named("Death Note: Relight")).toBe(false);
+  });
+});
+
+describe("counting episodes once", () => {
+  it("counts unwatched episodes, not copies or placeholders", () => {
+    const merged = mergeDuplicateEpisodes([
+      ep("a1", 1, 1, { UserData: { Played: true } }),
+      ep("a2", 1, 1),
+      ep("b1", 1, 2),
+      ep("b2", 1, 2),
+      ep("v", 1, 3, { LocationType: "Virtual" }),
+    ]);
+    expect(unwatchedCount(merged)).toBe(1);
+  });
+
+  it("remembers shows with copies, and forgets one only when its whole list has none", () => {
+    const withCopy = mergeDuplicateEpisodes([ep("a", 1, 1), ep("b", 1, 1)]);
+    const clean = mergeDuplicateEpisodes([ep("a", 1, 1)]);
+    noteCopies("show", withCopy, false);
+    expect(hasCopies("show")).toBe(true);
+    noteCopies("show", clean, false);
+    expect(hasCopies("show")).toBe(true);
+    noteCopies("show", clean, true);
+    expect(hasCopies("show")).toBe(false);
   });
 });

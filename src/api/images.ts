@@ -25,7 +25,7 @@ export function posterImage(item: BaseItem, width = 400): ImageRef | null {
   if (item.SeriesId && item.SeriesPrimaryImageTag) {
     return ref(item.SeriesId, "Primary", item.SeriesPrimaryImageTag, width, hash(item, "Primary", item.SeriesPrimaryImageTag));
   }
-  if (tag) return ref(item.Id, "Primary", tag, width, hash(item, "Primary", tag));
+  if (tag) return ref(item.PrimaryImageItemId ?? item.Id, "Primary", tag, width, hash(item, "Primary", tag));
   return null;
 }
 
@@ -56,7 +56,7 @@ export function logoImage(item: BaseItem, width = 800): ImageRef | null {
 export function landscapeImage(item: BaseItem, width = 640): ImageRef | null {
   if (item.Type === "Episode" && item.ImageTags?.Primary) {
     const tag = item.ImageTags.Primary;
-    return ref(item.Id, "Primary", tag, width, hash(item, "Primary", tag));
+    return ref(item.PrimaryImageItemId ?? item.Id, "Primary", tag, width, hash(item, "Primary", tag));
   }
   const thumb = item.ImageTags?.Thumb;
   if (thumb) return ref(item.Id, "Thumb", thumb, width, hash(item, "Thumb", thumb));

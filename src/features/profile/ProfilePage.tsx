@@ -88,6 +88,7 @@ function ComingUpSection({ userId }: { userId: string }) {
 
 /** Skipping intros, credits and anime filler. */
 function SkippingSection() {
+  const { isAdmin } = useAuth();
   const [skip, setSkip] = useState(readAutoSkip);
   const filler = useFillerPrefs();
   const change = (patch: Partial<typeof skip>) => {
@@ -113,6 +114,12 @@ function SkippingSection() {
         hint="A Filler badge on anime episodes outside the source story. Each show's MyAnimeList episode list is read through jikan-edge (or Tenrai as a backup) by its ids or title; nothing about you is sent."
         checked={filler.badges}
         onChange={(v) => setFillerPref("badges", v)}
+      />
+      <Toggle
+        label="Fill in missing episode titles"
+        hint={`Anime episodes titled only with a file name ("Death Note - 01") get their title from MyAnimeList.${isAdmin ? " As an administrator, the titles are also saved to Jellyfin, so every app shows them." : ""}`}
+        checked={filler.names}
+        onChange={(v) => setFillerPref("names", v)}
       />
       <Toggle
         label="Skip all filler"

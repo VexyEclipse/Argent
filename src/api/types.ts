@@ -182,6 +182,8 @@ export interface BaseItem {
   ExtraType?: string;
   /** Argent's own: other library items for the same episode, hidden behind this one (see api/duplicates.ts). */
   Copies?: { Id: string; Path?: string }[];
+  /** Argent's own: the copy whose picture this episode shows, when it has none itself. */
+  PrimaryImageItemId?: string;
 }
 
 export interface ItemsResult<T = BaseItem> {

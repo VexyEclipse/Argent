@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BaseItem } from "@/api/types";
-import { absoluteNumbers, aniListIdOf, checkNeeded, isSettled, mergePages, SETTLE_MS, tailPage, WEEKLY_MS, fillerEpisodeIds, hasAnimeIds, isTvEntry, malIdOf, parseEpisodePage, parseSequel, pickSearchMatch } from "./logic";
+import { absoluteNumbers, aniListIdOf, checkNeeded, locate, parseEpisodeTitles, isSettled, mergePages, SETTLE_MS, tailPage, WEEKLY_MS, fillerEpisodeIds, hasAnimeIds, isTvEntry, malIdOf, parseEpisodePage, parseSequel, pickSearchMatch } from "./logic";
 
 const ep = (id: string, s: number, e: number): BaseItem => ({ Id: id, Name: id, Type: "Episode", ParentIndexNumber: s, IndexNumber: e });
 
@@ -112,5 +112,22 @@ describe("keeping a saved list current", () => {
     expect(isSettled("Ended", NOW - SETTLE_MS, NOW)).toBe(true);
     expect(isSettled("Ended", NOW - DAY, NOW)).toBe(false);
     expect(isSettled("Continuing", 0, NOW)).toBe(false);
+  });
+});
+
+describe("episode titles", () => {
+  it("reads titles from either service's format", () => {
+    expect(parseEpisodeTitles({ data: [{ mal_id: 1, title: "Rebirth" }, { mal_id: 2, title: "", title_romanji: "Taiketsu" }] })).toEqual({ 1: "Rebirth", 2: "Taiketsu" });
+    expect(parseEpisodeTitles({ data: [{ number: 3, title: " Dealings " }] })).toEqual({ 3: "Dealings" });
+    expect(parseEpisodeTitles({})).toEqual({});
+  });
+  it("finds the entry and number for a running episode number", () => {
+    const parts = [
+      { malId: 6702, episodes: 175 },
+      { malId: 22043, episodes: 102 },
+    ];
+    expect(locate(1, parts)).toEqual({ malId: 6702, number: 1 });
+    expect(locate(176, parts)).toEqual({ malId: 22043, number: 1 });
+    expect(locate(400, parts)).toBeNull();
   });
 });

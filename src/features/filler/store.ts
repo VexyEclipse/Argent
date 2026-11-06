@@ -21,6 +21,7 @@ import {
   malIdOf,
   mergePages,
   parseEpisodePage,
+  parseEpisodeTitles,
   parseSequel,
   pickSearchMatch,
   tailPage,
@@ -52,10 +53,12 @@ export interface FillerPrefs {
   badges: boolean;
   /** Next episode, autoplay and a series' Play button pass over filler. */
   skip: boolean;
+  /** Episodes titled with only a file name get their title from MyAnimeList. */
+  names: boolean;
 }
 
 const PREFS_KEY = "argent.fillerPrefs";
-const DEFAULTS: FillerPrefs = { badges: true, skip: false };
+const DEFAULTS: FillerPrefs = { badges: true, skip: false, names: true };
 const listeners = new Set<() => void>();
 const subscribe = (fn: () => void) => {
   listeners.add(fn);
@@ -257,48 +260,65 @@ async function isAnimeSeries(series: BaseItem): Promise<boolean> {
   return ancestors.some((a) => a.Type === "CollectionFolder" && isAnimeLibrary(a));
 }
 
-const inFlight = new Map<string, Promise<Set<string>>>();
+/** A show's episodes and its run on MyAnimeList. */
+export interface Run {
+  episodes: BaseItem[];
+  parts: MalPart[];
+}
+
+const inFlight = new Map<string, Promise<Run | null>>();
 
 /**
- * Ids of a series' filler episodes (empty when it isn't anime, isn't found, or the lookup
- * is off). A saved list is used as it is unless the rules in `checkNeeded` say otherwise,
- * so a finished show is read once and then only when the library gains episodes.
+ * A show's run on MyAnimeList, from the saved copy unless the rules in `checkNeeded` say
+ * it may have changed: a finished show is read once, then only when the library gains
+ * episodes. Null when it isn't anime or isn't found.
  */
-export function fillerIds(seriesId: string): Promise<Set<string>> {
-  if (!enabled()) return Promise.resolve(new Set());
+export function loadRun(seriesId: string): Promise<Run | null> {
   const running = inFlight.get(seriesId);
   if (running) return running;
-  const job = (async () => {
+  const job = (async (): Promise<Run | null> => {
     const episodes = (await getEpisodes(seriesId)).Items;
     const cached = readCache()[seriesId];
     const now = Date.now();
-    if (cached && "miss" in cached && now - cached.at < MISS_FOR) return new Set<string>();
+    if (cached && "miss" in cached && now - cached.at < MISS_FOR) return null;
     const saved = cached && "parts" in cached ? cached : null;
     const libraryEpisodes = Math.max(0, ...absoluteNumbers(episodes).values());
     const newestAdded = Math.max(0, ...episodes.map((e) => Date.parse(e.DateCreated ?? "") || 0));
-    if (saved && checkNeeded(saved, { episodes: libraryEpisodes, newestAdded }, now) === "none") return fillerEpisodeIds(episodes, saved.parts);
+    if (saved && checkNeeded(saved, { episodes: libraryEpisodes, newestAdded }, now) === "none") return { episodes, parts: saved.parts };
 
     const series = await getItem(seriesId, ["ProviderIds", "ProductionYear", "OriginalTitle"]);
     if (!saved && !(await isAnimeSeries(series))) {
       writeCache(seriesId, { at: now, miss: true });
-      return new Set<string>();
+      return null;
     }
     try {
       const malId = saved?.parts[0]?.malId ?? (await findMalId(series));
       if (!malId) {
         writeCache(seriesId, { at: now, miss: true });
-        return new Set<string>();
+        return null;
       }
       const parts = await updateRun(saved?.parts ?? [], malId, libraryEpisodes);
       writeCache(seriesId, { at: now, parts, status: series.Status, libraryEpisodes, settled: isSettled(series.Status, newestAdded, now) });
-      return fillerEpisodeIds(episodes, parts);
+      return { episodes, parts };
     } catch {
       // No service reachable: use what we had, however old, and look again next time.
-      return saved ? fillerEpisodeIds(episodes, saved.parts) : new Set<string>();
+      return saved ? { episodes, parts: saved.parts } : null;
     }
   })().finally(() => inFlight.delete(seriesId));
   inFlight.set(seriesId, job);
   return job;
+}
+
+/** Ids of a series' filler episodes (empty when it isn't anime, isn't found, or the lookup is off). */
+export async function fillerIds(seriesId: string): Promise<Set<string>> {
+  if (!enabled()) return new Set();
+  const run = await loadRun(seriesId);
+  return run ? fillerEpisodeIds(run.episodes, run.parts) : new Set();
+}
+
+/** Titles on one page of an entry's episode list. */
+export async function episodeTitles(malId: number, page: number): Promise<Record<number, string>> {
+  return parseEpisodeTitles(await jikan(`/anime/${malId}/episodes?page=${page}`));
 }
 
 /** Filler episode ids for a series, for badges (empty while loading or when off). */

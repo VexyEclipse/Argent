@@ -4,6 +4,7 @@ import { episodeCode, formatClock } from "@/api/format";
 import type { BaseItem, MediaStream } from "@/api/types";
 import { Icon } from "@/components/Icon";
 import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useEpisodeTitle } from "@/features/filler/names";
 import { useFillerIds } from "@/features/filler/store";
 import type { Platform } from "@/platform/platform";
 import { QUALITY_OPTIONS } from "./deviceProfile";
@@ -27,6 +28,7 @@ export function TopBar(props: { item: BaseItem | undefined; menu: Menu; setMenu:
   const { item, menu, setMenu } = props;
   const logo = item ? logoImage(item, 500) : null;
   const filler = useFillerIds(item?.Type === "Episode" ? item.SeriesId : undefined);
+  const title = useEpisodeTitle(item);
   return (
     <div className="pc pc--top" onMouseUp={props.onMouseUp}>
       <button className="pc__btn" onClick={props.onBack} aria-label="Back">
@@ -39,7 +41,7 @@ export function TopBar(props: { item: BaseItem | undefined; menu: Menu; setMenu:
             <span className="pc__episode">
               {episodeCode(item)}
               {filler.has(item.Id) ? <FillerBadge /> : " · "}
-              {item.Name}
+              {title}
             </span>
           </>
         ) : logo ? (

@@ -4,6 +4,7 @@ import { logoImage } from "@/api/images";
 import { episodeCode, formatRuntime, joinDots, yearOf } from "@/api/format";
 import type { BaseItem } from "@/api/types";
 import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useEpisodeTitle } from "@/features/filler/names";
 import { useFillerIds } from "@/features/filler/store";
 
 /**
@@ -20,6 +21,7 @@ export function PauseInfo({ item }: { item: BaseItem }) {
     staleTime: 10 * 60_000,
   });
   const filler = useFillerIds(episode ? item.SeriesId : undefined).has(item.Id);
+  const title = useEpisodeTitle(item);
   const logo = logoImage(item, 600);
   const people = [...(item.People ?? []), ...(series.data?.People ?? [])];
   const cast = [...new Set(people.filter((p) => p.Type === "Actor" || p.Type === "GuestStar").map((p) => p.Name))].slice(0, 5);
@@ -42,7 +44,7 @@ export function PauseInfo({ item }: { item: BaseItem }) {
           <p className="pause-info__episode">
             {episodeCode(item)}
             {filler ? <FillerBadge /> : " · "}
-            {item.Name}
+            {title}
           </p>
         )}
         {meta && <p className="pause-info__meta">{meta}</p>}

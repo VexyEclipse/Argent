@@ -41,6 +41,7 @@ import { offlineNeighbours, offlineStart } from "@/features/downloads/logic";
 import { OfflineReporter, offlineStream } from "@/features/downloads/offlinePlayback";
 import { findDownload, readDownloads } from "@/features/downloads/store";
 import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useEpisodeTitle } from "@/features/filler/names";
 import { useFillerIds } from "@/features/filler/store";
 import { useSubtitles } from "./useSubtitles";
 import { useUpNext } from "./useUpNext";
@@ -724,6 +725,7 @@ function WebPlayer(props: {
 
   // ---- skip segments & up next ----------------------------------------------------
   const nextIsFiller = useFillerIds(next?.SeriesId).has(next?.Id ?? "");
+  const nextTitle = useEpisodeTitle(next);
   const activeSegment = activeSkip(segments, current);
   const upNext = useUpNext({
     video,
@@ -1007,7 +1009,7 @@ function WebPlayer(props: {
             <span className="eyebrow">Paused</span>
             <span className="upnext__title">Are you still watching?</span>
             <span className="upnext__code">
-              Next: {episodeCode(next)} · {next.Name}
+              Next: {episodeCode(next)} · {nextTitle}
             </span>
             <div className="upnext__actions">
               <button className="btn btn--primary btn--sm" autoFocus onClick={upNext.keepWatching}>
@@ -1028,7 +1030,7 @@ function WebPlayer(props: {
           </div>
           <div className="upnext__text">
             <span className="eyebrow">Up next{upNext.countdown !== null ? ` · ${upNext.countdown}s` : ""}</span>
-            <span className="upnext__title">{next.Name}</span>
+            <span className="upnext__title">{nextTitle}</span>
             <span className="upnext__code">
               {episodeCode(next)}
               {nextIsFiller && <FillerBadge />}

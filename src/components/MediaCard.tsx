@@ -1,8 +1,11 @@
-import { memo, type MouseEvent } from "react";
+import { memo, useSyncExternalStore, type MouseEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import type { BaseItem } from "@/api/types";
 import { landscapeImage, posterImage } from "@/api/images";
+import { hasCopies, subscribeCopies, unwatchedCount } from "@/api/duplicates";
 import { cardSubtitle, progressOf } from "@/api/format";
+import { getEpisodes } from "@/api/jellyfin";
 import { useAuth } from "@/auth/AuthProvider";
 import { openMenu, toggleSelected, useIsSelected, useSelecting } from "@/features/manage/store";
 import { usePosterScore } from "@/features/ratings/prefs";
@@ -34,6 +37,24 @@ interface Props {
   noPlay?: boolean;
   /** A "Remind me" bell (Coming Up). */
   remind?: boolean;
+}
+
+/**
+ * A show's unwatched episodes. Jellyfin counts every copy of an episode, so for a show
+ * known to have copies the count comes from its merged episode list (the one the show's
+ * page uses); for any other show, Jellyfin's own number.
+ */
+function useUnwatched(item: BaseItem): number | undefined {
+  const series = item.Type === "Series";
+  const copies = useSyncExternalStore(subscribeCopies, () => series && hasCopies(item.Id));
+  const episodes = useQuery({
+    queryKey: ["episodes", item.Id, "all"],
+    queryFn: () => getEpisodes(item.Id).then((r) => r.Items),
+    enabled: copies,
+    staleTime: 60_000,
+  });
+  if (!series) return undefined;
+  return copies && episodes.data ? unwatchedCount(episodes.data) : item.UserData?.UnplayedItemCount;
 }
 
 export function detailsPath(item: Pick<BaseItem, "Id" | "Type">): string {
@@ -68,7 +89,7 @@ export const MediaCard = memo(function MediaCard({
   const image = variant === "poster" ? posterImage(item, 360) : landscapeImage(item, 640);
   const progress = showProgress ? progressOf(item) : 0;
   const played = item.UserData?.Played;
-  const unplayed = item.Type === "Series" ? item.UserData?.UnplayedItemCount : undefined;
+  const unplayed = useUnwatched(item);
   const title = item.Type === "Episode" && variant === "landscape" ? item.Name : item.SeriesName && variant === "poster" ? item.SeriesName : item.Name;
   const sub = subtitle ?? (item.Type === "Episode" && variant === "poster" ? item.Name : cardSubtitle(item));
   const to = playOnClick ? `/play/${item.Id}` : detailsPath(item);

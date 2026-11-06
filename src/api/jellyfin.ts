@@ -1,5 +1,5 @@
 import { JellyfinClient, type Query } from "./client";
-import { mergeDuplicateEpisodes } from "./duplicates";
+import { mergeDuplicateEpisodes, noteCopies } from "./duplicates";
 import type {
   AuthenticationResult,
   BaseItem,
@@ -221,7 +221,11 @@ export const getEpisodes = (seriesId: string, seasonId?: string) =>
         enableUserData: true,
       },
     })
-    .then((r) => ({ ...r, Items: mergeDuplicateEpisodes(r.Items) }));
+    .then((r) => {
+      const Items = mergeDuplicateEpisodes(r.Items);
+      noteCopies(seriesId, Items, !seasonId);
+      return { ...r, Items };
+    });
 
 export const getLocalTrailers = (id: string) => client().request<BaseItem[]>(`/Items/${id}/LocalTrailers`, { query: { userId: uid() } });
 

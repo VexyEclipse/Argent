@@ -453,7 +453,10 @@ export async function syncOfflineProgress() {
         if (!r || r.dirty) continue;
         const position = it.UserData?.PlaybackPositionTicks ?? 0;
         const played = Boolean(it.UserData?.Played);
-        if (position !== r.position || played !== r.played) update(r.id, { position, played, item: { ...r.item, UserData: it.UserData } });
+        // A title fixed on the server since (a file name replaced by the real title) follows too.
+        const renamed = it.Name && it.Name !== r.item.Name;
+        if (position !== r.position || played !== r.played || renamed)
+          update(r.id, { position, played, item: { ...r.item, Name: it.Name || r.item.Name, UserData: it.UserData } });
       }
     }
   } catch {

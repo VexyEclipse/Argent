@@ -19,6 +19,7 @@ import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { openMenu } from "@/features/manage/store";
 import { useAuth } from "@/auth/AuthProvider";
 import { FillerBadge } from "@/features/filler/FillerBadge";
+import { useEpisodeNames, useEpisodeTitle } from "@/features/filler/names";
 import { useFillerIds } from "@/features/filler/store";
 import { DownloadButton } from "@/features/downloads/DownloadButton";
 import { useDownloadDialog } from "@/features/downloads/DownloadDialog";
@@ -249,6 +250,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
     staleTime: 30_000,
   });
   const filler = useFillerIds(seriesId);
+  const names = useEpisodeNames(seriesId);
 
   const toggleEpisode = async (ep: BaseItem) => {
     const value = !ep.UserData?.Played;
@@ -300,7 +302,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
               <div className="episode__head">
                 <Link to={`/details/${ep.Id}`} className="episode__title">
                   <span className="episode__num">{ep.IndexNumber ?? "–"}</span>
-                  {ep.Name}
+                  {names.get(ep.Id) ?? ep.Name}
                   {filler.has(ep.Id) && <FillerBadge />}
                 </Link>
                 <span className="episode__download">
@@ -366,6 +368,7 @@ function EpisodeList({ seriesId, seasonId, highlightId }: { seriesId: string; se
 function EpisodeDetails({ item }: { item: BaseItem }) {
   const navigate = useNavigate();
   const filler = useFillerIds(item.SeriesId);
+  const title = useEpisodeTitle(item) ?? item.Name;
   const all = useQuery({
     queryKey: ["episodes", item.SeriesId, "all"],
     queryFn: () => getEpisodes(item.SeriesId!).then((r) => r.Items),
@@ -381,7 +384,7 @@ function EpisodeDetails({ item }: { item: BaseItem }) {
   return (
     <div className="details">
       <Hero
-        item={item}
+        item={title === item.Name ? item : { ...item, Name: title }}
         showPoster={false}
         eyebrow={
           <>
