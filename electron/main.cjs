@@ -24,6 +24,11 @@ protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
 
+// Chromium hands video to Windows' compositor as a separate layer, which keeps the old
+// size for a few seconds after the window resizes: entering or leaving full screen
+// showed the picture stretched. Drawing video with the rest of the page avoids it.
+app.commandLine.appendSwitch("disable-direct-composition");
+
 if (!app.requestSingleInstanceLock()) app.quit();
 app.setAppUserModelId("com.vexyeclipse.argent");
 
