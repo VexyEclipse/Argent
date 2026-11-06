@@ -43,10 +43,12 @@ interface HeroProps {
   eyebrow?: ReactNode;
   showPoster?: boolean;
   extraActions?: ReactNode;
+  /** A show's seasons, counted once each (Jellyfin counts a season once per folder it's in). */
+  seasonCount?: number;
   children?: ReactNode;
 }
 
-export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, extraActions, children }: HeroProps) {
+export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, extraActions, seasonCount, children }: HeroProps) {
   const navigate = useNavigate();
   const actions = useItemActions(item);
   const watchlist = useWatchlistToggle(item);
@@ -80,7 +82,7 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const years = yearRange(item);
   if (years) meta.push(years);
   if (item.OfficialRating) meta.push(<span className="cert">{item.OfficialRating}</span>);
-  if (item.Type === "Series" && item.ChildCount) meta.push(seasonCountLabel(item.ChildCount));
+  if (item.Type === "Series" && (seasonCount ?? item.ChildCount)) meta.push(seasonCountLabel(seasonCount ?? item.ChildCount));
   else if (item.RunTimeTicks) meta.push(formatRuntime(item.RunTimeTicks));
   if (typeof item.CommunityRating === "number")
     meta.push(

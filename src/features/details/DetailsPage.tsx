@@ -117,6 +117,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
     <div className="details">
       <Hero
         item={item}
+        seasonCount={seasonList.length ? new Set(seasonList.map((s) => s.IndexNumber ?? s.Name)).size : undefined}
         playTarget={playTarget}
         playLabel={
           playTarget ? `${started ? (progressOf(playTarget) > 0 ? "Resume" : "Continue") : "Play"} ${episodeCode(playTarget).replace(" · ", "")}` : undefined

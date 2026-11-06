@@ -3,11 +3,14 @@
 // the video, which can land on an opening or a title card. Jellyfin downloads and saves the
 // still itself, so every app shows it; with "save artwork into media folders" on, that
 // replaces the episode's -thumb.jpg beside the video. Each episode is done once, as its
-// season is opened; one the providers have no still for keeps its picture.
+// season is opened; one the providers have no still for keeps its picture. A finished
+// season is recorded in the account, so other devices skip it (but for episodes added
+// since).
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { downloadRemoteImage, getRemoteImages, type RemoteImage } from "@/api/manage";
+import { createSyncedMap } from "@/api/syncedMap";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
 import { logEvent } from "@/features/diagnostics/log";
@@ -48,6 +51,10 @@ export function setStillsPref(on: boolean) {
 export const useStillsPref = () => useSyncExternalStore(subscribe, readStillsPref);
 
 // ---- which episodes are done -------------------------------------------------------------
+
+/** Seasons finished on any device ("series:season" → when), shared through the account. */
+const seasonsDone = createSyncedMap<number>({ prefsId: "argent-library", field: "stillsDone", storageKey: "argent.stillsSeasons", max: 3000 });
+const seasonKey = (seriesId: string, e: Pick<BaseItem, "ParentIndexNumber">) => `${seriesId}:${e.ParentIndexNumber ?? 0}`;
 
 type Done = Record<string, string[]>;
 
@@ -106,15 +113,21 @@ const running = new Set<string>();
  * are left, for a progress line.
  */
 export function useEpisodeStills(seriesId: string, episodes: BaseItem[] | undefined): { left: number; total: number } {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const on = useStillsPref();
+  const finished = seasonsDone.use();
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState({ left: 0, total: 0 });
 
   useEffect(() => {
     if (!isAdmin || !on || !episodes?.length) return;
     const done = new Set(readDone()[seriesId] ?? []);
-    const todo = episodes.filter((e) => e.Type === "Episode" && e.LocationType !== "Virtual" && !done.has(e.Id));
+    // Done here, or in a season another device finished (episodes added since still need one).
+    const doneElsewhere = (e: BaseItem) => {
+      const at = finished[seasonKey(seriesId, e)];
+      return at !== undefined && (Date.parse(e.DateCreated ?? "") || 0) <= at;
+    };
+    const todo = episodes.filter((e) => e.Type === "Episode" && e.LocationType !== "Virtual" && !done.has(e.Id) && !doneElsewhere(e));
     const key = `${seriesId}:${todo.map((e) => e.Id).join(",")}`;
     if (!todo.length || running.has(key)) return;
     running.add(key);
@@ -122,8 +135,12 @@ export function useEpisodeStills(seriesId: string, episodes: BaseItem[] | undefi
     (async () => {
       setProgress({ left: todo.length, total: todo.length });
       let saved = 0;
+      let complete = true;
       for (const [i, e] of todo.entries()) {
-        if (stopped) break;
+        if (stopped) {
+          complete = false;
+          break;
+        }
         try {
           const still = pickStill((await getRemoteImages(e.Id, "Primary")).Images);
           if (still?.Url) {
@@ -133,11 +150,13 @@ export function useEpisodeStills(seriesId: string, episodes: BaseItem[] | undefi
           markDone(seriesId, [e.Id]);
         } catch {
           // Server or provider unreachable: stop, and try the rest next time.
+          complete = false;
           break;
         }
         setProgress({ left: todo.length - i - 1, total: todo.length });
         await sleep(GAP_MS);
       }
+      if (complete && user) for (const key of new Set(todo.map((e) => seasonKey(seriesId, e)))) seasonsDone.set(user.Id, key, Date.now());
       if (saved) {
         logEvent("stills", `Saved ${saved} episode stills for series ${seriesId}`);
         // New pictures have new image tags: lists, cards and the player pick them up.
@@ -149,7 +168,7 @@ export function useEpisodeStills(seriesId: string, episodes: BaseItem[] | undefi
     return () => {
       stopped = true;
     };
-  }, [isAdmin, on, seriesId, episodes, queryClient]);
+  }, [isAdmin, on, seriesId, episodes, queryClient, finished, user]);
 
   return progress;
 }

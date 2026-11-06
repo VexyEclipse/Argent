@@ -78,17 +78,39 @@ function score(e: BaseItem, roots: readonly string[] | null): number {
   return s;
 }
 
-const keyOf = (e: BaseItem) =>
-  e.IndexNumber === undefined ? null : `${e.ParentIndexNumber ?? ""}:${e.IndexNumber}:${e.IndexNumberEnd ?? ""}`;
+/**
+ * Season and episode from a file name ("Show - S02E01 (036).mkv", "Show - 2x01"), for an
+ * episode Jellyfin never numbered.
+ */
+export function numberFromPath(path: string | undefined): { season: number; episode: number } | null {
+  const file = path?.split(/[\\/]/).pop() ?? "";
+  const m = /S(\d{1,2})\s*E(\d{1,4})/i.exec(file) ?? /\b(\d{1,2})x(\d{2,4})\b/.exec(file);
+  return m ? { season: Number(m[1]), episode: Number(m[2]) } : null;
+}
+
+/** An episode with its number filled in from its file name, when Jellyfin has none. */
+function withNumber(e: BaseItem): BaseItem {
+  if (e.IndexNumber !== undefined) return e;
+  const n = numberFromPath(e.MediaSources?.[0]?.Path ?? e.Path);
+  return n ? { ...e, IndexNumber: n.episode, ParentIndexNumber: e.ParentIndexNumber ?? n.season } : e;
+}
+
+function keyOf(e: BaseItem): string | null {
+  if (e.IndexNumber !== undefined) return `${e.ParentIndexNumber ?? ""}:${e.IndexNumber}:${e.IndexNumberEnd ?? ""}`;
+  const n = numberFromPath(e.MediaSources?.[0]?.Path ?? e.Path);
+  return n ? `${n.season}:${n.episode}:` : null;
+}
 
 /**
  * One episode per season and number, in the original order. A placeholder for a missing
  * episode gives way to a real file, and a copy left behind by a removed library folder
- * to one that's still there (when `roots`, the library's folders, are known). The copy
- * kept lists the others in `Copies`, is watched if any copy is, resumes from wherever one
- * was left part-way, and borrows a picture (only from a copy whose file is still there),
- * a proper title and the story from another copy when it has none of its own. A borrowed
- * title is marked `BorrowedName`, so it can be saved to the copy kept.
+ * to one that's still there (when `roots`, the library's folders, are known); an episode
+ * whose only copies are outside them has no file at all and is left out. An episode
+ * Jellyfin never numbered is matched by the number in its file name. The copy kept lists
+ * the others in `Copies`, is watched if any copy is, resumes from wherever one was left
+ * part-way, and borrows a picture (only from a copy whose file is still there), a proper
+ * title and the story from another copy when it has none of its own. A borrowed title is
+ * marked `BorrowedName`, so it can be saved to the copy kept.
  */
 export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly string[] | null = null): BaseItem[] {
   const groups = new Map<string, BaseItem[]>();
@@ -96,19 +118,21 @@ export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly str
     const key = keyOf(e);
     if (key) groups.set(key, [...(groups.get(key) ?? []), e]);
   }
+  const pick = (group: BaseItem[]) => group.reduce((a, b) => (score(b, roots) > score(a, roots) ? b : a));
   const out: BaseItem[] = [];
-  const done = new Set<string>();
   for (const e of episodes) {
     const key = keyOf(e);
     const group = key ? groups.get(key)! : [e];
+    // Nothing of it in the library's folders: a leftover with no file to show or play.
+    if (group.every((x) => inLibrary(x, roots) === false)) continue;
     if (group.length === 1) {
-      out.push(e);
+      out.push(withNumber(e));
       continue;
     }
-    if (done.has(key!)) continue;
-    done.add(key!);
-    const best = group.reduce((a, b) => (score(b, roots) > score(a, roots) ? b : a));
-    const others = group.filter((x) => x !== best && x.LocationType !== "Virtual");
+    // The row goes where the copy shown is (an unnumbered leftover sorts first in Jellyfin's list).
+    if (pick(group) !== e) continue;
+    const best = withNumber(e);
+    const others = group.filter((x) => x.Id !== best.Id && x.LocationType !== "Virtual");
     const resume = [best, ...others].find((x) => (x.UserData?.PlaybackPositionTicks ?? 0) > 0);
     const pictured = best.ImageTags?.Primary ? null : group.find((x) => x.ImageTags?.Primary && inLibrary(x, roots) !== false);
     const named = looksUnnamed(best) ? group.find((x) => !looksUnnamed(x)) : null;

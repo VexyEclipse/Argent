@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { copyIds, hasCopies, looksUnnamed, mergeDuplicateEpisodes, noteCopies, unwatchedCount } from "./duplicates";
+import { copyIds, hasCopies, looksUnnamed, mergeDuplicateEpisodes, noteCopies, numberFromPath, unwatchedCount } from "./duplicates";
 import type { BaseItem } from "./types";
 
 const ep = (Id: string, s: number, e: number, extra: Partial<BaseItem> = {}): BaseItem => ({ Id, Name: Id, Type: "Episode", ParentIndexNumber: s, IndexNumber: e, ...extra });
@@ -127,6 +127,37 @@ describe("counting episodes once", () => {
     expect(hasCopies("show")).toBe(true);
     noteCopies("show", clean, true);
     expect(hasCopies("show")).toBe(false);
+  });
+});
+
+describe("episodes Jellyfin never numbered", () => {
+  const at = (path: string) => [{ Id: path, Path: path, SupportsDirectPlay: true, SupportsDirectStream: true, SupportsTranscoding: true, MediaStreams: [] }];
+  const roots = ["X:/Library/Shows"];
+
+  it("are matched by the number in their file name, and the row stays in its place", () => {
+    const list = mergeDuplicateEpisodes(
+      [
+        { Id: "ghost", Name: "[Judas] x265 10b", Type: "Episode", ParentIndexNumber: 2, MediaSources: at("Z:/Old/Naruto/[Judas] Naruto - S02E01 (036).mkv") },
+        ep("e1", 2, 1, { Name: "The Chunin Exam", MediaSources: at("X:/Library/Shows/Naruto/[Judas] Naruto - S02E01 (036).mkv") }),
+        ep("e2", 2, 2, { Name: "Next", MediaSources: at("X:/Library/Shows/Naruto/[Judas] Naruto - S02E02 (037).mkv") }),
+      ],
+      roots,
+    );
+    expect(list.map((e) => e.Id)).toEqual(["e1", "e2"]);
+    expect(list[0].Copies?.map((c) => c.Id)).toEqual(["ghost"]);
+  });
+
+  it("leaves out an episode whose only copies are outside the library, and numbers a real one from its name", () => {
+    const list = mergeDuplicateEpisodes(
+      [
+        { Id: "gone", Name: "x", Type: "Episode", MediaSources: at("Z:/Old/Show - S01E09.mkv") },
+        { Id: "real", Name: "y", Type: "Episode", MediaSources: at("X:/Library/Shows/Show - 1x10.mkv") },
+      ],
+      roots,
+    );
+    expect(list.map((e) => [e.Id, e.ParentIndexNumber, e.IndexNumber])).toEqual([["real", 1, 10]]);
+    expect(numberFromPath("D:/x/[Group] Show - S02E26 (061).mkv")).toEqual({ season: 2, episode: 26 });
+    expect(numberFromPath("D:/x/Show - 01.mkv")).toBeNull();
   });
 });
 
