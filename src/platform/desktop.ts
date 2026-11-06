@@ -56,6 +56,11 @@ interface DesktopBridge {
   controlExternal?(command: unknown): void;
   /** Lets the viewer pick mpv.exe; resolves to the new info. */
   chooseMpv?(): Promise<DesktopInfo>;
+  /**
+   * Shows a file selected in File Explorer, or opens a folder. "folder" when only the file's
+   * folder was there, "missing" when neither is on this computer. Absent before 0.8.9.
+   */
+  showInFolder?(path: string): Promise<"shown" | "folder" | "missing" | "invalid">;
 }
 
 export const desktop: DesktopBridge | null = (window as unknown as { argentDesktop?: DesktopBridge }).argentDesktop ?? null;

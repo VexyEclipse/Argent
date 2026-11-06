@@ -32,4 +32,6 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   controlExternal: (command) => ipcRenderer.send("mpv:control", command),
   /** Lets the viewer pick mpv.exe; resolves to the app info. */
   chooseMpv: () => ipcRenderer.invoke("mpv:choose"),
+  /** Shows a file (or opens a folder) of the server's in File Explorer: "shown" | "folder" | "missing" | "invalid". */
+  showInFolder: (path) => ipcRenderer.invoke("file:show", path),
 });

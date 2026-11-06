@@ -190,6 +190,7 @@ const PATHS = {
     </>
   ),
   sound: <path d="M4.5 10v4M8.5 7v10M12.5 4.5v15M16.5 8v8M20 10.5v3" />,
+  folder: <path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4.2l2 2.2H19a1.5 1.5 0 0 1 1.5 1.5v8.8a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5V7Z" />,
   bookmark: <path d="M6.5 4.5h11a1 1 0 0 1 1 1v14l-6.5-4-6.5 4v-14a1 1 0 0 1 1-1Z" />,
   bookmarkFilled: <path d="M6.5 4.5h11a1 1 0 0 1 1 1v14l-6.5-4-6.5 4v-14a1 1 0 0 1 1-1Z" fill="currentColor" />,
   calendar: (

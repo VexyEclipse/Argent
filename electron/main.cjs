@@ -123,6 +123,29 @@ ipcMain.handle("download", (e, url) => {
 });
 ipcMain.handle("update:check", () => updater.check());
 
+// "Show in File Explorer" (administrators' menu): a file is shown selected in its folder, a
+// folder is opened. Nothing is ever opened with its program, so no file can be run this
+// way. The path is the server's; it only works when the server is on this computer.
+ipcMain.handle("file:show", (e, target) => {
+  if (!mainWindow || e.sender !== mainWindow.webContents || typeof target !== "string" || !path.isAbsolute(target)) return "invalid";
+  try {
+    if (fs.existsSync(target)) {
+      if (fs.statSync(target).isDirectory()) shell.openPath(target);
+      else shell.showItemInFolder(target);
+      return "shown";
+    }
+    // The file has gone, but its folder may still be there.
+    const folder = path.dirname(target);
+    if (fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
+      shell.openPath(folder);
+      return "folder";
+    }
+  } catch {
+    /* unreadable: treated as missing */
+  }
+  return "missing";
+});
+
 // ---- mpv ----------------------------------------------------------------------------------
 
 ipcMain.handle("mpv:play", async (e, request) => {

@@ -71,6 +71,25 @@ function useActions(item: BaseItem): Action[][] {
   if (PLAYLIST_TYPES.has(item.Type)) organise.push({ id: "playlist", label: "Add to playlist", icon: "list", run: () => openDialog("playlist", [item]) });
 
   const files: Action[] = [];
+  // The desktop app can show the title's file (or a show's folder) when the server is on the same computer.
+  if (desktop?.showInFolder && item.Type !== "BoxSet" && item.LocationType !== "Virtual")
+    files.push({
+      id: "explorer",
+      label: "Show in File Explorer",
+      icon: "folder",
+      run: async () => {
+        try {
+          const full = item.MediaSources?.[0]?.Path || item.Path ? item : await getItemFull(item.Id);
+          const target = full.MediaSources?.[0]?.Path || full.Path;
+          if (!target) return showToast("Jellyfin didn't say where this is");
+          const result = await desktop!.showInFolder!(target);
+          if (result === "folder") showToast("The file has gone, so its folder was opened");
+          else if (result !== "shown") showToast("That's not on this computer. It only works on the computer the server runs on.");
+        } catch {
+          showToast("Couldn't open File Explorer");
+        }
+      },
+    });
   if (isFile) {
     files.push({
       id: "download",
