@@ -12,7 +12,15 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  server: { port: 5173, host: true },
+  server: {
+    port: 5173,
+    host: true,
+    // Build output that the dev server never serves. Desktop and Android packaging wipe and
+    // recreate these folders, which can leave the file watcher rescanning in a busy loop.
+    watch: {
+      ignored: ["**/android/**", "**/release/**", "**/dist/**", "**/build/**", "**/.claude/**"],
+    },
+  },
   preview: { port: 4173, host: true },
   build: {
     target: "es2022",
