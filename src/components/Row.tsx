@@ -21,27 +21,31 @@ interface Props {
 export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", children, className = "", actions }: Props) {
   const track = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: true });
-  // Whether the row is at its first card. Only scrolling it changes that.
-  const atStart = useRef(true);
+  // Whether the viewer has moved this row (swipe, sideways wheel, the arrows, focus by
+  // keyboard or remote). Until they do, the row stays at its first card: the browser can
+  // move it on its own (it keeps a snapped row on the card it showed when cards are
+  // reordered, added in front or change size), and that is undone straight away.
+  const moved = useRef(false);
+
+  const holdStart = useCallback(() => {
+    const el = track.current;
+    if (el && !moved.current && el.scrollLeft > 0) el.scrollLeft = 0;
+  }, []);
 
   const measure = useCallback(() => {
     const el = track.current;
     if (!el) return;
-    atStart.current = el.scrollLeft <= 4;
+    holdStart();
+    // Back at the start by the viewer's own doing: hold it there again.
+    if (el.scrollLeft <= 4) moved.current = false;
     setEdges({
       start: el.scrollLeft <= 4,
       end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4,
     });
-  }, []);
+  }, [holdStart]);
 
-  // When the cards change (a refresh reorders them, new ones arrive in front), the browser
-  // keeps the row snapped to the card it showed and follows it to its new place, leaving
-  // the row part-way along. A row that hadn't been scrolled goes back to its first card,
-  // before it's drawn; one that had keeps its place.
-  useLayoutEffect(() => {
-    const el = track.current;
-    if (el && atStart.current && el.scrollLeft > 0) el.scrollLeft = 0;
-  }, [children, loading]);
+  // New or reordered cards: back to the first one before the row is drawn.
+  useLayoutEffect(holdStart, [children, loading, holdStart]);
 
   useEffect(() => {
     measure();
@@ -52,9 +56,18 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
     return () => ro.disconnect();
   }, [measure, children]);
 
+  const userMoves = () => {
+    moved.current = true;
+  };
+  // A vertical wheel over a row scrolls the page, not the row.
+  const onWheel = (e: React.WheelEvent) => {
+    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) userMoves();
+  };
+
   const page = (dir: 1 | -1) => {
     const el = track.current;
     if (!el) return;
+    userMoves();
     el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: "smooth" });
   };
 
@@ -82,7 +95,17 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
             <Icon name="chevronLeft" size={26} />
           </button>
         )}
-        <div className="row__track" ref={track} onScroll={measure} data-nav-row>
+        <div
+          className="row__track"
+          ref={track}
+          onScroll={measure}
+          onWheel={onWheel}
+          onTouchStart={userMoves}
+          onPointerDown={userMoves}
+          onKeyDown={userMoves}
+          onFocus={userMoves}
+          data-nav-row
+        >
           {loading ? Array.from({ length: 8 }, (_, i) => <CardSkeleton key={i} variant={variant} />) : children}
         </div>
         {!edges.end && (
