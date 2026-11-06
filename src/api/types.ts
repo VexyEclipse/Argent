@@ -184,6 +184,8 @@ export interface BaseItem {
   Copies?: { Id: string; Path?: string }[];
   /** Argent's own: the copy whose picture this episode shows, when it has none itself. */
   PrimaryImageItemId?: string;
+  /** Argent's own: the title shown came from another copy (this one has only a file name). */
+  BorrowedName?: boolean;
 }
 
 export interface ItemsResult<T = BaseItem> {

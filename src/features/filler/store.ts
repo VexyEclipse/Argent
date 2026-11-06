@@ -43,7 +43,8 @@ const DOWN_FOR_MS = 10 * 60_000;
 const DAY = 86_400_000;
 /** Not anime, or not found: asked again after this. */
 const MISS_FOR = 30 * DAY;
-const MAX_PARTS = 6;
+/** Long shows can span many entries (Attack on Titan has eight). */
+const MAX_PARTS = 12;
 const MAX_CACHED = 200;
 
 // ---- settings (this device) --------------------------------------------------------------

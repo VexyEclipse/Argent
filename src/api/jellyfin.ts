@@ -20,6 +20,7 @@ let active: JellyfinClient | null = null;
 
 export function setClient(client: JellyfinClient | null) {
   active = client;
+  libraryRoots = null;
 }
 
 export function client(): JellyfinClient {
@@ -208,9 +209,24 @@ export const getSeasons = (seriesId: string) =>
     query: { userId: uid(), fields: ["ChildCount", "Overview", "PrimaryImageAspectRatio"], enableUserData: true },
   });
 
+let libraryRoots: Promise<string[] | null> | null = null;
+
+/**
+ * The folders the libraries use, to tell a copy whose folder was removed from one that's
+ * still there. Only administrators may read them; null for everyone else.
+ */
+export function getLibraryRoots(): Promise<string[] | null> {
+  libraryRoots ??= client()
+    .request<{ Locations?: string[] }[]>("/Library/VirtualFolders")
+    .then((folders) => folders.flatMap((f) => f.Locations ?? []))
+    .catch(() => null);
+  return libraryRoots;
+}
+
 /** A show's episodes (or one season's), with an episode that's in the library more than once shown once. */
-export const getEpisodes = (seriesId: string, seasonId?: string) =>
-  client()
+export const getEpisodes = async (seriesId: string, seasonId?: string) => {
+  const roots = await getLibraryRoots();
+  return client()
     .request<ItemsResult>(`/Shows/${seriesId}/Episodes`, {
       query: {
         userId: uid(),
@@ -222,10 +238,11 @@ export const getEpisodes = (seriesId: string, seasonId?: string) =>
       },
     })
     .then((r) => {
-      const Items = mergeDuplicateEpisodes(r.Items);
+      const Items = mergeDuplicateEpisodes(r.Items, roots);
       noteCopies(seriesId, Items, !seasonId);
       return { ...r, Items };
     });
+};
 
 export const getLocalTrailers = (id: string) => client().request<BaseItem[]>(`/Items/${id}/LocalTrailers`, { query: { userId: uid() } });
 

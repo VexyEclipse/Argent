@@ -76,15 +76,28 @@ describe("choosing and completing a copy", () => {
     expect(kept.PrimaryImageItemId).toBeUndefined();
   });
 
-  it("recognises titles that are only a file name or a number", () => {
-    const named = (Name: string, path = "") => looksUnnamed({ Name, SeriesName: "Death Note", MediaSources: path ? [source(path, [])] : undefined });
-    expect(named("Death Note - 01")).toBe(true);
-    expect(named("Episode 3")).toBe(true);
-    expect(named("S01E03")).toBe(true);
-    expect(named("(CBB) Tokyo Ghoul - 03 (1080p)", "D:/Anime/(CBB) Tokyo Ghoul - 03 (1080p).mkv")).toBe(true);
-    expect(named("Confrontation")).toBe(false);
-    expect(named("03 - Dove")).toBe(false);
-    expect(named("Death Note: Relight")).toBe(false);
+  it("recognises titles that are only a file name, from titles in your library", () => {
+    const unnamed = (Name: string, SeriesName: string) => looksUnnamed({ Name, SeriesName });
+    expect(unnamed("Death Note - 01", "Death Note")).toBe(true);
+    expect(unnamed("Attack on Titan - 01 (2013)", "Attack on Titan")).toBe(true);
+    expect(unnamed("Dragon Ball GT", "Dragon Ball GT")).toBe(true);
+    expect(unnamed("S01E17-EMBER", "That Time I Got Reincarnated as a Slime")).toBe(true);
+    expect(unnamed("[Judas] Black Summoner - S01E01", "Black Summoner")).toBe(true);
+    expect(unnamed("[Cleo]91_Days_-_01_(Dual Audio_10bit_BD1080p_x265)", "91 Days")).toBe(true);
+    expect(unnamed("Episode 3", "Alien 9")).toBe(true);
+    expect(unnamed("Pokémon S03E39 - Forest Grumps", "Pokémon")).toBe(false);
+    expect(unnamed("Pokemon - 433 - Odd Pokémon Out", "Pokémon")).toBe(false);
+    expect(unnamed("Kaiju No. 8 Captured", "Kaiju No. 8")).toBe(false);
+    expect(unnamed("03 - Dove", "Tokyo Ghoul")).toBe(false);
+    expect(unnamed("Rebirth", "Death Note")).toBe(false);
+    expect(unnamed("Berserk: Episode 15 (The Decisive Battle)", "Berserk")).toBe(false);
+    expect(unnamed("Demon Slayer S04E07", "Demon Slayer: Kimetsu no Yaiba")).toBe(true);
+    expect(unnamed("D.Gray-man_-_100_(Dual Audio_10bit_DVD480p", "D.Gray-man")).toBe(true);
+    expect(unnamed("[Reaktor] Fullmetal Alchemist Brotherhood - E53", "Fullmetal Alchemist: Brotherhood")).toBe(true);
+    expect(unnamed("Ghost in the Shell (S.A.C) - S02 E18 - DI - Trans Parent", "Ghost in The Shell Collection")).toBe(false);
+    expect(unnamed("Drifters 14v2 OVA Bring on a War", "Drifters")).toBe(false);
+    expect(unnamed("S01E12-Overload", "SAKAMOTO DAYS")).toBe(false);
+    expect(unnamed("Lazarus.S01E06.1080p.Dual.Audio.WEBRip.DD+.x265-EMBER", "Lazarus")).toBe(true);
   });
 });
 
@@ -109,5 +122,37 @@ describe("counting episodes once", () => {
     expect(hasCopies("show")).toBe(true);
     noteCopies("show", clean, true);
     expect(hasCopies("show")).toBe(false);
+  });
+});
+
+describe("copies left behind by a removed library folder", () => {
+  // Windows paths as Jellyfin reports them; a trailing separator or forward slashes don't matter.
+  const roots = ["X:\\Library\\Shows\\", "Y:/Library/More"];
+  const at = (path: string) => [{ Id: path, Path: path, SupportsDirectPlay: true, SupportsDirectStream: true, SupportsTranscoding: true, MediaStreams: [] }];
+
+  it("shows the copy still in the library, with its own picture, and takes the title from the left-over copy", () => {
+    const [kept] = mergeDuplicateEpisodes(
+      [
+        ep("gone", 1, 1, { Name: "Rebirth", SeriesName: "Death Note", Overview: "Light…", ImageTags: { Primary: "old" }, MediaSources: at("X:\\Old\\Death Note\\01.mkv") }),
+        ep("here", 1, 1, { Name: "Death Note - 01", SeriesName: "Death Note", ImageTags: { Primary: "thumb" }, MediaSources: at("X:\\Library\\Shows\\Death Note\\01.mkv") }),
+      ],
+      roots,
+    );
+    expect(kept.Id).toBe("here");
+    expect(kept.ImageTags?.Primary).toBe("thumb");
+    expect(kept.Name).toBe("Rebirth");
+    expect(kept.BorrowedName).toBe(true);
+  });
+
+  it("never borrows a picture from a copy whose folder is gone", () => {
+    const [kept] = mergeDuplicateEpisodes(
+      [
+        ep("gone", 1, 1, { ImageTags: { Primary: "old" }, MediaSources: at("X:/Old/a.mkv") }),
+        ep("here", 1, 1, { MediaSources: at("Y:/Library/More/a.mkv") }),
+      ],
+      roots,
+    );
+    expect(kept.Id).toBe("here");
+    expect(kept.ImageTags?.Primary).toBeUndefined();
   });
 });

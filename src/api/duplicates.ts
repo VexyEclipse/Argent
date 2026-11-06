@@ -6,21 +6,52 @@
 
 import type { BaseItem } from "./types";
 
-const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const letters = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]+/g, "");
+
+/** Release and format tags that file names carry: they're never part of a title. */
+const TAGS =
+  /\b(?:(?:bd|dvd|web|hd)?\d{3,4}p|[xh]\s?26[45]|hevc|avc|av1|aac|flac|opus|e?ac3|ddp?\d?|dts|10\s?bit|8\s?bit|bd(?:rip)?|dvd(?:rip)?|blu\s?ray|web(?:\s?dl|rip)?|hdtv|dual\s?audio|multi\s?subs?|uncensored|v\d)\b/gi;
+
+/** What's left of a bit of a title once numbers and release tags are taken out. */
+const wordsOf = (s: string) => letters(s.replace(TAGS, " ").replace(/\d+/g, " "));
 
 /**
- * Whether an episode's title is really just its file name ("Death Note - 01",
- * "[Group] Show - 03 (1080p)", "Episode 3", "S01E03"): Jellyfin found no proper title.
+ * Whether an episode's title is really just its file name, with nothing of a title left
+ * once the show's name, episode numbers, years and release tags are taken out:
+ * "Death Note - 01", "Attack on Titan - 01 (2013)", "[Group] Show - 03 (1080p)",
+ * "S01E17-EMBER", "Episode 3". "Pokémon S03E39 - Forest Grumps" and "Episode 15 (The
+ * Decisive Battle)" have titles.
  */
-export function looksUnnamed(e: Pick<BaseItem, "Name" | "SeriesName" | "MediaSources">): boolean {
-  const name = (e.Name ?? "").trim();
-  if (!name) return true;
-  const bare = normalise(name);
-  const file = e.MediaSources?.[0]?.Path?.split(/[\\/]/).pop()?.replace(/\.[a-z0-9]{2,4}$/i, "");
-  if (file && normalise(file) === bare) return true;
-  if (/^(?:episode|ep\.?|e)?\s*0*\d{1,4}$/i.test(name) || /\bS\d{1,2}\s*E\d{1,4}\b/i.test(name)) return true;
-  const series = e.SeriesName ? normalise(e.SeriesName) : "";
-  return Boolean(series && bare.startsWith(series) && /^\d{0,4}$/.test(bare.slice(series.length)));
+export function looksUnnamed(e: Pick<BaseItem, "Name" | "SeriesName">): boolean {
+  let s = (e.Name ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  // File names use underscores and dots for spaces.
+  s = s.replace(/[_.]+/g, " ");
+  // Square brackets hold release groups and checksums; round ones hold tags, or sometimes the title.
+  s = s.replace(/\[[^\]]*\]?|\{[^}]*\}?/g, " ").replace(/\(([^)]*)\)?/g, (_, inner: string) => (wordsOf(inner) ? ` ${inner} ` : " "));
+  // A release group stuck to the end, in capitals: "S01E17-EMBER" (but "S01E12-Overload" is a title).
+  s = s.replace(/(\S)-[A-Z0-9]{3,}\s*$/, "$1");
+  s = s.replace(/\bS\d{1,2}\s*E\s?\d{1,4}\b|\bS\d{1,2}\b|\b\d{1,2}x\d{1,4}\b|\b(?:episode|ep|e)\s*\d+\b/gi, " ");
+  let rest = wordsOf(s);
+  // The show's name, whole or the part before a subtitle ("Demon Slayer" of "Demon Slayer: Kimetsu no Yaiba").
+  const series = e.SeriesName ?? "";
+  for (const name of [series, series.split(/\s*[:–—]\s*|\s+-\s+/)[0]]) {
+    const l = letters(name);
+    if (l) rest = rest.replace(l, "");
+  }
+  return rest.length === 0;
+}
+
+/** Whether a file is inside one of the library's folders; null when the folders aren't known. */
+function inLibrary(e: BaseItem, roots: readonly string[] | null): boolean | null {
+  const path = e.MediaSources?.[0]?.Path;
+  if (!roots?.length || !path) return null;
+  const p = path.replace(/\\/g, "/").toLowerCase();
+  return roots.some((r) => p.startsWith(r.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() + "/"));
 }
 
 /** A copy with both a picture track and a sound track (a cut-off or broken file may lack one). */
@@ -30,13 +61,17 @@ function isWhole(e: BaseItem): boolean {
   return streams.some((s) => s.Type === "Video") && streams.some((s) => s.Type === "Audio");
 }
 
-/** How good a copy is to show and play, most important first: a real file, whole, with a picture. */
-function score(e: BaseItem): number {
+/**
+ * How good a copy is to show and play, most important first: its file is in one of the
+ * library's folders (a copy left behind by a removed folder has no file any more), it's
+ * a real file, whole, with a picture.
+ */
+function score(e: BaseItem, roots: readonly string[] | null): number {
   let s = 0;
+  if (inLibrary(e, roots) !== false) s += 64;
   if (e.LocationType !== "Virtual") s += 32;
   if (isWhole(e)) s += 16;
   if (e.ImageTags?.Primary) s += 8;
-  if (!looksUnnamed(e)) s += 4;
   if ((e.UserData?.PlaybackPositionTicks ?? 0) > 0) s += 2;
   if (e.Overview) s += 1;
   return s;
@@ -47,11 +82,14 @@ const keyOf = (e: BaseItem) =>
 
 /**
  * One episode per season and number, in the original order. A placeholder for a missing
- * episode gives way to a real file. The copy kept lists the others in `Copies`, is watched
- * if any copy is, resumes from wherever one was left part-way, and borrows a picture, a
- * proper title and the story from another copy when it has none of its own.
+ * episode gives way to a real file, and a copy left behind by a removed library folder
+ * to one that's still there (when `roots`, the library's folders, are known). The copy
+ * kept lists the others in `Copies`, is watched if any copy is, resumes from wherever one
+ * was left part-way, and borrows a picture (only from a copy whose file is still there),
+ * a proper title and the story from another copy when it has none of its own. A borrowed
+ * title is marked `BorrowedName`, so it can be saved to the copy kept.
  */
-export function mergeDuplicateEpisodes(episodes: BaseItem[]): BaseItem[] {
+export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly string[] | null = null): BaseItem[] {
   const groups = new Map<string, BaseItem[]>();
   for (const e of episodes) {
     const key = keyOf(e);
@@ -68,14 +106,14 @@ export function mergeDuplicateEpisodes(episodes: BaseItem[]): BaseItem[] {
     }
     if (done.has(key!)) continue;
     done.add(key!);
-    const best = group.reduce((a, b) => (score(b) > score(a) ? b : a));
+    const best = group.reduce((a, b) => (score(b, roots) > score(a, roots) ? b : a));
     const others = group.filter((x) => x !== best && x.LocationType !== "Virtual");
     const resume = [best, ...others].find((x) => (x.UserData?.PlaybackPositionTicks ?? 0) > 0);
-    const pictured = best.ImageTags?.Primary ? null : group.find((x) => x.ImageTags?.Primary);
+    const pictured = best.ImageTags?.Primary ? null : group.find((x) => x.ImageTags?.Primary && inLibrary(x, roots) !== false);
     const named = looksUnnamed(best) ? group.find((x) => !looksUnnamed(x)) : null;
     out.push({
       ...best,
-      ...(named && { Name: named.Name, Overview: best.Overview || named.Overview }),
+      ...(named && { Name: named.Name, Overview: best.Overview || named.Overview, BorrowedName: true }),
       ...(!best.Overview && !named && { Overview: group.find((x) => x.Overview)?.Overview }),
       ...(pictured && {
         ImageTags: { ...best.ImageTags, Primary: pictured.ImageTags!.Primary },

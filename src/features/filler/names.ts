@@ -40,18 +40,25 @@ function writeNames(seriesId: string, names: NameCache[string]) {
   }
 }
 
-/** Episodes worth naming: real files, not specials, titled only by their file name or number. */
-const unnamed = (episodes: BaseItem[]) => episodes.filter((e) => e.LocationType !== "Virtual" && (e.ParentIndexNumber ?? 1) > 0 && looksUnnamed(e));
+/**
+ * Episodes worth naming: real files, not specials, whose own title is only a file name or
+ * number (the title shown may have come from another copy).
+ */
+const unnamed = (episodes: BaseItem[]) =>
+  episodes.filter((e) => e.LocationType !== "Virtual" && (e.ParentIndexNumber ?? 1) > 0 && (e.BorrowedName || looksUnnamed(e)));
 
 /**
- * Titles for a show's unnamed episodes, by episode id. Reads only the pages those episodes
- * are on, once; with `save`, writes each title to Jellyfin (administrators).
+ * Titles for a show's unnamed episodes, by episode id: from another copy of the episode
+ * when one has a proper title, else from MyAnimeList by the episode's number (reading only
+ * the pages those episodes are on, once). With `save`, each title is written to the episode
+ * itself in Jellyfin (administrators).
  */
 export async function episodeNames(seriesId: string, save: boolean): Promise<Map<string, string>> {
   const episodes = (await getEpisodes(seriesId)).Items;
   const want = unnamed(episodes);
   if (!want.length) return new Map();
   const names = readNames()[seriesId] ?? {};
+  for (const e of want) if (e.BorrowedName && !names[e.Id]) names[e.Id] = { name: e.Name };
   const missing = want.filter((e) => !names[e.Id]);
 
   if (missing.length) {
