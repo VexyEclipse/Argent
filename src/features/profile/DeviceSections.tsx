@@ -5,6 +5,7 @@ import { buildDiagnostics, copyText, saveText } from "@/features/diagnostics/rep
 import { hasNativePlayer } from "@/features/player/external";
 import { readEngine, readMatchFrameRate, saveEngine, saveMatchFrameRate } from "@/features/player/prefs";
 import { appVersion, checkAndroidUpdate, installAndroidUpdate, readAutoUpdate, setAutoUpdate, useAndroidUpdate, type AndroidUpdateStatus } from "@/platform/androidUpdate";
+import { SettingsSection } from "./SettingsLayout";
 import { Toggle } from "./Toggle";
 
 function androidUpdateLabel(status: AndroidUpdateStatus): string {
@@ -38,9 +39,7 @@ export function AndroidSection() {
   const [auto, setAuto] = useState(readAutoUpdate);
   const busy = update.state === "checking" || update.state === "downloading" || update.state === "installing";
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Android app</h2>
-      <p className="profile__desc">This device only.</p>
+    <SettingsSection id="android" icon="remote" title="Android app" desc="This device only.">
       {hasNativePlayer() ? (
         <>
           <Toggle
@@ -65,7 +64,7 @@ export function AndroidSection() {
           )}
         </>
       ) : (
-        <p className="profile__desc">Install the latest APK to get the native player (HDR, Dolby Vision, surround passthrough).</p>
+        <p className="setting__note">Install the latest APK to get the native player (HDR, Dolby Vision, surround passthrough).</p>
       )}
       <div className="setting">
         <div className="setting__text">
@@ -91,7 +90,7 @@ export function AndroidSection() {
           setAutoUpdate(v);
         }}
       />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -107,11 +106,12 @@ export function HelpSection() {
     idle: problems ? `${problems} problem${problems === 1 ? "" : "s"} noted since Argent opened` : "Nothing has gone wrong since Argent opened",
   }[state];
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Help</h2>
-      <p className="profile__desc">
-        Reporting a problem? Diagnostics say what this device can play, how it's set up and what the player did recently. No passwords or access tokens are included.
-      </p>
+    <SettingsSection
+      id="help"
+      icon="bug"
+      title="Help"
+      desc="Reporting a problem? Diagnostics say what this device can play, how it's set up and what the player did recently. No passwords or access tokens are included."
+    >
       <div className="setting">
         <div className="setting__text">
           <span className="setting__label">Diagnostics</span>
@@ -136,6 +136,6 @@ export function HelpSection() {
           </Button>
         </div>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { APP_VERSION } from "@/api/client";
@@ -19,6 +19,7 @@ import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
 import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/features/player/prefs";
 import { setStillsPref, useStillsPref } from "@/features/manage/stills";
 import { AndroidSection, HelpSection } from "./DeviceSections";
+import { SettingsNav, SettingsSection, type SettingsNavItem } from "./SettingsLayout";
 import { MediaProfile } from "./MediaProfile";
 import { Toggle } from "./Toggle";
 import "./profile.css";
@@ -52,12 +53,12 @@ function ComingUpSection({ userId }: { userId: string }) {
     ? `Last checked ${new Date(checkedAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })} · ${entries.length} upcoming`
     : "Not checked yet";
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Coming Up</h2>
-      <p className="profile__desc">
-        Once a day Argent asks TVmaze about the shows you follow (started, favourited or on your watchlist). Only each show's TVDB or IMDb id is sent, so
-        TVmaze can see which shows are looked up, but never your server address, your account or your watch history. This device only.
-      </p>
+    <SettingsSection
+      id="coming-up"
+      icon="calendar"
+      title="Coming Up"
+      desc="This device only. Once a day Argent asks TVmaze about the shows you follow (started, favourited or on your watchlist). Only each show's TVDB or IMDb id is sent, never your server address, account or watch history."
+    >
       <Toggle
         label="Check for new episodes and seasons"
         hint="Adds announced seasons and episodes Jellyfin doesn't know about yet"
@@ -83,7 +84,7 @@ function ComingUpSection({ userId }: { userId: string }) {
           onChange={(v) => setUpcomingPref("notify", v)}
         />
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -98,11 +99,12 @@ function SkippingSection() {
     saveAutoSkip(next);
   };
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Skipping</h2>
-      <p className="profile__desc">
-        This device only. Without these, a Skip card comes up as each intro or the credits start: press it, or S on a keyboard.
-      </p>
+    <SettingsSection
+      id="skipping"
+      icon="skipNext"
+      title="Skipping"
+      desc="This device only. Without these, a Skip card comes up as each intro or the credits start: press it, or S on a keyboard."
+    >
       <Toggle label="Skip intros" hint="Jumps past an intro as it starts. A toast lets you go back and watch it." checked={skip.intro} onChange={(v) => change({ intro: v })} />
       <Toggle
         label="Skip credits"
@@ -128,7 +130,7 @@ function SkippingSection() {
         checked={filler.skip}
         onChange={(v) => setFillerPref("skip", v)}
       />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -136,16 +138,14 @@ function SkippingSection() {
 function LibrarySection() {
   const stills = useStillsPref();
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Library</h2>
-      <p className="profile__desc">For administrators. Changes are saved in Jellyfin, so every app and every user sees them.</p>
+    <SettingsSection id="library" icon="folder" title="Library" desc="For administrators. Changes are saved in Jellyfin, so every app and every user sees them.">
       <Toggle
         label="Use episode stills"
         hint="As you open a season, each episode's picture is replaced, once, with its still from TheMovieDb instead of a frame grabbed from the video. If the library saves artwork into media folders, this replaces the -thumb.jpg beside each video."
         checked={stills}
         onChange={setStillsPref}
       />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -154,9 +154,7 @@ function DesktopSection({ info, setSetting, refresh }: { info: DesktopInfo; setS
   const { settings, update } = info;
   const busy = update.state === "checking" || update.state === "downloading";
   return (
-    <section className="panel profile__section">
-      <h2 className="profile__title">Desktop app</h2>
-      <p className="profile__desc">This computer only.</p>
+    <SettingsSection id="desktop" icon="dashboard" title="Desktop app" desc="This computer only.">
       <div className="setting">
         <div className="setting__text">
           <span className="setting__label">Argent {info.version}</span>
@@ -233,7 +231,7 @@ function DesktopSection({ info, setSetting, refresh }: { info: DesktopInfo; setS
           )}
         </>
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -250,6 +248,25 @@ export default function ProfilePage() {
   const server = useQuery({ queryKey: ["server-info"], queryFn: () => getPublicInfo(client()), staleTime: 10 * 60_000 });
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
   const cfg = user?.Configuration ?? {};
+  const hasDesktop = Boolean(desktopApp.info);
+
+  // The settings menu, in the same order as the sections.
+  const navItems = useMemo(() => {
+    const items: (SettingsNavItem | false)[] = [
+      { id: "playback", label: "Playback", icon: "play", group: "Watching" },
+      { id: "skipping", label: "Skipping", icon: "skipNext", group: "Watching" },
+      { id: "coming-up", label: "Coming Up", icon: "calendar", group: "Watching" },
+      { id: "display", label: "Display", icon: "eye", group: "Personal" },
+      { id: "ratings", label: "Ratings", icon: "star", group: "Personal" },
+      { id: "recommendations", label: "Recommendations", icon: "sparkle", group: "Personal" },
+      hasDesktop && { id: "desktop", label: "Desktop app", icon: "dashboard", group: "App" },
+      Boolean(androidApp) && { id: "android", label: "Android app", icon: "remote", group: "App" },
+      isAdmin && { id: "library", label: "Library", icon: "folder", group: "App" },
+      { id: "account", label: "Account", icon: "user", group: "Account" },
+      { id: "help", label: "Help", icon: "bug", group: "Account" },
+    ];
+    return items.filter((i): i is SettingsNavItem => Boolean(i));
+  }, [hasDesktop, isAdmin]);
 
   const save = async (patch: Partial<UserConfiguration>) => {
     if (!user) return;
@@ -309,174 +326,195 @@ export default function ProfilePage() {
       {tab === "media" && <MediaProfile />}
 
       {tab === "settings" && (
-        <div className="profile__grid">
-          <section className="panel profile__section">
-            <h2 className="profile__title">Playback</h2>
-            <p className="profile__desc">Stored on your server account, so every app you use follows them.</p>
-            <label className="field">
-              <span className="field__label">Preferred audio language</span>
-              <select className="select" value={cfg.AudioLanguagePreference ?? ""} onChange={(e) => save({ AudioLanguagePreference: e.target.value })}>
-                {LANGUAGES.map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">Preferred subtitle language</span>
-              <select className="select" value={cfg.SubtitleLanguagePreference ?? ""} onChange={(e) => save({ SubtitleLanguagePreference: e.target.value })}>
-                {LANGUAGES.map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">Subtitles</span>
-              <select
-                className="select"
-                value={cfg.SubtitleMode ?? "Default"}
-                onChange={(e) => save({ SubtitleMode: e.target.value as UserConfiguration["SubtitleMode"] })}
-              >
-                <option value="Default">Default — follow the file</option>
-                <option value="Smart">Smart — when audio isn't in my language</option>
-                <option value="OnlyForced">Forced only</option>
-                <option value="Always">Always</option>
-                <option value="None">Never</option>
-              </select>
-            </label>
-            <Toggle
-              label="Play next episode automatically"
-              checked={cfg.EnableNextEpisodeAutoPlay !== false}
-              onChange={(v) => save({ EnableNextEpisodeAutoPlay: v })}
-            />
-            <Toggle
-              label="Play default audio track"
-              hint="Regardless of language preference"
-              checked={cfg.PlayDefaultAudioTrack !== false}
-              onChange={(v) => save({ PlayDefaultAudioTrack: v })}
-            />
-            <Toggle label="Remember audio selections" checked={Boolean(cfg.RememberAudioSelections)} onChange={(v) => save({ RememberAudioSelections: v })} />
-            <Toggle
-              label="Remember subtitle selections"
-              checked={Boolean(cfg.RememberSubtitleSelections)}
-              onChange={(v) => save({ RememberSubtitleSelections: v })}
-            />
-          </section>
+        <div className="settings">
+          <SettingsNav items={navItems} />
 
-          <section className="panel profile__section">
-            <h2 className="profile__title">Display</h2>
-            <p className="profile__desc">This device only.</p>
-            <div className="field">
-              <span className="field__label">Interface</span>
-              <div className="tabs" role="radiogroup" aria-label="Interface">
-                {(
-                  [
-                    ["auto", "Automatic"],
-                    ["desktop", "Desktop"],
-                    ["mobile", "Mobile"],
-                    ["tv", "TV"],
-                  ] as const
-                ).map(([v, l]) => (
-                  <button
-                    key={v}
-                    role="radio"
-                    aria-checked={platform === v}
-                    className={platform === v ? "is-active" : ""}
-                    onClick={() => {
-                      setPlatform(v);
-                      setPlatformOverride(v);
-                    }}
-                  >
-                    {l}
-                  </button>
-                ))}
+          <div className="settings__content">
+            <SettingsSection id="playback" icon="play" title="Playback" desc="Saved to your server account, so every app you use follows them.">
+              <div className="setting">
+                <div className="setting__text">
+                  <span className="setting__label">Audio language</span>
+                  <span className="setting__hint">Picked when a video has more than one</span>
+                </div>
+                <select
+                  className="select setting__select"
+                  aria-label="Preferred audio language"
+                  value={cfg.AudioLanguagePreference ?? ""}
+                  onChange={(e) => save({ AudioLanguagePreference: e.target.value })}
+                >
+                  {LANGUAGES.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </div>
-            <Toggle
-              label="Show details when paused"
-              hint="After a few seconds paused, the picture dims and shows what's playing, the story and the cast"
-              checked={pauseInfo}
-              onChange={(v) => {
-                setPauseInfo(v);
-                savePauseInfo(v);
-              }}
-            />
-            <Toggle
-              label="Hide watched items in Recently Added"
-              hint="Account setting"
-              checked={Boolean(cfg.HidePlayedInLatest)}
-              onChange={(v) => save({ HidePlayedInLatest: v })}
-            />
-          </section>
-
-          <SkippingSection />
-
-          {isAdmin && <LibrarySection />}
-
-          <ComingUpSection userId={user.Id} />
-
-          {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} refresh={desktopApp.refresh} />}
-
-          {androidApp && <AndroidSection />}
-
-          <section className="panel profile__section">
-            <h2 className="profile__title">Ratings</h2>
-            <p className="profile__desc">This device only. Your ratings themselves sync with your account.</p>
-            <Toggle
-              label="Ask to rate each season"
-              hint="After a season's last episode, not only when a series ends"
-              checked={ratingPrefs.rateSeasons}
-              onChange={(v) => setRatingPref("rateSeasons", v)}
-            />
-            <Toggle
-              label="Show my scores on posters"
-              hint="A small star badge on titles you've rated"
-              checked={ratingPrefs.posterScores}
-              onChange={(v) => setRatingPref("posterScores", v)}
-            />
-          </section>
-
-          <section className="panel profile__section">
-            <h2 className="profile__title">Recommendations</h2>
-            <p className="profile__desc">Built only from your own viewing history and titles in your library. Other users on this server get their own.</p>
-            <div className="setting">
-              <div className="setting__text">
-                <span className="setting__label">Hidden titles</span>
-                <span className="setting__hint">{dismissedCount ? `${dismissedCount} marked “Not interested”` : "Nothing hidden"}</span>
+              <div className="setting">
+                <div className="setting__text">
+                  <span className="setting__label">Subtitle language</span>
+                </div>
+                <select
+                  className="select setting__select"
+                  aria-label="Preferred subtitle language"
+                  value={cfg.SubtitleLanguagePreference ?? ""}
+                  onChange={(e) => save({ SubtitleLanguagePreference: e.target.value })}
+                >
+                  {LANGUAGES.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <Button variant="secondary" size="sm" disabled={!dismissedCount} onClick={() => clearDismissed(user.Id)}>
-                Restore
-              </Button>
-            </div>
-          </section>
+              <div className="setting">
+                <div className="setting__text">
+                  <span className="setting__label">Show subtitles</span>
+                </div>
+                <select
+                  className="select setting__select"
+                  aria-label="Subtitles"
+                  value={cfg.SubtitleMode ?? "Default"}
+                  onChange={(e) => save({ SubtitleMode: e.target.value as UserConfiguration["SubtitleMode"] })}
+                >
+                  <option value="Default">Default — follow the file</option>
+                  <option value="Smart">Smart — when audio isn't in my language</option>
+                  <option value="OnlyForced">Forced only</option>
+                  <option value="Always">Always</option>
+                  <option value="None">Never</option>
+                </select>
+              </div>
+              <Toggle
+                label="Play next episode automatically"
+                checked={cfg.EnableNextEpisodeAutoPlay !== false}
+                onChange={(v) => save({ EnableNextEpisodeAutoPlay: v })}
+              />
+              <Toggle
+                label="Play default audio track"
+                hint="Regardless of language preference"
+                checked={cfg.PlayDefaultAudioTrack !== false}
+                onChange={(v) => save({ PlayDefaultAudioTrack: v })}
+              />
+              <Toggle label="Remember audio selections" checked={Boolean(cfg.RememberAudioSelections)} onChange={(v) => save({ RememberAudioSelections: v })} />
+              <Toggle
+                label="Remember subtitle selections"
+                checked={Boolean(cfg.RememberSubtitleSelections)}
+                onChange={(v) => save({ RememberSubtitleSelections: v })}
+              />
+            </SettingsSection>
 
-          <HelpSection />
+            <SkippingSection />
 
-          <section className="panel profile__section">
-            <h2 className="profile__title">Account</h2>
-            <div className="profile__actions">
-              {isAdmin && (
-                <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/dashboard`} target="_blank" rel="noreferrer">
-                  <Icon name="dashboard" size={18} /> Server dashboard
+            <ComingUpSection userId={user.Id} />
+
+            <SettingsSection id="display" icon="eye" title="Display" desc="This device only, unless marked as an account setting.">
+              <div className="setting setting--wrap">
+                <div className="setting__text">
+                  <span className="setting__label">Interface</span>
+                  <span className="setting__hint">Automatic picks the layout that suits this device</span>
+                </div>
+                <div className="tabs" role="radiogroup" aria-label="Interface">
+                  {(
+                    [
+                      ["auto", "Automatic"],
+                      ["desktop", "Desktop"],
+                      ["mobile", "Mobile"],
+                      ["tv", "TV"],
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button
+                      key={v}
+                      role="radio"
+                      aria-checked={platform === v}
+                      className={platform === v ? "is-active" : ""}
+                      onClick={() => {
+                        setPlatform(v);
+                        setPlatformOverride(v);
+                      }}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Toggle
+                label="Show details when paused"
+                hint="After a few seconds paused, the picture dims and shows what's playing, the story and the cast"
+                checked={pauseInfo}
+                onChange={(v) => {
+                  setPauseInfo(v);
+                  savePauseInfo(v);
+                }}
+              />
+              <Toggle
+                label="Hide watched items in Recently Added"
+                hint="Account setting"
+                checked={Boolean(cfg.HidePlayedInLatest)}
+                onChange={(v) => save({ HidePlayedInLatest: v })}
+              />
+            </SettingsSection>
+
+            <SettingsSection id="ratings" icon="star" title="Ratings" desc="This device only. Your ratings themselves sync with your account.">
+              <Toggle
+                label="Ask to rate each season"
+                hint="After a season's last episode, not only when a series ends"
+                checked={ratingPrefs.rateSeasons}
+                onChange={(v) => setRatingPref("rateSeasons", v)}
+              />
+              <Toggle
+                label="Show my scores on posters"
+                hint="A small star badge on titles you've rated"
+                checked={ratingPrefs.posterScores}
+                onChange={(v) => setRatingPref("posterScores", v)}
+              />
+            </SettingsSection>
+
+            <SettingsSection
+              id="recommendations"
+              icon="sparkle"
+              title="Recommendations"
+              desc="Built only from your own viewing history and titles in your library. Other users on this server get their own."
+            >
+              <div className="setting">
+                <div className="setting__text">
+                  <span className="setting__label">Hidden titles</span>
+                  <span className="setting__hint">{dismissedCount ? `${dismissedCount} marked “Not interested”` : "Nothing hidden"}</span>
+                </div>
+                <Button variant="secondary" size="sm" disabled={!dismissedCount} onClick={() => clearDismissed(user.Id)}>
+                  Restore
+                </Button>
+              </div>
+            </SettingsSection>
+
+            {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} refresh={desktopApp.refresh} />}
+
+            {androidApp && <AndroidSection />}
+
+            {isAdmin && <LibrarySection />}
+
+            <SettingsSection id="account" icon="user" title="Account" desc={`Signed in to ${account?.serverName ?? "your server"} as ${user.Name}.`}>
+              <div className="settings__actions">
+                {isAdmin && (
+                  <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/dashboard`} target="_blank" rel="noreferrer">
+                    <Icon name="dashboard" size={18} /> Server dashboard
+                  </a>
+                )}
+                <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/userprofile?userId=${user.Id}`} target="_blank" rel="noreferrer">
+                  <Icon name="user" size={18} /> Password & profile image
                 </a>
-              )}
-              <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/userprofile?userId=${user.Id}`} target="_blank" rel="noreferrer">
-                <Icon name="user" size={18} /> Password & profile image
-              </a>
-              <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/quickconnect`} target="_blank" rel="noreferrer">
-                <Icon name="external" size={18} /> Quick Connect
-              </a>
-              <Button variant="secondary" icon="swap" onClick={addAccount}>
-                Switch user
-              </Button>
-              <Button variant="secondary" icon="logout" onClick={() => signOut()}>
-                Sign out
-              </Button>
-            </div>
-          </section>
+                <a className="btn btn--secondary btn--md" href={`${client().serverUrl}/web/#/quickconnect`} target="_blank" rel="noreferrer">
+                  <Icon name="external" size={18} /> Quick Connect
+                </a>
+                <Button variant="secondary" icon="swap" onClick={addAccount}>
+                  Switch user
+                </Button>
+                <Button variant="secondary" icon="logout" onClick={() => signOut()}>
+                  Sign out
+                </Button>
+              </div>
+            </SettingsSection>
+
+            <HelpSection />
+          </div>
         </div>
       )}
 
