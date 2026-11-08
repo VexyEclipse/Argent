@@ -4,11 +4,21 @@
 
 import { useSyncExternalStore } from "react";
 import type { BaseItem } from "@/api/types";
+import type { IconName } from "@/components/Icon";
 
 export type DialogKind = "delete" | "refresh" | "collection" | "playlist" | "info" | "metadata" | "identify" | "images" | "subtitles";
 
+/** An action the page adds to the menu for this item (e.g. "Download season"). */
+export interface MenuExtra {
+  id: string;
+  label: string;
+  icon: IconName;
+  run: () => void;
+}
+
 export interface MenuState {
   item: BaseItem;
+  extras?: MenuExtra[];
   /** Where to open: a pointer position, or the button that opened it. */
   x: number;
   y: number;
@@ -38,8 +48,8 @@ const subscribe = (fn: () => void) => {
   };
 };
 
-export function openMenu(item: BaseItem, at: { x: number; y: number }, fromButton = false) {
-  set({ menu: { item, x: at.x, y: at.y, fromButton } });
+export function openMenu(item: BaseItem, at: { x: number; y: number }, fromButton = false, extras?: MenuExtra[]) {
+  set({ menu: { item, x: at.x, y: at.y, fromButton, extras } });
 }
 
 export const closeMenu = () => set({ menu: null });

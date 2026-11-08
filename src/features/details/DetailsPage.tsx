@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { copyIds } from "@/api/duplicates";
@@ -17,7 +17,7 @@ import type { RateTarget } from "@/features/ratings/logic";
 import { useRatings } from "@/features/ratings/prefs";
 import { useRateDialog } from "@/features/ratings/RatePrompt";
 import { useEpisodeStills } from "@/features/manage/stills";
-import { openMenu } from "@/features/manage/store";
+import { openMenu, type MenuExtra } from "@/features/manage/store";
 import { useAuth } from "@/auth/AuthProvider";
 import { FillerBadge } from "@/features/filler/FillerBadge";
 import { useEpisodeNames, useEpisodeTitle } from "@/features/filler/names";
@@ -105,6 +105,17 @@ function SeriesDetails({ item }: { item: BaseItem }) {
     seasonNumber: s.IndexNumber,
   });
   const selectedSeason = seasonList.find((s) => s.Id === selectedId);
+  const { isAdmin } = useAuth();
+  // Right-clicking a season tab opens the same menu as an episode: edit, refresh, delete…
+  // plus what the season buttons do.
+  const seasonMenu = (s: BaseItem, e: MouseEvent) => {
+    e.preventDefault();
+    const extras: MenuExtra[] = [];
+    if (downloadsSupported()) extras.push({ id: "download-season", label: "Download season", icon: "download", run: () => downloadSeason(s) });
+    if ((s.IndexNumber ?? 0) > 0)
+      extras.push({ id: "rate-season", label: ratings.ratings[s.Id] ? "Change season score" : "Rate this season", icon: "star", run: () => rateDialog.open(seasonTarget(s)) });
+    openMenu({ ...s, SeriesName: s.SeriesName ?? item.Name }, { x: e.clientX, y: e.clientY }, false, extras);
+  };
 
   const playTarget = nextUp.data ?? null;
   const started = (item.UserData?.PlayedPercentage ?? 0) > 0 || Boolean(playTarget && progressOf(playTarget) > 0);
@@ -150,6 +161,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
                     aria-selected={s.Id === selectedId}
                     className={`seasons__tab ${s.Id === selectedId ? "is-active" : ""}`}
                     onClick={() => setParams({ season: s.Id }, { replace: true, preventScrollReset: true })}
+                    onContextMenu={isAdmin ? (e) => seasonMenu(s, e) : undefined}
                   >
                     {s.Name}
                     {score ? (

@@ -11,7 +11,7 @@ import { Icon, type IconName } from "@/components/Icon";
 import { showToast } from "@/components/Toast";
 import { addToWatchlist, canWatchlist, removeFromWatchlist, useWatchlist } from "@/features/watchlist/store";
 import { desktop } from "@/platform/desktop";
-import { closeMenu, openDialog, startSelection, type MenuState } from "./store";
+import { closeMenu, openDialog, startSelection, type MenuExtra, type MenuState } from "./store";
 
 interface Action {
   id: string;
@@ -26,7 +26,7 @@ const PLAYLIST_TYPES = new Set(["Movie", "Episode", "Series", "Season", "Video",
 const TYPE_LABEL: Record<string, string> = { Movie: "movie", Episode: "episode", Series: "series", Season: "season", BoxSet: "collection", Video: "video" };
 
 /** Everything an administrator can do with one title, grouped as the menu shows it. */
-function useActions(item: BaseItem): Action[][] {
+function useActions(item: BaseItem, extras: MenuExtra[] = []): Action[][] {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -70,7 +70,7 @@ function useActions(item: BaseItem): Action[][] {
   if (item.Type !== "BoxSet") organise.push({ id: "collection", label: "Add to collection", icon: "stack", run: () => openDialog("collection", [item]) });
   if (PLAYLIST_TYPES.has(item.Type)) organise.push({ id: "playlist", label: "Add to playlist", icon: "list", run: () => openDialog("playlist", [item]) });
 
-  const files: Action[] = [];
+  const files: Action[] = [...extras];
   // The desktop app can show the title's file (or a show's folder) when the server is on the same computer.
   if (desktop?.showInFolder && item.Type !== "BoxSet" && item.LocationType !== "Virtual")
     files.push({
@@ -145,11 +145,11 @@ const MARGIN = 8;
 
 export function ContextMenu({ menu }: { menu: MenuState }) {
   const { item } = menu;
-  const groups = useActions(item);
+  const groups = useActions(item, menu.extras);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const thumb = item.Type === "Episode" ? landscapeImage(item, 160) : posterImage(item, 96);
-  const sub = [item.Type === "BoxSet" ? "Collection" : item.Type === "Series" ? "Series" : item.Type === "Episode" ? item.SeriesName : item.Type, cardSubtitle(item)]
+  const sub = [item.Type === "BoxSet" ? "Collection" : item.Type === "Series" ? "Series" : item.Type === "Episode" || item.Type === "Season" ? item.SeriesName : item.Type, cardSubtitle(item)]
     .filter(Boolean)
     .join(" · ");
 
