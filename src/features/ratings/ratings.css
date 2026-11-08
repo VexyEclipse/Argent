@@ -79,6 +79,7 @@
   gap: 2px;
 }
 .rate__star {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 4px;
@@ -97,6 +98,16 @@
 }
 .rate__star.is-preview {
   color: var(--silver-300);
+}
+/* The last star of a quarter score (9.75, 9.5, 9.25): filled up to that fraction. */
+.rate__star-part {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  color: var(--silver-100);
+  pointer-events: none;
 }
 .rate__star:hover,
 .rate__star:focus-visible {
@@ -147,6 +158,11 @@
 }
 .rate__hint {
   line-height: 30px;
+}
+.rate__hint--quarter {
+  display: block;
+  line-height: 1.4;
+  font-size: var(--fs-micro);
 }
 
 html[data-platform="mobile"] .rate {

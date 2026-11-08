@@ -8,7 +8,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { usePlatform } from "@/platform/platform";
 import { isBackKey } from "@/platform/spatialNavigation";
-import { MAX_NOTE, QUICK_TAGS, type RateTarget } from "./logic";
+import { MAX_NOTE, QUICK_TAGS, STAR_STEP, clampStars, formatStars, pickStar, starFill, starPaintWidth, type RateTarget } from "./logic";
 import { useRatings } from "./prefs";
 import { clearRatePrompt, readRatePrompt, subscribeRatePrompt } from "./prompt";
 import { pullRatingsFromServer, rate, removeRating, skipRating } from "./store";
@@ -78,6 +78,9 @@ export function RateDialog({ target, mode, onClose }: DialogProps) {
         keys.current.dismiss();
       } else if (!typing && /^[0-9]$/.test(e.key)) {
         setStars(e.key === "0" ? 10 : Number(e.key));
+      } else if (!typing && (e.key === "-" || e.key === "+" || e.key === "=")) {
+        // Fine-tune by a quarter star.
+        setStars((cur) => (cur ? clampStars(cur + (e.key === "-" ? -STAR_STEP : STAR_STEP)) : cur));
       } else if (typing && e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         keys.current.save();
       }
@@ -90,7 +93,10 @@ export function RateDialog({ target, mode, onClose }: DialogProps) {
     if (platform === "tv") firstStar.current?.focus();
   }, [platform]);
 
-  const shown = hover || stars;
+  // Hovering the star your score ends on shows the score itself: clicking it takes off a quarter.
+  const previewing = hover > 0 && hover !== Math.ceil(stars);
+  const shown = previewing ? hover : stars;
+  const starSize = platform === "tv" ? 40 : 30;
   const eyebrow = mode === "edit" ? (existing ? "Your rating" : `Rate this ${TYPE_LABEL[target.type].toLowerCase()}`) : `Finished · ${TYPE_LABEL[target.type]}`;
 
   return (
@@ -108,35 +114,49 @@ export function RateDialog({ target, mode, onClose }: DialogProps) {
           </h2>
           {rewatch && existing && (
             <p className="rate__previous">
-              You gave it {existing.stars}/10 on {fmtDate(existing.ratedAt)}. Your old score is kept in your diary.
+              You gave it {formatStars(existing.stars)}/10 on {fmtDate(existing.ratedAt)}. Your old score is kept in your diary.
             </p>
           )}
         </div>
 
         <div className="rate__stars" role="radiogroup" aria-label="Score out of 10" onMouseLeave={() => setHover(0)}>
-          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-            <button
-              key={n}
-              ref={n === 1 ? firstStar : undefined}
-              type="button"
-              role="radio"
-              aria-checked={stars === n}
-              aria-label={`${n} out of 10`}
-              className={`rate__star ${n <= shown ? "is-on" : ""} ${hover && n <= hover ? "is-preview" : ""}`}
-              onMouseEnter={() => setHover(n)}
-              onFocus={(e) => e.currentTarget.matches(":focus-visible") && setHover(n)}
-              onBlur={() => setHover(0)}
-              onClick={() => setStars(n)}
-            >
-              <Icon name="star" size={platform === "tv" ? 40 : 30} />
-            </button>
-          ))}
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+            const fill = starFill(shown, n);
+            const last = stars > 0 && Math.ceil(stars) === n;
+            return (
+              <button
+                key={n}
+                ref={n === 1 ? firstStar : undefined}
+                type="button"
+                role="radio"
+                aria-checked={last}
+                aria-label={last ? `${formatStars(stars)} out of 10. Press again to take off a quarter` : `${n} out of 10`}
+                className={`rate__star ${fill === 1 ? "is-on" : ""} ${previewing && n <= hover ? "is-preview" : ""}`}
+                onMouseEnter={() => setHover(n)}
+                onFocus={(e) => e.currentTarget.matches(":focus-visible") && setHover(n)}
+                onBlur={() => setHover(0)}
+                onClick={() => {
+                  setStars((cur) => pickStar(cur, n));
+                  // Stop previewing so the quarter you just took off shows straight away.
+                  setHover(n);
+                }}
+              >
+                <Icon name="star" size={starSize} />
+                {fill > 0 && fill < 1 && (
+                  <span className="rate__star-part" style={{ clipPath: `inset(0 calc(4px + ${starSize * (1 - starPaintWidth(fill))}px) 0 0)` }} aria-hidden="true">
+                    <Icon name="star" size={starSize} />
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <div className="rate__score" aria-live="polite">
           {shown ? (
             <>
-              <strong>{shown}</strong>
+              <strong>{formatStars(shown)}</strong>
               <span> / 10</span>
+              {!previewing && <span className="rate__hint rate__hint--quarter">Tap star {Math.ceil(stars)} again for quarter scores</span>}
             </>
           ) : (
             <span className="rate__hint">Pick a score from 1 to 10</span>
@@ -227,7 +247,7 @@ export function RatePromptHost() {
           mode="prompt"
           onClose={(result) => {
             clearRatePrompt();
-            if (result && result !== "removed") setToast(`Rated ${target.name} ${result.stars}/10`);
+            if (result && result !== "removed") setToast(`Rated ${target.name} ${formatStars(result.stars)}/10`);
           }}
         />
       )}

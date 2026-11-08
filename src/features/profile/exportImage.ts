@@ -1,6 +1,8 @@
 // Renders your highest-rated titles as a shareable PNG poster grid, drawn on a canvas
 // in Argent's palette, for copying to the clipboard or saving.
 
+import { starPaintWidth } from "@/features/ratings/logic";
+
 export interface ExportEntry {
   name: string;
   stars: number;
@@ -157,7 +159,20 @@ export async function renderTopRated(opts: { title: string; subtitle: string; en
     ctx.fillStyle = "#f5f6f7";
     ctx.font = `600 19px ${BODY}`;
     ctx.fillText(ellipsize(ctx, entry.name, POSTER_W), x, y + POSTER_H + 32);
-    for (let s = 0; s < 10; s++) star(ctx, x + s * 19, y + POSTER_H + 44, 17, s < entry.stars ? "#d2d5da" : "#26282d");
+    for (let s = 0; s < 10; s++) {
+      const sx = x + s * 19;
+      const fill = Math.min(1, Math.max(0, entry.stars - s));
+      star(ctx, sx, y + POSTER_H + 44, 17, fill === 1 ? "#d2d5da" : "#26282d");
+      if (fill > 0 && fill < 1) {
+        // A quarter score's last star, filled up to its fraction.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(sx, y + POSTER_H + 44, 17 * starPaintWidth(fill), 17);
+        ctx.clip();
+        star(ctx, sx, y + POSTER_H + 44, 17, "#d2d5da");
+        ctx.restore();
+      }
+    }
     if (entry.year) {
       ctx.fillStyle = "#80858d";
       ctx.font = `400 15px ${BODY}`;

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BaseItem } from "@/api/types";
 import {
+  clampStars,
   emptyRatings,
+  formatStars,
+  pickStar,
+  starFill,
   isFinished,
   mergeCustomPrefs,
   mergeStates,
@@ -181,6 +185,46 @@ describe("profile helpers", () => {
     expect(stats.average).toBeCloseTo(26 / 3);
     expect(stats.distribution[7]).toBe(2);
     expect(stats.distribution[9]).toBe(1);
+  });
+});
+
+describe("quarter stars", () => {
+  it("steps the last star down a quarter at a time, then back to the whole star", () => {
+    expect(pickStar(0, 10)).toBe(10);
+    expect(pickStar(10, 10)).toBe(9.75);
+    expect(pickStar(9.75, 10)).toBe(9.5);
+    expect(pickStar(9.5, 10)).toBe(9.25);
+    expect(pickStar(9.25, 10)).toBe(10);
+    expect(pickStar(1, 1)).toBe(0.75);
+    expect(pickStar(0.25, 1)).toBe(1);
+  });
+
+  it("picking another star sets that whole score", () => {
+    expect(pickStar(9.5, 7)).toBe(7);
+    expect(pickStar(7, 8)).toBe(8);
+  });
+
+  it("keeps scores on quarter steps between a quarter and 10", () => {
+    expect(clampStars(9.75)).toBe(9.75);
+    expect(clampStars(7.3)).toBe(7.25);
+    expect(clampStars(12)).toBe(10);
+    expect(clampStars(0)).toBe(0.25);
+  });
+
+  it("fills the stars up to the score", () => {
+    expect([9, 10].map((n) => starFill(9.75, n))).toEqual([1, 0.75]);
+    expect(starFill(9.25, 10)).toBe(0.25);
+    expect(starFill(7, 8)).toBe(0);
+    expect(formatStars(9.75)).toBe("9.75");
+    expect(formatStars(10)).toBe("10");
+  });
+
+  it("keeps quarter scores through sync, and counts them with the nearest whole score", () => {
+    const state = { ...emptyRatings(), ratings: { a: { stars: 9.75, ratedAt: 5, name: "A", type: "Movie" as const } } };
+    expect(mergeCustomPrefs(emptyRatings(), toCustomPrefs(state)).ratings.a.stars).toBe(9.75);
+    const stats = ratingStats([entry(9.75, 1), entry(9.5, 1), entry(9.25, 1)]);
+    expect(stats.distribution[9]).toBe(2);
+    expect(stats.distribution[8]).toBe(1);
   });
 });
 

@@ -12,7 +12,7 @@ export interface PastRating {
 }
 
 export interface RatingEntry {
-  /** 1–10 */
+  /** 0.25–10, in quarter steps (9.75, 9.5…). */
   stars: number;
   note?: string;
   ratedAt: number;
@@ -131,9 +131,35 @@ export function shouldPrompt(target: RateTarget | null, state: RatingsState, now
   return !existing || now - existing.ratedAt > REWATCH_DAYS * DAY;
 }
 
+/** The smallest step a score can take: a quarter star. */
+export const STAR_STEP = 0.25;
+
+/** A valid score: rounded to the nearest quarter, between a quarter star and 10. */
 export function clampStars(stars: number): number {
-  return Math.min(10, Math.max(1, Math.round(stars)));
+  return Math.min(10, Math.max(STAR_STEP, Math.round(stars / STAR_STEP) * STAR_STEP));
 }
+
+/**
+ * The score after picking star `n` (1–10). Picking the star your score ends on takes it
+ * down a quarter at a time (10 → 9.75 → 9.5 → 9.25) and then back to the whole star.
+ */
+export function pickStar(current: number, n: number): number {
+  if (!current || Math.ceil(current) !== n) return n;
+  const next = current - STAR_STEP;
+  return next <= n - 1 ? n : next;
+}
+
+/** How full star `n` (1–10) is for a score, from 0 to 1. */
+export const starFill = (stars: number, n: number) => Math.min(1, Math.max(0, stars - (n - 1)));
+
+/**
+ * How much of the star icon's width to paint for a partly filled star. The star shape
+ * spans x 3.9–20.1 of its 24-wide box, so a quarter covers a quarter of the shape.
+ */
+export const starPaintWidth = (fill: number) => (3.9 + 16.2 * fill) / 24;
+
+/** "9.75", "9.5", "10". */
+export const formatStars = (stars: number) => String(Math.round(stars * 100) / 100);
 
 /**
  * The entry after rating `target` again. The previous score moves into the diary when
@@ -333,7 +359,8 @@ export function setOrder(state: RatingsState, ids: string[], now = Date.now()): 
 
 export function ratingStats(entries: RatingEntry[]) {
   const distribution = Array.from({ length: 10 }, () => 0);
-  for (const e of entries) distribution[e.stars - 1]++;
+  // Quarter scores count with the nearest whole score (9.5 and 9.75 with the 10s, 9.25 with the 9s).
+  for (const e of entries) distribution[Math.min(10, Math.max(1, Math.round(e.stars))) - 1]++;
   const average = entries.length ? entries.reduce((s, e) => s + e.stars, 0) / entries.length : 0;
   return { count: entries.length, average, distribution };
 }
