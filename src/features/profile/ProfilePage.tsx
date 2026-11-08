@@ -284,8 +284,10 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  return (
-    <div className="page profile">
+  // Your name and the Media profile / Settings switch. On Settings they sit above the
+  // menu in a column that stays put while the settings scroll.
+  const intro = (
+    <>
       <header className="profile__header">
         {user.PrimaryImageTag ? (
           <img className="avatar profile__avatar" src={client().userImageUrl(user.Id, user.PrimaryImageTag, 192)} alt="" />
@@ -322,12 +324,21 @@ export default function ProfilePage() {
           </button>
         ))}
       </div>
+    </>
+  );
+
+  return (
+    <div className={`page profile ${tab === "settings" ? "profile--settings" : ""}`}>
+      {tab === "media" && intro}
 
       {tab === "media" && <MediaProfile />}
 
       {tab === "settings" && (
         <div className="settings">
-          <SettingsNav items={navItems} />
+          <aside className="settings__side">
+            {intro}
+            <SettingsNav items={navItems} />
+          </aside>
 
           <div className="settings__content">
             <SettingsSection id="playback" icon="play" title="Playback" desc="Saved to your server account, so every app you use follows them.">

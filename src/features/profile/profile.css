@@ -17,15 +17,59 @@
 /* ---------- Settings: a menu beside one scrolling column of sections ---------- */
 .settings {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
-  gap: var(--sp-10);
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--sp-12);
   align-items: start;
-  max-width: 1120px;
+  max-width: 1160px;
+  margin-inline: auto;
+}
+/* Your profile, the Media profile / Settings switch and the menu: they stay put while
+   the settings scroll. */
+.settings__side {
+  position: sticky;
+  top: calc(var(--nav-h) + env(safe-area-inset-top) + var(--sp-8));
+  max-height: calc(100dvh - var(--nav-h) - env(safe-area-inset-top) - var(--sp-8) - var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-height: 0;
+}
+.settings__side .profile__header {
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin: 0;
+}
+.settings__side .profile__header > div {
+  min-width: 0;
+  flex: 1;
+}
+.settings__side .profile__avatar {
+  width: 60px;
+  height: 60px;
+  font-size: 1.5rem;
+}
+.settings__side .page-title {
+  font-size: 1.7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings__side .profile__header .muted {
+  font-size: var(--fs-small);
+}
+.settings__side .profile__status {
+  flex-basis: 100%;
+  margin: 0;
+}
+.settings__side .profile__status:empty {
+  display: none;
+}
+.settings__side .profile__tabs {
+  margin: 0;
 }
 .settings__nav {
-  position: sticky;
-  top: calc(var(--nav-h) + env(safe-area-inset-top) + var(--sp-6));
-  max-height: calc(100dvh - var(--nav-h) - var(--sp-12));
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -196,7 +240,13 @@
     grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-6);
   }
+  /* The profile scrolls away; the menu strip stays under the top bar. */
+  .settings__side {
+    display: contents;
+  }
   .settings__nav {
+    position: sticky;
+    flex: none;
     z-index: 5;
     flex-direction: row;
     gap: var(--sp-2);
