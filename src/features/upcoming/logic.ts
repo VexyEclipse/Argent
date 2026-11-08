@@ -7,6 +7,8 @@ import type { BaseItem } from "@/api/types";
 export interface ShowSchedule {
   status: string;
   next?: { season: number; number?: number; airstamp: string };
+  /** The episode that aired last: still shown on the day it airs. */
+  previous?: { season: number; number?: number; airstamp: string };
   seasons: { number: number; premiereDate?: string }[];
 }
 
@@ -89,23 +91,40 @@ export function parseSchedule(json: unknown): ShowSchedule | null {
       seasons.push({ number: s.number, premiereDate: validDate(s.premiereDate) ? s.premiereDate : undefined });
     }
   }
-  let next: ShowSchedule["next"];
-  const n = embedded.nextepisode;
-  if (isObj(n) && posInt(n.season)) {
-    const airstamp = validDate(n.airstamp) ? n.airstamp : validDate(n.airdate) ? n.airdate : undefined;
-    if (airstamp) next = { season: n.season, number: posInt(n.number) ? n.number : undefined, airstamp };
-  }
-  return { status, next, seasons };
+  return { status, next: parseEpisode(embedded.nextepisode), previous: parseEpisode(embedded.previousepisode), seasons };
+}
+
+function parseEpisode(n: unknown): ShowSchedule["next"] {
+  if (!isObj(n) || !posInt(n.season)) return undefined;
+  const airstamp = validDate(n.airstamp) ? n.airstamp : validDate(n.airdate) ? n.airdate : undefined;
+  return airstamp ? { season: n.season, number: posInt(n.number) ? n.number : undefined, airstamp } : undefined;
 }
 
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-/** What to show for one series: its next episode, else an announced season, else nothing. */
-export function entryFor(seriesId: string, schedule: ShowSchedule, now = new Date()): UpcomingEntry | null {
+/** Whether an episode is already in your library (so it's no longer "coming up"). */
+export type InLibrary = (seriesId: string, season: number, episode: number) => boolean;
+
+/**
+ * What to show for one series: the episode airing today (it stays until the day is
+ * over), else its next episode, else an announced season, else nothing. Episodes you
+ * already have are skipped.
+ */
+export function entryFor(seriesId: string, schedule: ShowSchedule, now = new Date(), have?: InLibrary): UpcomingEntry | null {
   const today = dayStart(now);
+  const owned = (e: NonNullable<ShowSchedule["next"]>) => e.number !== undefined && Boolean(have?.(seriesId, e.season, e.number));
+  const episodeEntry = (e: NonNullable<ShowSchedule["next"]>): UpcomingEntry => ({
+    seriesId,
+    kind: e.number === 1 ? "premiere" : "episode",
+    season: e.season,
+    episode: e.number,
+    date: e.airstamp,
+  });
+  const prev = schedule.previous;
+  if (prev && dayStart(new Date(prev.airstamp)) === today && !owned(prev)) return episodeEntry(prev);
   if (schedule.next && Date.parse(schedule.next.airstamp) >= today) {
-    const { season, number, airstamp } = schedule.next;
-    return { seriesId, kind: number === 1 ? "premiere" : "episode", season, episode: number, date: airstamp };
+    // Already out (an early release): nothing to wait for until the one after.
+    return owned(schedule.next) ? null : episodeEntry(schedule.next);
   }
   if (schedule.status === "Ended") return null;
   // An announced season: newer than every season that has already started airing.

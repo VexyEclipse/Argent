@@ -43,8 +43,8 @@ export async function lookupShow(ref: string): Promise<number | null> {
   return parseShowId(await get(`/lookup/shows?${parsed.key}=${encodeURIComponent(parsed.value)}`));
 }
 
-/** Next episode and season list for a show. */
+/** Next and previous episode and season list for a show. */
 export async function fetchSchedule(tvmazeId: number): Promise<ShowSchedule | null> {
   if (!Number.isInteger(tvmazeId) || tvmazeId <= 0) return null;
-  return parseSchedule(await get(`/shows/${tvmazeId}?embed%5B%5D=nextepisode&embed%5B%5D=seasons`));
+  return parseSchedule(await get(`/shows/${tvmazeId}?embed%5B%5D=nextepisode&embed%5B%5D=previousepisode&embed%5B%5D=seasons`));
 }

@@ -271,17 +271,7 @@ export function HomePage() {
         )}
 
         {comingUp.cards.length > 0 && (
-          <Row
-            title="Coming Up"
-            eyebrow="New episodes and seasons"
-            actions={
-              comingUp.usesTvmaze && (
-                <a className="row__credit" href="https://www.tvmaze.com" target="_blank" rel="noreferrer noopener">
-                  Schedules from TVmaze
-                </a>
-              )
-            }
-          >
+          <Row title="Coming Up" eyebrow="New episodes and seasons">
             {comingUp.cards.map((c) => (
               <MediaCard key={c.key} item={c.item} subtitle={c.subtitle} noPlay={c.external} remind />
             ))}

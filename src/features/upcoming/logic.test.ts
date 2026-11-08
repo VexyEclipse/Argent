@@ -57,10 +57,12 @@ describe("parseSchedule", () => {
       status: "Running",
       _embedded: {
         nextepisode: { season: 2, number: 4, airstamp: day(1) },
+        previousepisode: { season: 2, number: 3, airdate: date(-6) },
         seasons: [{ number: 1, premiereDate: "2025-01-01" }, { number: 2, premiereDate: "2026-10-01" }, { number: 3 }],
       },
     });
     expect(s?.next).toEqual({ season: 2, number: 4, airstamp: day(1) });
+    expect(s?.previous).toEqual({ season: 2, number: 3, airstamp: date(-6) });
     expect(s?.seasons).toEqual([{ number: 1, premiereDate: "2025-01-01" }, { number: 2, premiereDate: "2026-10-01" }, { number: 3, premiereDate: undefined }]);
   });
 
@@ -96,6 +98,21 @@ describe("entryFor", () => {
 
   it("ignores a stale 'next' episode that already aired", () => {
     expect(entryFor("s", { ...base, next: { season: 2, number: 2, airstamp: day(-3) } }, NOW)).toBeNull();
+  });
+
+  it("keeps an episode that aired today until the day is over, then moves on", () => {
+    // TVmaze moves "next" on as soon as an episode airs.
+    const show = { ...base, previous: { season: 2, number: 2, airstamp: new Date(2026, 10, 4, 9, 0).toISOString() }, next: { season: 2, number: 3, airstamp: day(7) } };
+    expect(entryFor("s", show, NOW)).toMatchObject({ season: 2, episode: 2 });
+    expect(entryFor("s", show, new Date(2026, 10, 5, 0, 30))).toMatchObject({ season: 2, episode: 3 });
+    expect(entryFor("s", show, new Date(2026, 10, 6, 12, 0))).toMatchObject({ season: 2, episode: 3 });
+  });
+
+  it("drops episodes already in the library", () => {
+    const have = (id: string, season: number, ep: number) => id === "s" && season === 2 && ep === 2;
+    const show = { ...base, previous: { season: 2, number: 2, airstamp: new Date(2026, 10, 4, 9, 0).toISOString() }, next: { season: 2, number: 3, airstamp: day(7) } };
+    expect(entryFor("s", show, NOW, have)).toMatchObject({ season: 2, episode: 3 });
+    expect(entryFor("s", { ...base, next: { season: 2, number: 2, airstamp: day(1) } }, NOW, have)).toBeNull();
   });
 });
 

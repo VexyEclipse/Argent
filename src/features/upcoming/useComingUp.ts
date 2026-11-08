@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CARD_FIELDS, getItems, getUpcoming } from "@/api/jellyfin";
 import { airDateLabel, episodeCode, joinDots } from "@/api/format";
@@ -15,6 +15,8 @@ export interface ComingUpCard {
 }
 
 const MAX_CARDS = 24;
+/** How far back to look for episodes that already arrived in the library. */
+const OWNED_LOOKBACK_DAYS = 7;
 
 function tvmazeSubtitle(e: UpcomingEntry): string {
   const when = e.date ? airDateLabel(e.date) : "";
@@ -23,10 +25,23 @@ function tvmazeSubtitle(e: UpcomingEntry): string {
   return joinDots([when, `S${e.season}${e.episode !== undefined ? ` · E${e.episode}` : ""}`]);
 }
 
+const startOfToday = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+const dayOf = (iso: string) => {
+  const d = new Date(iso);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+
+/** A real file (or a strm/disc), not a placeholder Jellyfin made from the show's episode list. */
+const inLibrary = (item: BaseItem) => (item.LocationType ? item.LocationType !== "Virtual" : Boolean(item.Path));
+
 /**
  * The Coming Up row: episodes Jellyfin knows are on the way, plus what the daily TVmaze
  * check found for shows Jellyfin has nothing scheduled for (including announced
- * seasons). One card per show, soonest first.
+ * seasons). One card per show, soonest first. An episode stays until its air date has
+ * passed, and drops out as soon as it's in your library.
  */
 export function useComingUp() {
   const server = useQuery({
@@ -34,9 +49,42 @@ export function useComingUp() {
     queryFn: async () => (await getUpcoming(60)).Items.filter((i) => i.PremiereDate),
     staleTime: 30 * 60_000,
   });
-  const tvmaze = useUpcomingEntries();
 
-  const covered = useMemo(() => new Set((server.data ?? []).map((i) => i.SeriesId ?? i.Id)), [server.data]);
+  // Episodes that aired lately and are already in the library, to drop from the schedule.
+  const owned = useQuery({
+    queryKey: ["home", "upcoming-owned"],
+    queryFn: async () => {
+      const since = new Date(startOfToday() - OWNED_LOOKBACK_DAYS * 86_400_000).toISOString();
+      const r = await getItems({
+        includeItemTypes: ["Episode"],
+        recursive: true,
+        minPremiereDate: since,
+        isMissing: false,
+        fields: ["Path"],
+        enableImageTypes: [],
+        enableUserData: false,
+        limit: 1000,
+      });
+      return r.Items.filter(inLibrary)
+        .filter((e) => e.SeriesId && e.ParentIndexNumber !== undefined && e.IndexNumber !== undefined)
+        .map((e) => `${e.SeriesId}:${e.ParentIndexNumber}:${e.IndexNumber}`);
+    },
+    staleTime: 10 * 60_000,
+  });
+  const ownedSet = useMemo(() => new Set(owned.data ?? []), [owned.data]);
+  const have = useCallback((seriesId: string, season: number, episode: number) => ownedSet.has(`${seriesId}:${season}:${episode}`), [ownedSet]);
+
+  const tvmaze = useUpcomingEntries(have);
+
+  // Jellyfin's list starts at yesterday and includes episodes you already have: keep only
+  // ones still to come (or airing today) that aren't in the library yet.
+  const today = startOfToday();
+  const upcoming = useMemo(
+    () => (server.data ?? []).filter((i) => !inLibrary(i) && dayOf(i.PremiereDate!) >= today),
+    [server.data, today],
+  );
+
+  const covered = useMemo(() => new Set(upcoming.map((i) => i.SeriesId ?? i.Id)), [upcoming]);
   const extra = useMemo(() => tvmaze.entries.filter((e) => !covered.has(e.seriesId)), [tvmaze.entries, covered]);
   const ids = useMemo(() => extra.map((e) => e.seriesId).sort(), [extra]);
 
@@ -52,7 +100,7 @@ export function useComingUp() {
     const dated: { at: number; card: ComingUpCard }[] = [];
     const undated: ComingUpCard[] = [];
     const seen = new Set<string>();
-    for (const item of server.data ?? []) {
+    for (const item of upcoming) {
       const key = item.SeriesId ?? item.Id;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -71,7 +119,7 @@ export function useComingUp() {
       else undated.push(card);
     }
     return [...dated.sort((a, b) => a.at - b.at).map((d) => d.card), ...undated].slice(0, MAX_CARDS);
-  }, [server.data, series.data, extra]);
+  }, [upcoming, series.data, extra]);
 
-  return { cards, usesTvmaze: cards.some((c) => c.external) };
+  return { cards };
 }

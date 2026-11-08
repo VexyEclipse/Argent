@@ -9,7 +9,7 @@ import { readWatchlist } from "@/features/watchlist/store";
 import { androidApp } from "@/platform/android";
 import { desktop } from "@/platform/desktop";
 import { notify, setNotificationTarget } from "@/platform/notify";
-import { entryFor, entryKey, notificationsFor, pickCandidates, sortEntries, type ShowSchedule, type UpcomingEntry } from "./logic";
+import { entryFor, entryKey, notificationsFor, pickCandidates, sortEntries, type InLibrary, type ShowSchedule, type UpcomingEntry } from "./logic";
 import { readReminders } from "./reminders";
 import { fetchSchedule, lookupShow } from "./tvmaze";
 
@@ -124,10 +124,10 @@ function writeCache(userId: string, value: UpcomingCache) {
   emit();
 }
 
-function entriesOf(c: UpcomingCache, now = new Date()): UpcomingEntry[] {
+function entriesOf(c: UpcomingCache, now = new Date(), have?: InLibrary): UpcomingEntry[] {
   const out: UpcomingEntry[] = [];
   for (const [seriesId, show] of Object.entries(c.shows)) {
-    const entry = show.schedule ? entryFor(seriesId, show.schedule, now) : null;
+    const entry = show.schedule ? entryFor(seriesId, show.schedule, now, have) : null;
     if (entry) out.push(entry);
   }
   return sortEntries(out);
@@ -225,14 +225,20 @@ export async function refreshUpcoming(userId: string, force = false): Promise<vo
 
 // ---- hooks ------------------------------------------------------------------------------
 
-/** TVmaze entries for the signed-in user (soonest first) and when they were checked. */
-export function useUpcomingEntries() {
+/**
+ * TVmaze entries for the signed-in user (soonest first) and when they were checked.
+ * `have` drops episodes already in your library.
+ */
+export function useUpcomingEntries(have?: InLibrary) {
   const { user } = useAuth();
   const userId = user?.Id ?? "";
   const prefs = useUpcomingPrefs();
   const value = useSyncExternalStore(subscribe, () => readCache(userId));
   const busy = useSyncExternalStore(subscribe, isChecking);
-  const entries = useMemo(() => (prefs.tvmaze ? entriesOf(value) : []), [value, prefs.tvmaze]);
+  // Recomputed when the day changes, so an episode moves on once its air date has passed
+  // even if the app stays open overnight.
+  const day = new Date().toDateString();
+  const entries = useMemo(() => (prefs.tvmaze ? entriesOf(value, new Date(), have) : []), [value, prefs.tvmaze, have, day]);
   return { entries, checkedAt: value.checkedAt, checking: busy };
 }
 
