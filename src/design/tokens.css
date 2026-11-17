@@ -141,19 +141,23 @@ html[data-platform="mobile"] [data-density="large"] {
   --poster-w: 148px;
 }
 
-/* TV: 10-foot UI. Everything is sized for distance; focus is always visible. */
+/* TV: 10-foot UI. Everything is sized for distance; focus is always visible.
+ * Sizes are for a page 1600 wide, scaled to the screen (TV_PAGE_WIDTH in
+ * src/platform/platform.tsx): a row shows about seven posters or four wide cards, with
+ * the next one peeking in, and the first row peeks up under the featured header. */
 html[data-platform="tv"] {
   font-size: 20px;
-  --fs-hero: 3.6rem;
-  --fs-h1: 2rem;
-  --fs-h2: 1.4rem;
-  --gutter: 64px;
-  --section-gap: 40px;
-  --poster-w: 200px;
-  --landscape-w: 380px;
-  --person-w: 150px;
-  --hero-h: 78vh;
+  --fs-hero: 3.2rem;
+  --fs-h1: 1.9rem;
+  --fs-h2: 1.3rem;
+  --gutter: 56px;
+  --section-gap: 34px;
+  --poster-w: 184px;
+  --landscape-w: 336px;
+  --person-w: 136px;
+  --hero-h: 72vh;
   --nav-h: 0px;
+  --rail-w: 88px;
   --focus-ring: 0 0 0 3px var(--bg-0), 0 0 0 6px var(--silver-50);
 }
 

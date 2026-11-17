@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 
 export type Platform = "desktop" | "mobile" | "tv";
 
@@ -56,6 +56,34 @@ export function getPlatformOverride(): Platform | "auto" {
   return "auto";
 }
 
+/**
+ * The TV interface is laid out on a page this wide and scaled to fill the screen, so it
+ * looks the same on every TV. Without it, Android TV lays pages out 960 wide (a 1080p or
+ * 4K screen at twice the density), where every card, title and gap came out twice the
+ * size the design meant. Desktop browsers ignore it (`?platform=tv` there shows the page
+ * at the window's own width).
+ */
+export const TV_PAGE_WIDTH = 1600;
+let deviceViewport: string | null = null;
+/** The screen's width before the TV page took over, which the page is scaled to. */
+let deviceWidth = 0;
+
+function applyTvViewport(on: boolean) {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (!meta) return;
+  if (deviceViewport === null) {
+    deviceViewport = meta.content;
+    deviceWidth = window.innerWidth;
+  }
+  if (!on) {
+    meta.content = deviceViewport;
+    return;
+  }
+  // A fixed scale, so nothing on the page can zoom it out further.
+  const scale = Math.round((deviceWidth / TV_PAGE_WIDTH) * 1000) / 1000;
+  meta.content = `width=${TV_PAGE_WIDTH}, initial-scale=${scale}, minimum-scale=${scale}, maximum-scale=${scale}, user-scalable=no`;
+}
+
 const PlatformContext = createContext<Platform>("desktop");
 
 export function PlatformProvider({ children }: { children: ReactNode }) {
@@ -71,8 +99,10 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
+  // Before the first paint, so the TV never shows a frame at the wrong size.
+  useLayoutEffect(() => {
     document.documentElement.dataset.platform = platform;
+    applyTvViewport(platform === "tv");
   }, [platform]);
 
   return <PlatformContext.Provider value={platform}>{children}</PlatformContext.Provider>;

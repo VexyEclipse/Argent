@@ -198,40 +198,41 @@
 
 /* ---------- TV rail ---------- */
 .shell--tv .shell__main {
-  padding-left: 96px;
+  padding-left: var(--rail-w);
 }
 .rail {
   position: fixed;
   inset: 0 auto 0 0;
   z-index: var(--z-nav);
-  width: 96px;
-  padding: 36px 0;
+  width: var(--rail-w);
+  padding: 32px 0;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 4px;
   background: linear-gradient(90deg, rgb(9 9 10 / 0.96) 60%, rgb(9 9 10 / 0));
   transition: width var(--dur) var(--ease-out);
   overflow: hidden;
 }
 .rail:focus-within {
-  width: 300px;
+  width: 280px;
   background: rgb(12 12 13 / 0.97);
   box-shadow: var(--shadow-3);
 }
 .rail__brand {
   display: flex;
   justify-content: center;
-  width: 96px;
-  margin-bottom: 28px;
+  width: var(--rail-w);
+  margin-bottom: 24px;
 }
 .rail__item {
   display: flex;
   align-items: center;
-  gap: 24px;
-  height: 56px;
-  margin: 0 16px;
-  padding: 0 19px;
+  gap: 22px;
+  height: 52px;
+  margin: 0 12px;
+  /* Centres the 26px icon in the closed rail. */
+  padding: 0 calc((var(--rail-w) - 24px - 26px) / 2);
   border-radius: var(--radius);
   color: var(--text-3);
   white-space: nowrap;
@@ -248,7 +249,7 @@
   color: var(--text-on-accent);
 }
 .rail__label {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 500;
   opacity: 0;
   transition: opacity var(--dur) var(--ease-out);
@@ -257,9 +258,17 @@
   opacity: 1;
 }
 
-/* TV focus: scale the focused card, keep the ring. */
+/* TV focus: the focused card grows a little in place and gets the ring at once. Only
+   transform animates (no lift, no shadow fade), which a TV's GPU draws without repainting. */
+html[data-platform="tv"] .card__media {
+  transition: transform 200ms var(--ease-out);
+}
 html[data-platform="tv"] .card__link:focus-visible .card__media {
-  transform: scale(1.07);
+  transform: scale(1.06);
+}
+html[data-platform="tv"] .card__veil,
+html[data-platform="tv"] .card__media::after {
+  transition: none;
 }
 html[data-platform="tv"] .btn:focus-visible {
   background: var(--silver-50);

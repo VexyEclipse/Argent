@@ -555,6 +555,21 @@ html[data-platform="tv"] .row__arrow {
 .row--landscape .row__arrow {
   bottom: 60px;
 }
+/* TV: the remote moves the row (see spatialNavigation.ts), holding the focused card at
+   the left edge, so snapping would only fight it. Room above and below for the focused
+   card to grow without being clipped. */
+html[data-platform="tv"] .row__track {
+  scroll-snap-type: none;
+  padding-top: 12px;
+  padding-bottom: 14px;
+  /* Cards that slid past fade out before the focused one, instead of showing as slivers
+     beside the rail. Clear again before the focused card's grown edge and ring. */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 calc(var(--gutter) - 20px));
+  mask-image: linear-gradient(90deg, transparent 0, #000 calc(var(--gutter) - 20px));
+}
+html[data-platform="tv"] .row__header {
+  margin-bottom: var(--sp-2);
+}
 
 /* ---------- Grid ---------- */
 .grid {

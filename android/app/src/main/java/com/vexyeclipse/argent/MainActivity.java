@@ -162,6 +162,11 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(false);
         s.setSupportZoom(false);
         s.setTextZoom(100); // the TV layout is already sized for 10 feet
+        // Honour the page's viewport: on a TV the web app lays out a fixed-width page and
+        // scales it to the screen (TV_PAGE_WIDTH in src/platform/platform.tsx). Phones ask
+        // for the device width, which is what they got before.
+        s.setUseWideViewPort(true);
+        s.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
         // The web app picks its TV interface from this token (src/platform/platform.tsx).
         s.setUserAgentString(s.getUserAgentString() + (isTv() ? " ArgentTV" : " ArgentAndroid"));
 

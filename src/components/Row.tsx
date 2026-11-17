@@ -44,10 +44,10 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
       settle.current = window.setTimeout(() => {
         if ((track.current?.scrollLeft ?? 0) <= 4) moved.current = false;
       }, 600);
-    setEdges({
-      start: el.scrollLeft <= 4,
-      end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 4,
-    });
+    const start = el.scrollLeft <= 4;
+    const end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    // Runs on every scroll frame: only a change at an edge redraws the row.
+    setEdges((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, [holdStart]);
 
   // New or reordered cards: back to the first one before the row is drawn.
@@ -111,6 +111,7 @@ export function Row({ title, eyebrow, seeAllTo, loading, variant = "poster", chi
           onKeyDown={userMoves}
           onFocus={userMoves}
           data-nav-row
+          data-nav-carousel
         >
           {loading ? Array.from({ length: 8 }, (_, i) => <CardSkeleton key={i} variant={variant} />) : children}
         </div>
