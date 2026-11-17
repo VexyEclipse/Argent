@@ -57,6 +57,13 @@ export default function PlayerPage() {
   const { id = "" } = useParams();
   const [params] = useSearchParams();
   const { status } = useAuth();
+  // Full screen carries on from one episode to the next, and ends with the player.
+  useEffect(
+    () => () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    },
+    [],
+  );
   // A download plays from the device: asked for, or the only way while offline.
   if (params.has("offline") || status === "offline") return <OfflineRoute key={id} id={id} />;
   // Remount per title, per hand-off back from a native player and per group queue entry,
@@ -633,7 +640,9 @@ function WebPlayer(props: {
   const seekBy = useCallback((d: number) => seekTo((video.current?.currentTime ?? 0) + d), [seekTo]);
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else if (document.fullscreenEnabled) root.current?.requestFullscreen?.().catch(() => {});
+    // The whole page, not the player: the player remounts for the next episode, which
+    // would drop out of full screen with it. PlayerPage leaves full screen on the way out.
+    else if (document.fullscreenEnabled) document.documentElement.requestFullscreen?.().catch(() => {});
     // iPhone Safari can't put a page element full screen, only the video, in its own player.
     else (video.current as IosVideo | null)?.webkitEnterFullscreen?.();
   }, []);
