@@ -288,7 +288,8 @@ html[data-shell="desktop-app"] {
   --titlebar-h: 40px;
   --window-controls-w: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
 }
-html[data-shell="desktop-app"]:has(:fullscreen) {
+/* Full screen: the whole page (the player, see toggleFullscreen) or something inside it. */
+html[data-shell="desktop-app"]:is(:fullscreen, :has(:fullscreen)) {
   --window-controls-w: 0px;
 }
 /* An invisible strip along the top lets the window be dragged from any page. */
