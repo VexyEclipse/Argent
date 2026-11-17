@@ -16,6 +16,8 @@ import { interleave } from "@/features/mediabar/logic";
 import { useComingUp } from "@/features/upcoming/useComingUp";
 import { isFinished, useWatchlistItems } from "@/features/watchlist/useWatchlistItems";
 import { pickSomething } from "@/features/player/shuffle";
+import { TopTenRow } from "@/features/trending/TopTenRow";
+import { TvSpotlight } from "@/features/previews/Previews";
 import { GenreRow } from "./GenreRow";
 import { clearResumePoint, useHiddenNextUp } from "./hidden";
 import "./home.css";
@@ -216,6 +218,7 @@ export function HomePage() {
     <div className="home">
       {ambient && <div className="home__ambient" style={{ backgroundImage: `url("${ambient}")` }} aria-hidden="true" />}
       <MediaBar onBackdropChange={onBackdropChange} />
+      <TvSpotlight />
 
       <div className="home__rows">
         {(resume.isPending || (resume.data?.length ?? 0) > 0) && (
@@ -269,6 +272,8 @@ export function HomePage() {
             ))}
           </Row>
         )}
+
+        <TopTenRow />
 
         {comingUp.cards.length > 0 && (
           <Row title="Coming Up" eyebrow="New episodes and seasons">

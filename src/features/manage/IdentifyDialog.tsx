@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getItemFull } from "@/api/jellyfin";
-import { applyMatch, searchForMatch, updateItemMetadata, type RemoteSearchResult } from "@/api/manage";
+import { canIdentify, searchForMatch, type RemoteSearchResult } from "@/api/manage";
 import type { BaseItem } from "@/api/types";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { Spinner } from "@/components/States";
 import { showToast } from "@/components/Toast";
 import { Dialog } from "./Dialog";
+import { mine, pendingFor, queueIdentify, useIdentifyJobs } from "./identifyQueue";
 import { closeDialog } from "./store";
 
 /** Which ids each type can be searched by, in the order Jellyfin's providers prefer. */
@@ -28,12 +29,22 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : "Something w
 const yearOf = (r: RemoteSearchResult) => r.ProductionYear ?? (r.PremiereDate ? new Date(r.PremiereDate).getFullYear() : undefined);
 
 /**
- * Fixes a wrong match: search the metadata providers for the right title and apply it.
- * The item's metadata (and optionally images) is then replaced with the chosen title's.
+ * Fixes wrong matches: search the metadata providers for the right title and choose it.
+ * The match is applied in the background (see identifyQueue.ts), so the dialog moves on
+ * at once: to the next selected title, or closed.
  */
-export function IdentifyDialog({ item }: { item: BaseItem }) {
-  const qc = useQueryClient();
+export function IdentifyDialog({ items }: { items: BaseItem[] }) {
+  const list = items.filter(canIdentify);
+  const [index, setIndex] = useState(0);
+  const item = list[index];
+  if (!item) return null;
+  const next = () => (index + 1 < list.length ? setIndex(index + 1) : closeDialog());
+  return <IdentifyStep key={item.Id} item={item} position={list.length > 1 ? { at: index + 1, of: list.length } : null} onNext={next} />;
+}
+
+function IdentifyStep({ item, position, onNext }: { item: BaseItem; position: { at: number; of: number } | null; onNext: () => void }) {
   const fields = ID_FIELDS[item.Type] ?? [];
+  const pending = pendingFor(mine(useIdentifyJobs()), item.Id);
   // A locked item ignores online metadata, so a match would never land: check first.
   const full = useQuery({ queryKey: ["item", item.Id], queryFn: () => getItemFull(item.Id), staleTime: 0 });
   const locked = Boolean((full.data as (BaseItem & { LockData?: boolean }) | undefined)?.LockData);
@@ -45,7 +56,6 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
   const [searching, setSearching] = useState(false);
   const [chosen, setChosen] = useState<RemoteSearchResult | null>(null);
   const [replaceImages, setReplaceImages] = useState(true);
-  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canSearch = name.trim().length > 0 || Object.values(ids).some((v) => v.trim());
 
@@ -64,23 +74,12 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
     }
   };
 
-  const apply = async () => {
+  // Queued, and on to the next title: the match is applied in the background.
+  const apply = () => {
     if (!chosen) return;
-    setApplying(true);
-    setError(null);
-    try {
-      if (locked) await updateItemMetadata(item.Id, { LockData: false });
-      await applyMatch(item.Id, chosen, replaceImages);
-      showToast(`Updating to ${chosen.Name}. This can take a moment.`);
-      // The server refreshes in the background: pick up the result as it lands.
-      qc.invalidateQueries();
-      window.setTimeout(() => qc.invalidateQueries(), 4000);
-      window.setTimeout(() => qc.invalidateQueries(), 15000);
-      closeDialog();
-    } catch (e) {
-      setError(errorText(e));
-      setApplying(false);
-    }
+    queueIdentify(item, chosen, { replaceImages, unlock: locked });
+    showToast(`Identifying ${item.Name} as ${chosen.Name} in the background`);
+    onNext();
   };
 
   const currentIds = Object.entries(full.data?.ProviderIds ?? item.ProviderIds ?? {})
@@ -91,9 +90,8 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
   return (
     <Dialog
       title="Identify"
-      subtitle={item.Name}
+      subtitle={position ? `${item.Name} · ${position.at} of ${position.of}` : item.Name}
       wide
-      busy={applying}
       footer={
         chosen ? (
           <>
@@ -101,13 +99,17 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
               <input type="checkbox" checked={replaceImages} onChange={(e) => setReplaceImages(e.target.checked)} />
               Replace existing images
             </label>
-            <Button variant="secondary" onClick={() => setChosen(null)} disabled={applying}>
+            <Button variant="secondary" onClick={() => setChosen(null)}>
               Back
             </Button>
-            <Button variant="primary" icon="check" onClick={apply} disabled={applying}>
-              {applying ? "Applying…" : "Use this match"}
+            <Button variant="primary" icon="check" onClick={apply}>
+              {position && position.at < position.of ? "Use this match, next title" : "Use this match"}
             </Button>
           </>
+        ) : position ? (
+          <Button variant="ghost" icon="skipNext" onClick={onNext}>
+            {position.at < position.of ? "Skip this title" : "Skip and close"}
+          </Button>
         ) : undefined
       }
     >
@@ -117,7 +119,8 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
           <p className="mdialog__warn">
             <Icon name="info" size={18} />
             {item.Name}'s title, overview, cast and other metadata will be replaced with {chosen.Name}'s
-            {replaceImages ? ", and its artwork too" : ""}.{locked ? " The item is locked, so it's unlocked first; otherwise the new details wouldn't be saved." : ""}
+            {replaceImages ? ", and its artwork too" : ""}.{locked ? " The item is locked, so it's unlocked first; otherwise the new details wouldn't be saved." : ""} This
+            happens in the background: you can close this and carry on.
           </p>
         </div>
       ) : (
@@ -126,6 +129,12 @@ export function IdentifyDialog({ item }: { item: BaseItem }) {
             Search for the right title by name and year, or paste an id from IMDb, TMDb or TVDB for an exact match.
             {currentIds && ` Currently matched to ${currentIds}.`}
           </p>
+          {pending && (
+            <p className="mdialog__note mident__pending">
+              <Icon name="refresh" size={16} /> Already {pending.state === "running" ? "being identified" : "queued"} as {pending.match.Name}. Choosing
+              another match {pending.state === "running" ? "applies it after that one" : "replaces it"}.
+            </p>
+          )}
           <form
             className="mident__form"
             onSubmit={(e) => {

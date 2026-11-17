@@ -627,3 +627,15 @@ html[data-platform="mobile"] .mp-entry {
 html[data-platform="mobile"] .setting:has(.profile__inline-actions) {
   flex-wrap: wrap;
 }
+
+/* A setting that can't be changed yet (Top 10's Movies and Series without a TMDB key). */
+.setting.is-disabled .setting__label {
+  color: var(--text-3);
+}
+.switch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.setting__hint--warn {
+  color: var(--danger);
+}

@@ -11,6 +11,7 @@ import { ToastHost } from "@/components/Toast";
 import { UpdatePrompt } from "@/components/UpdatePrompt";
 import { downloadsSupported } from "@/features/downloads/store";
 import { ManageHost } from "@/features/manage/ManageHost";
+import { PreviewHost } from "@/features/previews/Previews";
 import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { useNewArrivalsSync } from "@/features/upcoming/newBadges";
 import { useUpcomingSync } from "@/features/upcoming/store";
@@ -278,6 +279,7 @@ export function Shell() {
       <RatePromptHost />
       <UpdatePrompt />
       <ManageHost />
+      <PreviewHost />
       <ToastHost />
     </div>
   );

@@ -250,6 +250,12 @@ function intoBand(start: number, end: number, viewStart: number, viewEnd: number
 /** A focused row sits this far down the screen, with the rows under it in view. */
 const ROW_TOP = 0.1;
 
+/** Lower while a spotlight header shows the focused title above the rows (TV home). */
+function rowTop(): number | null {
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--nav-row-top"));
+  return Number.isFinite(v) && v > 0 && v < 1 ? v : null;
+}
+
 function follow(el: HTMLElement) {
   const { x, y } = scrollers(el);
   const r = el.getBoundingClientRect();
@@ -277,16 +283,19 @@ function follow(el: HTMLElement) {
   }
   // The page: positions on the page as a whole, aimed from where the page is heading.
   const view = window.innerHeight;
-  const row = el.closest(CAROUSEL)?.closest<HTMLElement>(".row, section") ?? null;
+  const spotlight = rowTop();
+  // A row's own title link counts as the row while a spotlight is up, so it isn't hidden behind it.
+  const row = el.closest(CAROUSEL)?.closest<HTMLElement>(".row, section") ?? (spotlight ? el.closest<HTMLElement>(".row") : null);
   const box = (row ?? el).getBoundingClientRect();
   const top = box.top + window.scrollY;
   const bottom = box.bottom + window.scrollY;
   const from = heading("page", "y");
   let target: number;
-  if (row && box.height < view * 0.85) target = top - view * ROW_TOP;
+  if (row && box.height < view * 0.85) target = top - view * (spotlight ?? ROW_TOP);
   else target = from + intoBand(top - from, bottom - from, 0, view, view * 0.12);
   // Near the top: show the whole top of the page (the featured header) rather than a sliver.
-  if (bottom <= view * 0.92) target = 0;
+  // With a spotlight, a row always goes under it, so it can't be hidden behind it.
+  if (bottom <= view * 0.92 && !(spotlight && row)) target = 0;
   glideTo("page", "y", target);
 }
 

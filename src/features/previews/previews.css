@@ -1,0 +1,377 @@
+/* Previews: the desktop hover card, the TV spotlight and the phone sheet. */
+
+/* ---------- The picture they share ---------- */
+.pmedia {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.pmedia > .artwork {
+  position: absolute;
+  inset: 0;
+}
+.pmedia > .artwork img {
+  object-fit: cover;
+}
+.pmedia__video,
+.pmedia__yt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--dur-slow) var(--ease-out);
+  pointer-events: none;
+}
+/* The YouTube player is laid out larger than the frame, so its title bar, logo and any
+   letterboxing stay out of sight. */
+.pmedia__yt {
+  inset: -20%;
+  width: 140%;
+  height: 140%;
+}
+.pmedia__yt iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.pmedia.is-playing .pmedia__video,
+.pmedia.is-playing .pmedia__yt {
+  opacity: 1;
+}
+.pmedia__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 50%, rgb(0 0 0 / 0.55));
+  pointer-events: none;
+}
+.pmedia__logo {
+  position: absolute;
+  left: 6%;
+  bottom: 9%;
+  max-width: 46%;
+  max-height: 34%;
+  object-fit: contain;
+  object-position: left bottom;
+  filter: drop-shadow(0 2px 12px rgb(0 0 0 / 0.6));
+  pointer-events: none;
+}
+
+.pmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.pmeta .cert {
+  padding: 0 6px;
+  border: 1px solid var(--line-3);
+  border-radius: 4px;
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+}
+.pmeta__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+}
+
+/* ---------- Desktop: the card expands in place ---------- */
+.hpreview {
+  position: fixed;
+  z-index: var(--z-overlay);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  box-shadow:
+    var(--shadow-3),
+    0 0 0 1px rgb(0 0 0 / 0.4);
+  overflow: hidden;
+  animation: hpreview-in 220ms var(--ease-out);
+}
+@keyframes hpreview-in {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+}
+.hpreview__media {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.hpreview__sound {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 11 / 0.6);
+  border: 1px solid var(--line-3);
+  color: var(--text-1);
+  backdrop-filter: blur(6px);
+}
+.hpreview__sound:hover {
+  border-color: var(--silver-200);
+}
+.hpreview__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--sp-4) var(--sp-4) var(--sp-5);
+}
+.hpreview__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: 4px;
+}
+.hpreview__spacer {
+  flex: 1;
+}
+.hpreview__btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line-3);
+  color: var(--text-1);
+  background: rgb(255 255 255 / 0.03);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.hpreview__btn:hover {
+  border-color: var(--silver-100);
+  background: rgb(255 255 255 / 0.08);
+}
+.hpreview__btn.is-on {
+  color: var(--silver-50);
+  border-color: var(--silver-300);
+}
+.hpreview__btn--play {
+  background: var(--silver-100);
+  border-color: transparent;
+  color: var(--text-on-accent);
+}
+.hpreview__btn--play:hover {
+  background: var(--silver-50);
+}
+.hpreview__btn--play svg {
+  margin-left: 2px;
+}
+.hpreview__title {
+  font-size: var(--fs-h3);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.hpreview__episode {
+  margin-top: -4px;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.hpreview__genres {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.hpreview__overview {
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- Phone: press and hold ---------- */
+html[data-platform="mobile"] .card__link {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.modal-backdrop.psheet-backdrop {
+  place-items: end stretch;
+  padding: 0;
+}
+.psheet {
+  position: relative;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden auto;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-2);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-3);
+  animation: psheet-in 260ms var(--ease-out);
+}
+@keyframes psheet-in {
+  from {
+    transform: translateY(40%);
+    opacity: 0;
+  }
+}
+.psheet__grip {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 2;
+  width: 40px;
+  height: 4px;
+  margin-left: -20px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.5);
+}
+.psheet__media {
+  position: relative;
+}
+.psheet__sound {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(10 10 11 / 0.6);
+  border: 1px solid var(--line-3);
+  color: var(--text-1);
+}
+.psheet__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
+}
+.psheet__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-tight);
+}
+.psheet__episode {
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.psheet__overview {
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.psheet__actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.psheet__actions > .btn--primary,
+.psheet__actions > .btn--secondary {
+  flex: 1;
+}
+.psheet__icon.is-on {
+  color: var(--silver-50);
+}
+
+/* ---------- TV: the spotlight header ---------- */
+.spotlight {
+  position: fixed;
+  top: 0;
+  left: var(--rail-w, 0px);
+  right: 0;
+  height: 50vh;
+  z-index: 2;
+  background: var(--bg-0);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--dur) var(--ease-out),
+    visibility 0s linear var(--dur);
+}
+.spotlight.is-on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--dur) var(--ease-out);
+}
+/* The rows scroll up under it and fade out at its edge. */
+.spotlight::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 18px;
+  background: linear-gradient(180deg, var(--bg-0), transparent);
+}
+.spotlight__media {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 70%;
+  height: 100%;
+  animation: fade-in var(--dur-slow) var(--ease-out);
+}
+.spotlight__media .pmedia {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+.spotlight__media .pmedia__shade {
+  background: linear-gradient(90deg, var(--bg-0) 0%, rgb(9 9 10 / 0.7) 22%, transparent 55%), linear-gradient(0deg, var(--bg-0) 0%, transparent 38%);
+}
+.spotlight__text {
+  position: absolute;
+  left: var(--gutter);
+  bottom: 9%;
+  width: min(44%, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  animation: fade-in var(--dur) var(--ease-out);
+}
+.spotlight__logo {
+  align-self: flex-start;
+  max-width: 78%;
+  max-height: 120px;
+  object-fit: contain;
+  object-position: left bottom;
+  margin-bottom: var(--sp-2);
+  filter: drop-shadow(0 2px 14px rgb(0 0 0 / 0.6));
+}
+.spotlight__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+}
+.spotlight__episode {
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+.spotlight__genres {
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+.spotlight__overview {
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

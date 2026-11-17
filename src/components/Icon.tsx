@@ -245,6 +245,7 @@ const PATHS = {
     </>
   ),
   arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
+  trending: <path d="m3.5 17 6-6 4 4 7-7.5M14.5 7.5h6v6" />,
   arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,
 } as const;
 

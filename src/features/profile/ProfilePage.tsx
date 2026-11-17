@@ -18,6 +18,8 @@ import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
 import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/features/player/prefs";
 import { setStillsPref, useStillsPref } from "@/features/manage/stills";
+import { TrendingSettings } from "@/features/trending/TrendingSettings";
+import { setPreviewPref, usePreviewPrefs } from "@/features/previews/store";
 import { AndroidSection, HelpSection } from "./DeviceSections";
 import { SettingsNav, SettingsSection, type SettingsNavItem } from "./SettingsLayout";
 import { MediaProfile } from "./MediaProfile";
@@ -244,6 +246,7 @@ export default function ProfilePage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "media";
   const ratingPrefs = useRatingPrefs();
+  const previewPrefs = usePreviewPrefs();
   const desktopApp = useDesktopInfo();
   const server = useQuery({ queryKey: ["server-info"], queryFn: () => getPublicInfo(client()), staleTime: 10 * 60_000 });
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
@@ -259,6 +262,7 @@ export default function ProfilePage() {
       { id: "display", label: "Display", icon: "eye", group: "Personal" },
       { id: "ratings", label: "Ratings", icon: "star", group: "Personal" },
       { id: "recommendations", label: "Recommendations", icon: "sparkle", group: "Personal" },
+      { id: "top-10", label: "Top 10", icon: "trending", group: "Personal" },
       hasDesktop && { id: "desktop", label: "Desktop app", icon: "dashboard", group: "App" },
       Boolean(androidApp) && { id: "android", label: "Android app", icon: "remote", group: "App" },
       isAdmin && { id: "library", label: "Library", icon: "folder", group: "App" },
@@ -448,6 +452,20 @@ export default function ProfilePage() {
                 </div>
               </div>
               <Toggle
+                label="Previews"
+                hint="Desktop: rest the pointer on a poster. TV: the title you're on fills the top of the home page. Phone: press and hold a poster."
+                checked={previewPrefs.enabled}
+                onChange={(v) => setPreviewPref("enabled", v)}
+              />
+              {previewPrefs.enabled && (
+                <Toggle
+                  label="Play trailers in previews"
+                  hint="Muted until you turn the sound on. Never on a connection that asks to save data."
+                  checked={previewPrefs.trailers}
+                  onChange={(v) => setPreviewPref("trailers", v)}
+                />
+              )}
+              <Toggle
                 label="Show details when paused"
                 hint="After a few seconds paused, the picture dims and shows what's playing, the story and the cast"
                 checked={pauseInfo}
@@ -495,6 +513,8 @@ export default function ProfilePage() {
                 </Button>
               </div>
             </SettingsSection>
+
+            <TrendingSettings />
 
             {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} refresh={desktopApp.refresh} />}
 

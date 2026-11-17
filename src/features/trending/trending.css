@@ -1,0 +1,284 @@
+/* Top 10: ranked row, "Not in library" cards and their info sheet, the Trending page. */
+
+/* ---------- The ranked row ---------- */
+.row--top10 .row__track {
+  gap: var(--sp-2);
+}
+.top10 {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  scroll-snap-align: start;
+}
+/* As tall as the poster, with the number standing on its bottom edge. */
+.top10__rank {
+  flex: none;
+  position: relative;
+  z-index: 0;
+  height: calc(var(--poster-w) * 1.5);
+  display: flex;
+  align-items: flex-end;
+  margin-right: calc(var(--poster-w) * -0.17);
+  font-family: var(--font-display);
+  font-size: calc(var(--poster-w) * 0.98);
+  font-weight: 800;
+  line-height: 0.72;
+  letter-spacing: -0.06em;
+  color: var(--bg-1);
+  -webkit-text-stroke: 2px var(--silver-500);
+  paint-order: stroke fill;
+  user-select: none;
+  pointer-events: none;
+  transition: -webkit-text-stroke-color var(--dur) var(--ease-out);
+}
+.top10--wide .top10__rank {
+  letter-spacing: -0.14em;
+  margin-right: calc(var(--poster-w) * -0.12);
+}
+.top10:hover .top10__rank,
+.top10:focus-within .top10__rank {
+  -webkit-text-stroke-color: var(--silver-200);
+}
+.top10 .card {
+  position: relative;
+  z-index: 1;
+  scroll-snap-align: none;
+}
+html[data-platform="mobile"] .top10__rank {
+  -webkit-text-stroke-width: 1.5px;
+}
+html[data-platform="tv"] .top10__rank {
+  -webkit-text-stroke-width: 3px;
+}
+
+.top10__tabs {
+  flex: none;
+}
+html[data-platform="mobile"] .row--top10 .row__header {
+  align-items: center;
+}
+html[data-platform="mobile"] .top10__tabs button {
+  height: 28px;
+  padding: 0 10px;
+}
+.top10__empty {
+  padding: var(--sp-8) 0;
+  color: var(--text-3);
+  font-size: var(--fs-small);
+  white-space: normal;
+}
+.top10__empty a {
+  color: var(--text-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- A title you don't have ---------- */
+.card--external .card__link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.card--external .card__media img {
+  filter: saturate(0.82) brightness(0.86);
+}
+.card__tag {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: rgb(10 10 11 / 0.8);
+  border: 1px dashed var(--line-3);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+html[data-platform="mobile"] .card__tag {
+  left: 5px;
+  bottom: 5px;
+  padding: 2px 6px;
+  font-size: 0.62rem;
+}
+
+/* ---------- Its info sheet ---------- */
+.modal.xsheet {
+  position: relative;
+  width: min(780px, 100%);
+  padding: 0;
+  overflow: hidden auto;
+}
+.xsheet__hero {
+  aspect-ratio: 16 / 6;
+  background: var(--bg-2) center / cover no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent);
+  mask-image: linear-gradient(180deg, #000 45%, transparent);
+}
+.xsheet__hero--blur {
+  filter: blur(28px) saturate(0.7) brightness(0.6);
+  transform: scale(1.15);
+}
+.xsheet__body {
+  position: relative;
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  align-items: start;
+  gap: var(--sp-6);
+  margin-top: -96px;
+  padding: 0 var(--sp-6) var(--sp-6);
+}
+.xsheet__body:not(:has(.xsheet__poster)) {
+  grid-template-columns: 1fr;
+}
+.xsheet__poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-3);
+  border: 1px solid var(--line-2);
+}
+.xsheet__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: 60px;
+  min-width: 0;
+}
+.xsheet__tag {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--line-3);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+}
+.xsheet__title {
+  font-family: var(--font-display);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+}
+.xsheet__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+.xsheet__score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-1);
+}
+.xsheet__genres {
+  color: var(--text-3);
+  font-size: var(--fs-small);
+}
+.xsheet__overview {
+  margin-top: var(--sp-2);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  white-space: pre-line;
+  max-height: 11.5em;
+  overflow: auto;
+}
+.xsheet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+html[data-platform="mobile"] .modal-backdrop.xsheet-backdrop {
+  place-items: end stretch;
+  padding: 0;
+}
+html[data-platform="mobile"] .xsheet {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  max-height: 88vh;
+}
+html[data-platform="mobile"] .xsheet__body {
+  grid-template-columns: 96px 1fr;
+  gap: var(--sp-4);
+  margin-top: -56px;
+  padding: 0 var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
+}
+html[data-platform="mobile"] .xsheet__text {
+  display: contents;
+}
+html[data-platform="mobile"] .xsheet__tag {
+  margin-top: 46px;
+}
+html[data-platform="mobile"] .xsheet__tag ~ * {
+  grid-column: 1 / -1;
+}
+
+/* ---------- Trending page ---------- */
+.trending__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-8);
+}
+.trending__note {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-small);
+}
+.trending__note a {
+  color: var(--text-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.trend-cell {
+  position: relative;
+}
+.trend-cell__rank {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 3;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--silver-100);
+  color: var(--text-on-accent);
+  font-size: var(--fs-small);
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+
+/* ---------- Settings ---------- */
+.tmdb-key {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1 1 340px;
+  max-width: 460px;
+}
+.tmdb-key__input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+}

@@ -1,6 +1,8 @@
 export interface AppConfig {
   defaultServerUrl: string;
   mediaBar: Record<string, unknown> & { lock?: string[] };
+  /** A TMDB API key for everyone's Top 10 films and series (a user's own key wins). */
+  tmdbApiKey?: string;
 }
 
 const FALLBACK: AppConfig = { defaultServerUrl: "", mediaBar: {} };

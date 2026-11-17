@@ -21,6 +21,7 @@ const PlayerPage = lazy(() => import("@/features/player/PlayerPage"));
 const ProfilePage = lazy(() => import("@/features/profile/ProfilePage"));
 const WatchlistPage = lazy(() => import("@/features/watchlist/WatchlistPage"));
 const TogetherPage = lazy(() => import("@/features/together/TogetherPage"));
+const TrendingPage = lazy(() => import("@/features/trending/TrendingPage"));
 const DownloadsPage = lazy(() => import("@/features/downloads/DownloadsPage"));
 const OfflineShell = lazy(() => import("@/features/downloads/OfflineShell").then((m) => ({ default: m.OfflineShell })));
 
@@ -77,6 +78,7 @@ export function App() {
           <Route path="details/:id" element={<DetailsPage />} />
           <Route path="person/:id" element={<PersonPage />} />
           <Route path="search" element={<SearchPage />} />
+          <Route path="trending" element={<TrendingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="together" element={<TogetherPage />} />
           <Route path="downloads" element={<DownloadsPage />} />

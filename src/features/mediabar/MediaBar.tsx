@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type TouchEvent } from "react";
+import { usePreviewCovers } from "@/features/previews/store";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { setFavorite } from "@/api/jellyfin";
@@ -81,7 +82,9 @@ export function MediaBar({ onBackdropChange }: Props) {
   const trailerHost = useRef<HTMLDivElement | null>(null);
   const player = useRef<TrailerPlayer | null>(null);
 
-  const visible = inView && docVisible;
+  // A preview playing elsewhere, or the TV spotlight over it: hold still meanwhile.
+  const covered = usePreviewCovers();
+  const visible = inView && docVisible && !covered;
   const running = total > 1 && !paused && !hoverHeld && !settingsOpen && visible && !videoPlaying;
 
   // Start from the remembered position once data arrives.

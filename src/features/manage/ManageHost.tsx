@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { canIdentify } from "@/api/manage";
 import { useLocation } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { setPlayed } from "@/api/jellyfin";
@@ -9,6 +10,8 @@ import { showToast } from "@/components/Toast";
 import { ContextMenu } from "./ContextMenu";
 import { AddToListDialog, DeleteDialog, MediaInfoDialog, RefreshDialog } from "./dialogs";
 import { IdentifyDialog } from "./IdentifyDialog";
+import { IdentifyQueuePanel } from "./IdentifyQueuePanel";
+import { setIdentifyQueryClient } from "./identifyQueue";
 import { ImageEditor } from "./ImageEditor";
 import { MetadataEditor } from "./MetadataEditor";
 import { SubtitleEditor } from "./SubtitleEditor";
@@ -60,6 +63,16 @@ function SelectionBar({ items }: { items: BaseItem[] }) {
         <Button variant="ghost" size="sm" icon="refresh" disabled={none || busy} onClick={() => openDialog("refresh", items)}>
           Refresh
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="search"
+          disabled={!items.some(canIdentify) || busy}
+          onClick={() => openDialog("identify", items.filter(canIdentify))}
+          title="Find the right match for each, one after another; they're applied in the background"
+        >
+          Identify
+        </Button>
         <Button variant="ghost" size="sm" icon="trash" className="selbar__danger" disabled={none || busy} onClick={() => openDialog("delete", items)}>
           Delete
         </Button>
@@ -77,6 +90,12 @@ export function ManageHost() {
   const { isAdmin } = useAuth();
   const { menu, dialog, selection } = useManageState();
   const location = useLocation();
+  const qc = useQueryClient();
+
+  // Identify jobs carry on in the background, and refresh what's on screen as they finish.
+  useEffect(() => {
+    if (isAdmin) setIdentifyQueryClient(qc);
+  }, [isAdmin, qc]);
 
   // A new page closes the menu; selections don't carry across pages.
   useEffect(() => {
@@ -96,9 +115,10 @@ export function ManageHost() {
       {dialog?.kind === "playlist" && <AddToListDialog items={items} kind="playlist" />}
       {dialog?.kind === "info" && <MediaInfoDialog item={items[0]} />}
       {dialog?.kind === "metadata" && <MetadataEditor item={items[0]} />}
-      {dialog?.kind === "identify" && <IdentifyDialog item={items[0]} />}
+      {dialog?.kind === "identify" && <IdentifyDialog items={items} />}
       {dialog?.kind === "images" && <ImageEditor item={items[0]} />}
       {dialog?.kind === "subtitles" && <SubtitleEditor item={items[0]} />}
+      <IdentifyQueuePanel />
     </>
   );
 }

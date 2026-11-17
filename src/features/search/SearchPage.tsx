@@ -4,10 +4,15 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CARD_FIELDS, client, getGenres, getItems } from "@/api/jellyfin";
 import { personImage } from "@/api/images";
 import { yearOf } from "@/api/format";
+import { useLibraryGroups } from "@/api/libraries";
+import { useLibraryIndex } from "@/api/libraryIndex";
 import type { BaseItem, ItemsResult } from "@/api/types";
 import { Icon } from "@/components/Icon";
 import { CardSkeleton, MediaCard } from "@/components/MediaCard";
 import { EmptyState } from "@/components/States";
+import { fuzzyFind } from "./fuzzy";
+import { isSmart, parseSmartQuery, type Chip, type SmartQuery } from "./smart";
+import { runSmartQuery, type SmartNotes } from "./smartSearch";
 import "./search.css";
 
 type Filter = "all" | "Movie" | "Series" | "Episode" | "people" | "BoxSet" | "genres";
@@ -24,6 +29,9 @@ const FILTERS: [Filter, string][] = [
 ];
 
 const RECENT_KEY = "argent.recentSearches";
+
+/** Shown before you type, to show what Smart Search understands. */
+const SMART_EXAMPLES = ["90s comedies under 2 hours", "unwatched sci-fi films", "highly rated anime", "something like Interstellar", "series from HBO"];
 
 function readRecent(): string[] {
   try {
@@ -129,10 +137,33 @@ export default function SearchPage() {
     staleTime: 60_000,
   });
   const genres = useQuery({
-    queryKey: ["search", "genres", term],
+    queryKey: ["search", "genres"],
     queryFn: () => getGenres({ includeItemTypes: ["Movie", "Series"] }).then((r) => r.Items),
-    enabled: filter === "all" || filter === "genres" || !enabled,
     staleTime: 30 * 60_000,
+  });
+
+  // Smart Search: "90s comedies under 2 hours", "anime from MAPPA", "like Interstellar".
+  const genreNames = useMemo(() => (genres.data ?? []).map((g) => g.Name), [genres.data]);
+  const smart = useMemo<SmartQuery>(() => {
+    const q = parseSmartQuery(term, { genres: genreNames });
+    // The Movies or Series filter narrows a smart search too.
+    if ((filter === "Movie" || filter === "Series") && !q.kinds.length) q.kinds = [filter];
+    return q;
+  }, [term, genreNames, filter]);
+  const smartOn = enabled && isSmart(smart) && (filter === "all" || filter === "Movie" || filter === "Series");
+  const groups = useLibraryGroups();
+  const index = useLibraryIndex(enabled);
+  const animeIds = useMemo(
+    () => (groups.anime.length && index.data ? new Set(index.data.filter((e) => e.anime).map((e) => e.id)) : null),
+    [groups.anime.length, index.data],
+  );
+  const needsIndex = Boolean(smart.like || smart.kinds.includes("Anime") || smart.text);
+  const smartResults = useQuery({
+    queryKey: ["search", "smart", JSON.stringify({ ...smart, chips: undefined }), animeIds?.size ?? 0],
+    queryFn: ({ signal }) => runSmartQuery(smart, { index: index.data, animeIds }, signal),
+    enabled: smartOn && (!needsIndex || !index.isPending),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   });
 
   const matchedGenres = useMemo(() => {
@@ -153,13 +184,41 @@ export default function SearchPage() {
     };
   }, [items.data, sort]);
 
-  const loading = enabled && (items.isPending || people.isPending) && !items.data;
+  // Close matches despite a typo ("frieran"), when the server found few films or series.
+  const titleCount = byType.Movie.length + byType.Series.length;
+  const fuzzyIds = useMemo(() => {
+    if (!enabled || smartOn || !index.data || items.isPending || titleCount >= 4) return [];
+    if (filter !== "all" && filter !== "Movie" && filter !== "Series") return [];
+    const have = new Set((items.data ?? []).map((i) => i.Id));
+    return fuzzyFind(term, index.data, { limit: 18 })
+      .filter((r) => !have.has(r.entry.id) && (filter === "all" || r.entry.type === filter))
+      .map((r) => r.entry.id);
+  }, [enabled, smartOn, index.data, items.isPending, items.data, titleCount, filter, term]);
+  const fuzzy = useQuery({
+    queryKey: ["search", "fuzzy", fuzzyIds],
+    queryFn: () =>
+      getItems({ ids: fuzzyIds, fields: CARD_FIELDS, enableTotalRecordCount: false }).then((r) => {
+        const order = new Map(fuzzyIds.map((id, i) => [id, i]));
+        return r.Items.sort((a, b) => (order.get(a.Id) ?? 0) - (order.get(b.Id) ?? 0));
+      }),
+    enabled: fuzzyIds.length > 0,
+    staleTime: 60_000,
+  });
+  const closeMatches = fuzzyIds.length ? (fuzzy.data ?? []) : [];
+
+  // Removing a chip removes the words that asked for it.
+  const removeChip = (c: Chip) => setDraft((term.slice(0, c.span[0]) + term.slice(c.span[1])).replace(/\s+/g, " ").trim());
+
+  const loading = enabled && !smartOn && (items.isPending || people.isPending) && !items.data;
   const nothing =
     enabled &&
+    !smartOn &&
     !loading &&
     !items.isFetching &&
     !people.isFetching &&
+    !fuzzy.isFetching &&
     !(items.data?.length ?? 0) &&
+    !closeMatches.length &&
     !(people.data?.actors.length ?? 0) &&
     !(people.data?.directors.length ?? 0) &&
     !matchedGenres.length;
@@ -175,7 +234,7 @@ export default function SearchPage() {
           className="search__input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Movies, series, episodes, people, genres…"
+          placeholder="Titles, people, or try “90s comedies under 2 hours”"
           autoFocus
           data-autofocus
           aria-label="Search"
@@ -221,6 +280,18 @@ export default function SearchPage() {
 
       {!enabled && (
         <div className="search__idle fade-in">
+          <section>
+            <h2 className="search__heading">
+              <Icon name="sparkle" size={18} /> Try asking
+            </h2>
+            <div className="search__chips" data-nav-row>
+              {SMART_EXAMPLES.map((r) => (
+                <button key={r} className="chip" onClick={() => setDraft(r)}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </section>
           {recent.length > 0 && (
             <section>
               <h2 className="search__heading">Recent</h2>
@@ -258,9 +329,22 @@ export default function SearchPage() {
 
       {nothing && <EmptyState title={`No results for “${term}”`} body="Try another spelling, or search for an actor or genre." />}
 
+      {smartOn && (
+        <SmartSection
+          query={smart}
+          notes={smartResults.data?.notes}
+          items={smartResults.data?.items}
+          loading={smartResults.isPending}
+          stale={smartResults.isPlaceholderData}
+          onRemove={removeChip}
+          sort={sort}
+        />
+      )}
+
       {enabled && !loading && (
         <div className={`search__results ${items.isPlaceholderData ? "is-stale" : ""}`}>
-          {show("genres") && matchedGenres.length > 0 && (
+          {smartOn && titleCount > 0 && <h2 className="search__heading search__subhead">Titles matching “{term}”</h2>}
+          {!smartOn && show("genres") && matchedGenres.length > 0 && (
             <section className="search__section">
               <h2 className="search__heading">Genres</h2>
               <div className="search__chips">
@@ -274,21 +358,26 @@ export default function SearchPage() {
           )}
           {show("Movie") && byType.Movie.length > 0 && <ResultGrid title="Movies" items={byType.Movie} />}
           {show("Series") && byType.Series.length > 0 && <ResultGrid title="Series" items={byType.Series} />}
-          {show("people") && (people.data?.actors.length ?? 0) > 0 && <PeopleRow title="Actors" people={people.data!.actors} />}
-          {show("people") && (people.data?.directors.length ?? 0) > 0 && <PeopleRow title="Directors & Writers" people={people.data!.directors} />}
-          {show("BoxSet") && byType.BoxSet.length > 0 && <ResultGrid title="Collections" items={byType.BoxSet} />}
-          {show("Episode") && byType.Episode.length > 0 && <ResultGrid title="Episodes" items={byType.Episode} landscape />}
+          {closeMatches.length > 0 && (
+            <ResultGrid title={titleCount ? "Close matches" : `Close matches for “${term}”`} items={closeMatches} count={false} />
+          )}
+          {!smartOn && show("people") && (people.data?.actors.length ?? 0) > 0 && <PeopleRow title="Actors" people={people.data!.actors} />}
+          {!smartOn && show("people") && (people.data?.directors.length ?? 0) > 0 && (
+            <PeopleRow title="Directors & Writers" people={people.data!.directors} />
+          )}
+          {!smartOn && show("BoxSet") && byType.BoxSet.length > 0 && <ResultGrid title="Collections" items={byType.BoxSet} />}
+          {!smartOn && show("Episode") && byType.Episode.length > 0 && <ResultGrid title="Episodes" items={byType.Episode} landscape />}
         </div>
       )}
     </div>
   );
 }
 
-function ResultGrid({ title, items, landscape }: { title: string; items: BaseItem[]; landscape?: boolean }) {
+function ResultGrid({ title, items, landscape, count = true }: { title: string; items: BaseItem[]; landscape?: boolean; count?: boolean }) {
   return (
     <section className="search__section">
       <h2 className="search__heading">
-        {title} <span className="search__count">{items.length}</span>
+        {title} {count && <span className="search__count">{items.length}</span>}
       </h2>
       <div className={`grid ${landscape ? "grid--landscape" : ""}`}>
         {items.map((i) => (
@@ -316,6 +405,72 @@ function PeopleRow({ title, people }: { title: string; people: BaseItem[] }) {
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/** What a smart search understood, as chips you can remove, and what it found. */
+function SmartSection({
+  query,
+  notes,
+  items,
+  loading,
+  stale,
+  onRemove,
+  sort,
+}: {
+  query: SmartQuery;
+  notes?: SmartNotes;
+  items?: BaseItem[];
+  loading: boolean;
+  stale: boolean;
+  onRemove: (c: Chip) => void;
+  sort: Sort;
+}) {
+  const list = useMemo(() => (sort === "relevance" ? (items ?? []) : sortItems(items ?? [], sort)), [items, sort]);
+  const movies = list.filter((i) => i.Type === "Movie");
+  const series = list.filter((i) => i.Type === "Series");
+  const same = (a?: string | null, b?: string) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+  const lines: string[] = [];
+  if (notes?.like === null) lines.push(`“${query.like}” isn't in your library, so there's nothing to compare with.`);
+  if (notes?.like && !same(notes.like, query.like)) lines.push(`Comparing with ${notes.like}.`);
+  if (notes?.person === null) lines.push(`Nobody called “${query.person}” is in your library, so it's searched as a title.`);
+  if (notes?.person && !same(notes.person, query.person)) lines.push(`With ${notes.person}.`);
+  if (notes?.maker === null) lines.push(`No studio or person called “${query.maker}” is in your library, so it's searched as a title.`);
+  if (notes?.maker && !same(notes.maker.name, query.maker)) lines.push(`From ${notes.maker.name}.`);
+  if (notes?.fuzzy) lines.push(`Nothing is called “${query.text}”, so these are the closest titles.`);
+
+  return (
+    <section className={`smart fade-in ${stale ? "is-stale" : ""}`} aria-label="Smart search">
+      <div className="smart__head">
+        <span className="smart__label">
+          <Icon name="sparkle" size={16} /> Smart search
+        </span>
+        <div className="smart__chips" data-nav-row>
+          {query.chips.map((c) => (
+            <button key={`${c.key}-${c.span[0]}`} className="chip is-active smart__chip" onClick={() => onRemove(c)} title="Remove">
+              {c.label}
+              <Icon name="close" size={14} />
+            </button>
+          ))}
+          {query.text && <span className="chip smart__words">“{query.text}”</span>}
+        </div>
+      </div>
+      {lines.length > 0 && <p className="smart__note">{lines.join(" ")}</p>}
+      {loading ? (
+        <div className="grid">
+          {Array.from({ length: 12 }, (_, i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      ) : list.length ? (
+        <>
+          {movies.length > 0 && <ResultGrid title="Movies" items={movies} />}
+          {series.length > 0 && <ResultGrid title="Series" items={series} />}
+        </>
+      ) : (
+        <EmptyState title="Nothing in your library fits all of that" body="Remove a filter above, or try different words." />
+      )}
     </section>
   );
 }

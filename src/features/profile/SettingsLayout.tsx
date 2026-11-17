@@ -62,6 +62,20 @@ export function SettingsNav({ items }: { items: SettingsNavItem[] }) {
     };
   }, [items]);
 
+  // A link straight to a section (/profile?tab=settings#settings-top-10).
+  useEffect(() => {
+    const target = decodeURIComponent(window.location.hash.slice(1));
+    if (!target.startsWith("settings-")) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(target);
+      if (!el) return;
+      jumping.current = Date.now() + 700;
+      setActive(target.replace(/^settings-/, ""));
+      el.scrollIntoView({ block: "start" });
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, []);
+
   // Keep the active item visible in the phone strip.
   useEffect(() => {
     const strip = stripRef.current;

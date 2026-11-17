@@ -1,4 +1,4 @@
-import { memo, useSyncExternalStore, type MouseEvent } from "react";
+import { memo, useRef, useSyncExternalStore, type MouseEvent, type TouchEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import type { BaseItem } from "@/api/types";
@@ -12,6 +12,8 @@ import { usePosterScore } from "@/features/ratings/prefs";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { useNewBadge } from "@/features/upcoming/newBadges";
 import { useReminder } from "@/features/upcoming/reminders";
+import { hoverEnter, hoverLeave, openSheet, setSpotlight, usePreviewPrefs } from "@/features/previews/store";
+import { usePlatform } from "@/platform/platform";
 import { Artwork } from "./Artwork";
 import { Icon } from "./Icon";
 
@@ -125,15 +127,64 @@ export const MediaCard = memo(function MediaCard({
   const selecting = useSelecting() && manageable;
   const selected = useIsSelected(item.Id);
 
+  // Previews: hover on a desktop, focus on a TV (home only), press and hold on a phone.
+  const platform = usePlatform();
+  const previews = usePreviewPrefs().enabled && item.Type !== "Person" && item.Type !== "Genre" && !selecting;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const press = useRef<{ timer: number; x: number; y: number; fired: boolean }>({ timer: 0, x: 0, y: 0, fired: false });
+
+  const onMouseEnter = () => {
+    if (!previews || platform !== "desktop" || !cardRef.current || !window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return;
+    hoverEnter({ item: shown, anchor: cardRef.current, variant });
+  };
+  const onMouseLeave = () => {
+    if (platform === "desktop") hoverLeave();
+  };
+  const onFocus = () => {
+    if (previews && platform === "tv" && cardRef.current?.closest(".home__rows")) setSpotlight(shown);
+  };
+  const onTouchStart = (event: TouchEvent) => {
+    if (!previews || platform !== "mobile") return;
+    const t = event.touches[0];
+    window.clearTimeout(press.current.timer);
+    press.current = {
+      x: t.clientX,
+      y: t.clientY,
+      fired: false,
+      timer: window.setTimeout(() => {
+        press.current.fired = true;
+        navigator.vibrate?.(8);
+        openSheet(shown);
+      }, 450),
+    };
+  };
+  const onTouchMove = (event: TouchEvent) => {
+    const t = event.touches[0];
+    if (Math.hypot(t.clientX - press.current.x, t.clientY - press.current.y) > 10) window.clearTimeout(press.current.timer);
+  };
+  const endPress = () => window.clearTimeout(press.current.timer);
+
   const onContextMenu = (event: MouseEvent) => {
+    // On a phone, holding a card opens its preview (which has the management menu too).
+    if (platform === "mobile" && previews) {
+      event.preventDefault();
+      return;
+    }
     if (!manageable) return;
     event.preventDefault();
     if (selecting) toggleSelected(item);
     else openMenu(item, { x: event.clientX, y: event.clientY });
   };
 
-  // While selecting, a click picks the card instead of opening it.
+  // While selecting, a click picks the card instead of opening it. After a press that
+  // opened a preview, the lift isn't a click.
   const onClickCapture = (event: MouseEvent) => {
+    if (press.current.fired) {
+      press.current.fired = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!selecting) return;
     event.preventDefault();
     event.stopPropagation();
@@ -166,9 +217,17 @@ export const MediaCard = memo(function MediaCard({
 
   return (
     <div
+      ref={cardRef}
       className={`card card--${variant} ${selecting ? "is-selectable" : ""} ${selecting && selected ? "is-selected" : ""}`}
       onContextMenu={onContextMenu}
       onClickCapture={onClickCapture}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onFocus={onFocus}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={endPress}
+      onTouchCancel={endPress}
     >
       <Link to={to} className="card__link" title={item.Name} aria-pressed={selecting ? selected : undefined}>
         <div className="card__media">
