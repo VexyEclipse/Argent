@@ -8,6 +8,7 @@ import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { detailsPath } from "@/components/MediaCard";
 import { openMenu } from "@/features/manage/store";
+import { useReminder } from "@/features/upcoming/reminders";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { usePlatform } from "@/platform/platform";
 import { hasPreviewTrailer, PreviewMedia, PreviewMeta, usePreviewDetails } from "./PreviewMedia";
@@ -46,12 +47,38 @@ function SoundButton({ muted, onToggle, className }: { muted: boolean; onToggle:
 // The card's own picture grows into the preview (and fades into the backdrop as it does),
 // the details unfold below it, and the cards beside it slide aside to make room. Closing
 // runs the same the other way, back into the card.
+//
+// Only transforms and opacity animate, so it stays smooth while the page is busy (a
+// backdrop decoding, the details arriving): the box scales from the card's rectangle up
+// to its own, and its contents are scaled the other way so they never stretch.
 
 const MARGIN = 12;
-const OPEN_MS = 320;
-const CLOSE_MS = 230;
-const OPEN_EASE = "cubic-bezier(0.2, 0.8, 0.2, 1)";
-const CLOSE_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+const OPEN_MS = 420;
+const CLOSE_MS = 300;
+type Curve = [number, number, number, number];
+const OPEN_CURVE: Curve = [0.2, 0.75, 0.25, 1];
+const CLOSE_CURVE: Curve = [0.32, 0.72, 0, 1];
+const css = (c: Curve) => `cubic-bezier(${c.join(", ")})`;
+
+/** A CSS cubic-bezier as a function, to sample the frames with the same curve the row uses. */
+function bezier([x1, y1, x2, y2]: Curve): (x: number) => number {
+  const at = (t: number, a: number, b: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+  return (x) => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let lo = 0;
+    let hi = 1;
+    let t = x;
+    for (let i = 0; i < 24; i++) {
+      t = (lo + hi) / 2;
+      if (at(t, x1, x2) < x) lo = t;
+      else hi = t;
+    }
+    return at(t, y1, y2);
+  };
+}
+const easeOpen = bezier(OPEN_CURVE);
+const easeClose = bezier(CLOSE_CURVE);
 
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 const mediaOf = (anchor: HTMLElement) => anchor.querySelector<HTMLElement>(".card__media") ?? anchor;
@@ -63,12 +90,18 @@ function slotOf(anchor: HTMLElement): HTMLElement {
   return el.parentElement ? el : anchor;
 }
 
+/** How far an element is slid sideways right now (mid-slide included). */
+const slidBy = (el: HTMLElement) => {
+  const t = getComputedStyle(el).transform;
+  return t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : 0;
+};
+
 // The cards slid aside for the open preview, and by how much.
 let pushed = new Map<HTMLElement, number>();
 let pushOwner: object | null = null;
 
 function slide(el: HTMLElement, shift: number, opening: boolean) {
-  el.style.transition = `transform ${opening ? OPEN_MS : CLOSE_MS}ms ${opening ? OPEN_EASE : CLOSE_EASE}`;
+  el.style.transition = `transform ${opening ? OPEN_MS : CLOSE_MS}ms ${css(opening ? OPEN_CURVE : CLOSE_CURVE)}`;
   el.style.transform = shift ? `translateX(${shift}px)` : "";
   if (!shift) {
     const done = () => {
@@ -119,18 +152,17 @@ interface Placement {
 }
 
 function place(target: HoverTarget): Placement {
-  const r = mediaOf(target.anchor).getBoundingClientRect();
-  // Where the card belongs, not where it was slid to for another card's preview.
-  const cardLeft = r.left - (pushed.get(slotOf(target.anchor)) ?? 0);
-  const width = Math.min(Math.max(r.width * (target.variant === "poster" ? 1.75 : 1.3), 340), 470);
-  const left = Math.min(Math.max(MARGIN, cardLeft + r.width / 2 - width / 2), window.innerWidth - width - MARGIN);
-  // The picture sits over the card's own, centred on it; the details hang below.
-  const mediaHeight = ((width - 2) * 9) / 16;
+  const media = mediaOf(target.anchor).getBoundingClientRect();
+  // Where the card belongs: not lifted by the hover, nor slid aside for another preview.
+  const cardLeft = media.left - slidBy(slotOf(target.anchor));
+  const cardTop = target.anchor.getBoundingClientRect().top;
+  const width = Math.min(Math.max(media.width * (target.variant === "poster" ? 1.75 : 1.3), 340), 470);
+  const left = Math.min(Math.max(MARGIN, cardLeft + media.width / 2 - width / 2), window.innerWidth - width - MARGIN);
+  const mediaHeight = (width * 9) / 16;
+  // Level with the row; lifted only as far as it takes to stay on screen.
   const estimated = mediaHeight + 190;
-  let top = r.top + r.height / 2 - mediaHeight / 2;
-  top = Math.min(top, window.innerHeight - estimated - MARGIN);
-  top = Math.max(MARGIN, top);
-  return { left, top, width, mediaHeight, overLeft: Math.max(0, cardLeft - left), overRight: Math.max(0, left + width - (cardLeft + r.width)) };
+  const top = Math.max(MARGIN, Math.min(cardTop, window.innerHeight - estimated - MARGIN));
+  return { left, top, width, mediaHeight, overLeft: Math.max(0, cardLeft - left), overRight: Math.max(0, left + width - (cardLeft + media.width)) };
 }
 
 /** The picture the card is showing, to grow out of. */
@@ -143,38 +175,65 @@ interface MorphEls {
   box: HTMLElement;
   inner: HTMLElement;
   ghost: HTMLElement;
+  body: HTMLElement;
 }
 
-const px = (n: number) => `${n}px`;
+/**
+ * Plays the preview between the card (openness 0) and itself (1). Every frame is sampled
+ * from one curve, so the box, its counter-scaled contents and the card's picture stay in
+ * step exactly.
+ */
+function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: number, ms: number, ease: (t: number) => number, opening: boolean): Animation {
+  const height = els.box.offsetHeight;
+  const sx0 = card.width / p.width;
+  const sy0 = card.height / height;
+  const dx0 = card.left - p.left;
+  const dy0 = card.top - p.top;
+  // The card's picture ends up covering the preview's, centred on it.
+  const k = Math.max(p.width / card.width, p.mediaHeight / card.height);
+  const gx1 = (p.width - card.width * k) / 2;
+  const gy1 = (p.mediaHeight - card.height * k) / 2;
 
-/** Grows the preview out of the card (or shrinks it back into it). */
-function morph(els: MorphEls, card: DOMRect, cardRadius: number, p: Placement, opening: boolean): Animation {
-  const options: KeyframeAnimationOptions = { duration: opening ? OPEN_MS : CLOSE_MS, easing: opening ? OPEN_EASE : CLOSE_EASE, fill: opening ? "none" : "forwards" };
-  const small = { left: px(card.left), top: px(card.top), width: px(card.width), height: px(card.height), borderRadius: px(cardRadius) };
-  const ghostSmall = { height: px(card.height), opacity: 1 };
-  // The details stay put on screen while the box around them grows.
-  const innerSmall = { transform: `translate(${card.left - p.left}px, ${card.top - p.top}px)` };
-
-  if (opening) {
-    const big = { left: px(p.left), top: px(p.top), width: px(p.width), height: px(els.box.offsetHeight), borderRadius: "16px" };
-    els.inner.animate([innerSmall, { transform: "none" }], options);
-    els.ghost.animate([ghostSmall, { opacity: 1, offset: 0.3 }, { height: px(p.mediaHeight), opacity: 0 }], options);
-    return els.box.animate([small, big], options);
+  const frames: Record<keyof MorphEls, Keyframe[]> = { box: [], inner: [], ghost: [], body: [] };
+  const steps = Math.max(8, Math.round(ms / 12));
+  for (let i = 0; i <= steps; i++) {
+    const offset = i / steps;
+    const o = from + (to - from) * ease(offset);
+    // Opening, the pictures cross over evenly across it rather than all in its quick start;
+    // closing, the card's comes back as fast as the box shrinks.
+    const f = opening ? from + (to - from) * offset : o;
+    const sx = sx0 + (1 - sx0) * o;
+    const sy = sy0 + (1 - sy0) * o;
+    const dx = dx0 * (1 - o);
+    const dy = dy0 * (1 - o);
+    const s = 1 + (k - 1) * o;
+    frames.box.push({ offset, transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` });
+    frames.inner.push({ offset, transform: `scale(${1 / sx}, ${1 / sy}) translate(${-dx}px, ${-dy}px)` });
+    frames.ghost.push({ offset, transform: `translate(${dx0 + (gx1 - dx0) * o}px, ${dy0 + (gy1 - dy0) * o}px) scale(${s})`, opacity: Math.min(1, Math.max(0, 1 - (f - 0.12) / 0.5)) });
+    const b = Math.min(1, Math.max(0, (f - 0.3) / 0.5));
+    frames.body.push({ offset, opacity: b, transform: `translateY(${(1 - b) * 10}px)` });
   }
+  const options: KeyframeAnimationOptions = { duration: ms, easing: "linear", fill: opening ? "backwards" : "forwards" };
+  els.inner.animate(frames.inner, options);
+  els.ghost.animate(frames.ghost, options);
+  els.body.animate(frames.body, options);
+  return els.box.animate(frames.box, options);
+}
 
-  // From wherever it is now (it may still be opening).
-  const box = els.box.getBoundingClientRect();
-  const boxStyle = getComputedStyle(els.box);
-  const ghostStyle = getComputedStyle(els.ghost);
-  const now = {
-    box: { left: px(box.left), top: px(box.top), width: px(box.width), height: px(box.height), borderRadius: boxStyle.borderTopLeftRadius },
-    inner: { transform: getComputedStyle(els.inner).transform },
-    ghost: { height: ghostStyle.height, opacity: Number(ghostStyle.opacity) },
-  };
-  for (const el of [els.box, els.inner, els.ghost]) el.getAnimations().forEach((a) => a.cancel());
-  els.inner.animate([now.inner, innerSmall], options);
-  els.ghost.animate([now.ghost, { opacity: 1, offset: 0.45 }, ghostSmall], options);
-  return els.box.animate([now.box, small], options);
+function RemindButton({ item, className }: { item: BaseItem; className: string }) {
+  // An upcoming episode's reminder is for its show.
+  const reminder = useReminder(item.Type === "Episode" && item.SeriesId ? { Id: item.SeriesId, Name: item.SeriesName ?? item.Name, Type: "Series" } : item);
+  return (
+    <button
+      className={`${className} ${reminder.on ? "is-on" : ""}`}
+      onClick={() => reminder.toggle()}
+      aria-pressed={reminder.on}
+      aria-label={reminder.on ? `Turn off the reminder for ${item.Name}` : `Remind me about ${item.Name}`}
+      title={reminder.on ? "Reminder on" : "Remind me"}
+    >
+      <Icon name={reminder.on ? "bellFilled" : "bell"} size={17} />
+    </button>
+  );
 }
 
 function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: boolean; onGone: () => void }) {
@@ -184,38 +243,46 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
   const [muted, setMuted] = useState(true);
   const [p] = useState(() => place(target));
   const [art] = useState(() => cardArt(target.anchor));
+  const [cardSize] = useState(() => mediaOf(target.anchor).getBoundingClientRect());
   const [owner] = useState(() => ({}));
   const box = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const ghost = useRef<HTMLDivElement>(null);
-  const opened = useRef<DOMRect | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const opening = useRef<Animation | null>(null);
+  const scrolled = useRef(false);
   const gone = useRef(onGone);
   gone.current = onGone;
+  const els = (): MorphEls | null =>
+    box.current && inner.current && ghost.current && body.current ? { box: box.current, inner: inner.current, ghost: ghost.current, body: body.current } : null;
 
   // Open: out of the card, before the first paint so the two never show at once.
   useLayoutEffect(() => {
     if (prefs.makeRoom) makeRoom(owner, target.anchor, p.overLeft, p.overRight);
-    const card = mediaOf(target.anchor);
-    opened.current = card.getBoundingClientRect();
-    if (reducedMotion() || !box.current || !inner.current || !ghost.current) return;
-    morph({ box: box.current, inner: inner.current, ghost: ghost.current }, opened.current, parseFloat(getComputedStyle(card).borderTopLeftRadius) || 10, p, true);
+    const e = els();
+    if (reducedMotion() || !e) return;
+    opening.current = morph(e, mediaOf(target.anchor).getBoundingClientRect(), p, 0, 1, OPEN_MS, easeOpen, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => () => giveRoomBack(owner), [owner]);
 
-  // Close: back into the card, or a quick fade if the card has moved (a scroll) or gone.
+  // Close: back into the card from wherever it got to, or a quick fade if the page scrolled
+  // the card away or it's gone.
   useLayoutEffect(() => {
     if (!leaving) return;
     giveRoomBack(owner);
-    const els = box.current && inner.current && ghost.current ? { box: box.current, inner: inner.current, ghost: ghost.current } : null;
-    if (!els || reducedMotion()) return gone.current();
-    const card = mediaOf(target.anchor);
-    const now = card.getBoundingClientRect();
-    const was = opened.current;
-    const moved = !target.anchor.isConnected || !was || Math.abs(now.left - was.left) > 2 || Math.abs(now.top - was.top) > 2;
-    const animation = moved
-      ? els.box.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(0.97)" }], { duration: 140, easing: CLOSE_EASE, fill: "forwards" })
-      : morph(els, now, parseFloat(getComputedStyle(card).borderTopLeftRadius) || 10, p, false);
+    const e = els();
+    if (!e || reducedMotion()) return gone.current();
+    let animation: Animation;
+    if (scrolled.current || !target.anchor.isConnected) {
+      animation = e.box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" });
+    } else {
+      const open = opening.current;
+      const t = open && open.playState === "running" ? Number(open.currentTime ?? OPEN_MS) / OPEN_MS : 1;
+      const from = easeOpen(Math.min(1, t));
+      for (const el of [e.box, e.inner, e.ghost, e.body]) el.getAnimations().forEach((a) => a.cancel());
+      animation = morph(e, mediaOf(target.anchor).getBoundingClientRect(), p, from, 0, Math.max(160, CLOSE_MS * from), easeClose, false);
+    }
     let cancelled = false;
     animation.finished.then(
       () => !cancelled && gone.current(),
@@ -224,19 +291,24 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     return () => {
       cancelled = true;
     };
-  }, [leaving, owner, p, target.anchor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaving]);
 
   useEffect(() => {
     if (leaving) return;
     // The card moved out from under it, or the window changed: it no longer belongs there.
     const close = () => closeHover();
-    window.addEventListener("scroll", close, { passive: true, capture: true });
+    const onScroll = () => {
+      scrolled.current = true;
+      close();
+    };
+    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     window.addEventListener("resize", close);
     window.addEventListener("blur", close);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("scroll", close, { capture: true });
+      window.removeEventListener("scroll", onScroll, { capture: true });
       window.removeEventListener("resize", close);
       window.removeEventListener("blur", close);
       window.removeEventListener("keydown", onKey);
@@ -248,8 +320,6 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     navigate(to);
   };
   const genres = (item.Genres ?? []).slice(0, 3);
-  // Inside its 1px border.
-  const innerWidth = p.width - 2;
 
   return createPortal(
     <div
@@ -262,34 +332,35 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
       aria-label={`Preview: ${headline(item)}`}
       aria-hidden={leaving || undefined}
     >
-      <div ref={inner} className="hpreview__inner" style={{ width: innerWidth }}>
-      <button className="hpreview__media" onClick={() => go(detailsPath(item))} aria-label={`Open ${headline(item)}`} tabIndex={-1}>
-        <PreviewMedia item={item} delay={900} muted={muted} showLogo={item.Type !== "Episode"} />
-      </button>
-      {hasPreviewTrailer(item) && <SoundButton className="hpreview__sound" muted={muted} onToggle={() => setMuted(!muted)} />}
-      <div className="hpreview__body">
-        <div className="hpreview__actions">
-          {playable(item) && (
-            <button className="hpreview__btn hpreview__btn--play" onClick={() => go(`/play/${item.Id}`)} aria-label={`Play ${item.Name}`} title="Play">
-              <Icon name="play" size={18} />
+      <div ref={inner} className="hpreview__inner">
+        <button className="hpreview__media" onClick={() => go(detailsPath(item))} aria-label={`Open ${headline(item)}`} tabIndex={-1}>
+          <PreviewMedia item={item} delay={900} muted={muted} showLogo={item.Type !== "Episode"} />
+        </button>
+        {hasPreviewTrailer(item) && <SoundButton className="hpreview__sound" muted={muted} onToggle={() => setMuted(!muted)} />}
+        <div ref={body} className="hpreview__body">
+          <div className="hpreview__actions">
+            {playable(item) && !target.noPlay && (
+              <button className="hpreview__btn hpreview__btn--play" onClick={() => go(`/play/${item.Id}`)} aria-label={`Play ${item.Name}`} title="Play">
+                <Icon name="play" size={18} />
+              </button>
+            )}
+            <WatchlistButton item={item} className="hpreview__btn" />
+            {target.remind && <RemindButton item={item} className="hpreview__btn" />}
+            <span className="hpreview__spacer" />
+            <button className="hpreview__btn" onClick={() => go(detailsPath(item))} aria-label="Details" title="Details">
+              <Icon name="chevronDown" size={20} />
             </button>
-          )}
-          <WatchlistButton item={item} className="hpreview__btn" />
-          <span className="hpreview__spacer" />
-          <button className="hpreview__btn" onClick={() => go(detailsPath(item))} aria-label="Details" title="Details">
-            <Icon name="chevronDown" size={20} />
-          </button>
+          </div>
+          <h3 className="hpreview__title">{headline(item)}</h3>
+          {item.Type === "Episode" && <p className="hpreview__episode">{item.Name}</p>}
+          <PreviewMeta item={item} />
+          {genres.length > 0 && <p className="hpreview__genres">{genres.join(" · ")}</p>}
+          {item.Overview && <p className="hpreview__overview">{item.Overview}</p>}
         </div>
-        <h3 className="hpreview__title">{headline(item)}</h3>
-        {item.Type === "Episode" && <p className="hpreview__episode">{item.Name}</p>}
-        <PreviewMeta item={item} />
-        {genres.length > 0 && <p className="hpreview__genres">{genres.join(" · ")}</p>}
-        {item.Overview && <p className="hpreview__overview">{item.Overview}</p>}
-      </div>
-      </div>
-      {/* The card's own picture, which grows into the preview's and fades as it does. */}
-      <div ref={ghost} className="hpreview__ghost" style={{ height: (innerWidth * 9) / 16 }} aria-hidden="true">
-        {art && <img src={art} alt="" />}
+        {/* The card's own picture, which grows into the preview's and fades as it does. */}
+        <div ref={ghost} className="hpreview__ghost" style={{ width: cardSize.width, height: cardSize.height }} aria-hidden="true">
+          {art && <img src={art} alt="" />}
+        </div>
       </div>
     </div>,
     document.body,

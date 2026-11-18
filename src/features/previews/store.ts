@@ -75,6 +75,10 @@ export interface HoverTarget {
   /** The card, to place the preview over it. */
   anchor: HTMLElement;
   variant: "poster" | "landscape";
+  /** The card has a "Remind me" bell (Coming Up): so does its preview. */
+  remind?: boolean;
+  /** The card has no play button (not aired yet): nor does its preview. */
+  noPlay?: boolean;
 }
 
 interface State {

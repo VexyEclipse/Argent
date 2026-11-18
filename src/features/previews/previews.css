@@ -82,34 +82,46 @@
 }
 
 /* ---------- Desktop: the card expands in place ---------- */
+/* Laid out at its full size from the start; it grows out of the card by a scale transform
+   (see morph() in Previews.tsx), with its contents scaled back so they never stretch. */
 .hpreview {
   position: fixed;
   z-index: var(--z-overlay);
   border-radius: var(--radius-lg);
   background: var(--bg-2);
-  border: 1px solid var(--line-2);
   box-shadow:
     var(--shadow-3),
     0 0 0 1px rgb(0 0 0 / 0.4);
   overflow: hidden;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/* Its edge, as a ring rather than a border, so the contents sit at the box's own origin. */
+.hpreview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  pointer-events: none;
 }
 .hpreview.is-leaving {
   pointer-events: none;
 }
-/* Laid out at the preview's full width from the start, so nothing reflows while the box
-   around it grows. */
 .hpreview__inner {
   position: relative;
+  transform-origin: 0 0;
 }
-/* The card's own picture, growing into the preview's (see morph() in Previews.tsx). */
+/* The card's own picture, growing into the preview's and fading as it does. */
 .hpreview__ghost {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
   z-index: 2;
   overflow: hidden;
   background: var(--bg-2);
+  transform-origin: 0 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -118,21 +130,10 @@
   height: 100%;
   object-fit: cover;
 }
-/* The details unfold just behind the picture. */
-.hpreview__body {
-  animation: hpreview-body 300ms 110ms var(--ease-out) both;
-}
 .hpreview__sound {
-  animation: fade-in 260ms 200ms var(--ease-out) both;
-}
-@keyframes hpreview-body {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+  animation: fade-in 260ms 240ms var(--ease-out) both;
 }
 @media (prefers-reduced-motion: reduce) {
-  .hpreview__body,
   .hpreview__sound {
     animation: none;
   }
@@ -149,6 +150,14 @@
 }
 .card .card__text {
   transition: opacity var(--dur) var(--ease-out);
+}
+/* A card with a preview keeps its buttons for the preview: hovering only lifts it until the
+   preview opens. Ones that show a state (on the watchlist, reminder set) stay. */
+.card.has-preview:hover .card__play,
+.card.has-preview:hover .card__watch:not(.is-on),
+.card.has-preview:hover .card__remind:not(.is-on) {
+  opacity: 0;
+  pointer-events: none;
 }
 .hpreview__media {
   display: block;

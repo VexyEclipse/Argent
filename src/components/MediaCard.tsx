@@ -138,7 +138,7 @@ export const MediaCard = memo(function MediaCard({
 
   const onMouseEnter = () => {
     if (!previews || platform !== "desktop" || !cardRef.current || !window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return;
-    hoverEnter({ item: shown, anchor: cardRef.current, variant });
+    hoverEnter({ item: shown, anchor: cardRef.current, variant, remind, noPlay });
   };
   const onMouseLeave = () => {
     if (platform === "desktop") hoverLeave();
@@ -223,7 +223,7 @@ export const MediaCard = memo(function MediaCard({
   return (
     <div
       ref={cardRef}
-      className={`card card--${variant} ${selecting ? "is-selectable" : ""} ${selecting && selected ? "is-selected" : ""}`}
+      className={`card card--${variant} ${previews && platform === "desktop" ? "has-preview" : ""} ${selecting ? "is-selectable" : ""} ${selecting && selected ? "is-selected" : ""}`}
       onContextMenu={onContextMenu}
       onClickCapture={onClickCapture}
       onMouseEnter={onMouseEnter}
