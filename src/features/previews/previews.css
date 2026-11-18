@@ -160,7 +160,17 @@
   opacity: 0;
   pointer-events: none;
 }
+/* A clear layer over the picture: the pointer is always over Argent's own page, never over
+   a trailer's player (another site's frame, which the browser can hand the pointer to and
+   so make the preview think it was left). */
+.hpreview__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
 .hpreview__media {
+  position: relative;
   display: block;
   width: 100%;
   padding: 0;
@@ -170,6 +180,7 @@
 }
 .hpreview__sound {
   position: absolute;
+  z-index: 2;
   top: 10px;
   right: 10px;
   width: 32px;

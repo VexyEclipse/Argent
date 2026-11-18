@@ -234,7 +234,7 @@ export const MediaCard = memo(function MediaCard({
       onTouchEnd={endPress}
       onTouchCancel={endPress}
     >
-      <Link to={to} className="card__link" title={item.Name} aria-pressed={selecting ? selected : undefined}>
+      <Link to={to} className="card__link" title={previews && platform === "desktop" ? undefined : item.Name} aria-pressed={selecting ? selected : undefined}>
         <div className="card__media">
           {selecting && (
             <span className="card__select" aria-hidden="true">

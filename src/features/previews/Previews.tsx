@@ -83,6 +83,13 @@ const easeClose = bezier(CLOSE_CURVE);
 const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 const mediaOf = (anchor: HTMLElement) => anchor.querySelector<HTMLElement>(".card__media") ?? anchor;
 
+/** Whether a point is over an element's rectangle (as drawn, mid-animation included). */
+function within(el: Element | null, x: number, y: number): boolean {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
 /** The card's slot in its row or grid (a ranked card sits in its own wrapper). */
 function slotOf(anchor: HTMLElement): HTMLElement {
   let el = anchor;
@@ -404,15 +411,39 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     if (leaving) return;
     // The window changed under it: it no longer belongs there.
     const close = () => closeHover();
+    // Only when the app itself lost focus: a trailer's player taking focus inside it blurs
+    // the window too, and that mustn't close the preview it's playing in.
+    let blurTimer = 0;
+    const onBlur = () => {
+      window.clearTimeout(blurTimer);
+      blurTimer = window.setTimeout(() => !document.hasFocus() && close(), 0);
+    };
     window.addEventListener("resize", close);
-    window.addEventListener("blur", close);
+    window.addEventListener("blur", onBlur);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("blur", close);
-      window.removeEventListener("keydown", onKey);
+    // Where the pointer is decides, not only enter and leave events (which a trailer's
+    // player appearing under a still pointer can send): over the preview keeps it open,
+    // and leaving it for anywhere but its card closes it.
+    let wasInside = true;
+    const onMove = (e: PointerEvent) => {
+      const inside = within(box.current, e.clientX, e.clientY);
+      // Onto another card with a preview: that card asks for its own (and a leave here
+      // would call that off).
+      const onCard = (e.target as Element | null)?.closest?.(".card.has-preview");
+      if (inside) hoverHold();
+      else if (wasInside && !onCard && !within(target.anchor, e.clientX, e.clientY)) hoverLeave();
+      wasInside = inside;
     };
+    window.addEventListener("pointermove", onMove, { passive: true, capture: true });
+    return () => {
+      window.clearTimeout(blurTimer);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointermove", onMove, { capture: true });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving]);
 
   const go = (to: string) => {
@@ -427,7 +458,8 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
       className={`hpreview ${leaving ? "is-leaving" : ""}`}
       style={{ left: p.left + scroll.x, top: p.top + scroll.y, width: p.width }}
       onMouseEnter={hoverHold}
-      onMouseLeave={hoverLeave}
+      // A leave with the pointer still over it isn't one (a trailer's player under it).
+      onMouseLeave={(e) => !within(box.current, e.clientX, e.clientY) && hoverLeave()}
       role="dialog"
       aria-label={`Preview: ${headline(item)}`}
       aria-hidden={leaving || undefined}
