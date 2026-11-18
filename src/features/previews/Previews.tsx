@@ -210,16 +210,22 @@ interface MorphEls {
   body: HTMLElement;
 }
 
+interface Pose {
+  box: Keyframe;
+  inner: Keyframe;
+  ghost: Keyframe;
+  body: Keyframe;
+}
+
 /**
- * Plays the preview between the card (openness 0) and itself (1). Every frame is sampled
- * from one curve, so the box, its counter-scaled contents and the card's picture stay in
- * step exactly.
+ * The preview at openness `o`, from the card (0) to itself (1), with `f` driving the fades.
+ * The box scales between the two rectangles; its contents are scaled back so they never
+ * stretch, and the card's own picture rides along on top.
  */
-function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: number, ms: number, ease: (t: number) => number, opening: boolean): Animation {
-  const height = els.box.offsetHeight;
+function pose(box: HTMLElement, height: number, card: DOMRect, p: Placement, o: number, f: number, opening: boolean): Pose {
   // Where the box is on screen now: it sits on the page, so the page may have scrolled.
-  const left = parseFloat(els.box.style.left) - window.scrollX;
-  const top = parseFloat(els.box.style.top) - window.scrollY;
+  const left = parseFloat(box.style.left) - window.scrollX;
+  const top = parseFloat(box.style.top) - window.scrollY;
   const sx0 = card.width / p.width;
   const sy0 = card.height / height;
   const dx0 = card.left - left;
@@ -228,31 +234,72 @@ function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: num
   const k = Math.max(p.width / card.width, p.mediaHeight / card.height);
   const gx1 = (p.width - card.width * k) / 2;
   const gy1 = (p.mediaHeight - card.height * k) / 2;
+  const sx = sx0 + (1 - sx0) * o;
+  const sy = sy0 + (1 - sy0) * o;
+  const dx = dx0 * (1 - o);
+  const dy = dy0 * (1 - o);
+  const b = Math.min(1, Math.max(0, (f - 0.3) / 0.5));
+  return {
+    box: { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
+    inner: { transform: `scale(${1 / sx}, ${1 / sy}) translate(${-dx}px, ${-dy}px)` },
+    // Opening, the card's picture is gone at once; closing, it comes back as the box shrinks.
+    ghost: {
+      transform: `translate(${dx0 + (gx1 - dx0) * o}px, ${dy0 + (gy1 - dy0) * o}px) scale(${1 + (k - 1) * o})`,
+      opacity: opening ? 0 : Math.min(1, Math.max(0, 1 - (f - 0.12) / 0.5)),
+    },
+    body: { opacity: b, transform: `translateY(${(1 - b) * 10}px)` },
+  };
+}
 
+/** Grows the preview out of the card, on the compositor: every frame sampled from one curve. */
+function morphOpen(els: MorphEls, card: DOMRect, p: Placement): Animation {
+  const height = els.box.offsetHeight;
   const frames: Record<keyof MorphEls, Keyframe[]> = { box: [], inner: [], ghost: [], body: [] };
-  const steps = Math.max(8, Math.round(ms / 12));
+  const steps = Math.round(OPEN_MS / 12);
   for (let i = 0; i <= steps; i++) {
     const offset = i / steps;
-    const o = from + (to - from) * ease(offset);
-    // Opening, the card's picture is gone at once and the details fade in evenly across it;
-    // closing, the card's picture comes back as fast as the box shrinks.
-    const f = opening ? from + (to - from) * offset : o;
-    const sx = sx0 + (1 - sx0) * o;
-    const sy = sy0 + (1 - sy0) * o;
-    const dx = dx0 * (1 - o);
-    const dy = dy0 * (1 - o);
-    const s = 1 + (k - 1) * o;
-    frames.box.push({ offset, transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` });
-    frames.inner.push({ offset, transform: `scale(${1 / sx}, ${1 / sy}) translate(${-dx}px, ${-dy}px)` });
-    frames.ghost.push({ offset, transform: `translate(${dx0 + (gx1 - dx0) * o}px, ${dy0 + (gy1 - dy0) * o}px) scale(${s})`, opacity: opening ? 0 : Math.min(1, Math.max(0, 1 - (f - 0.12) / 0.5)) });
-    const b = Math.min(1, Math.max(0, (f - 0.3) / 0.5));
-    frames.body.push({ offset, opacity: b, transform: `translateY(${(1 - b) * 10}px)` });
+    // The details fade in evenly across it rather than all in its quick start.
+    const q = pose(els.box, height, card, p, easeOpen(offset), offset, true);
+    for (const key of ["box", "inner", "ghost", "body"] as const) frames[key].push({ ...q[key], offset });
   }
-  const options: KeyframeAnimationOptions = { duration: ms, easing: "linear", fill: opening ? "backwards" : "forwards" };
+  const options: KeyframeAnimationOptions = { duration: OPEN_MS, easing: "linear", fill: "backwards" };
   els.inner.animate(frames.inner, options);
   els.ghost.animate(frames.ghost, options);
   els.body.animate(frames.body, options);
   return els.box.animate(frames.box, options);
+}
+
+/**
+ * Shrinks the preview back into its card from openness `from`, following the card frame by
+ * frame: it may be sliding aside for the next preview, or the page may move. Returns a stop.
+ */
+function morphClose(els: MorphEls, anchor: HTMLElement, p: Placement, from: number, done: () => void): () => void {
+  const height = els.box.offsetHeight;
+  const ms = Math.max(160, CLOSE_MS * from);
+  const put = (el: HTMLElement, k: Keyframe) => {
+    if (k.transform !== undefined) el.style.transform = String(k.transform);
+    if (k.opacity !== undefined) el.style.opacity = String(k.opacity);
+  };
+  const apply = (o: number) => {
+    const q = pose(els.box, height, mediaOf(anchor).getBoundingClientRect(), p, o, o, false);
+    put(els.box, q.box);
+    put(els.inner, q.inner);
+    put(els.ghost, q.ghost);
+    put(els.body, q.body);
+  };
+  // Take over from the opening where it got to, in the same frame.
+  apply(from);
+  for (const el of [els.box, els.inner, els.ghost, els.body]) el.getAnimations().forEach((a) => a.cancel());
+  const start = performance.now();
+  let raf = 0;
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / ms);
+    apply(from * (1 - easeClose(t)));
+    if (t < 1) raf = requestAnimationFrame(step);
+    else done();
+  };
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
 }
 
 function RemindButton({ item, className }: { item: BaseItem; className: string }) {
@@ -287,7 +334,6 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
   const ghost = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const opening = useRef<Animation | null>(null);
-  const scrolled = useRef(false);
   const gone = useRef(onGone);
   gone.current = onGone;
   const els = (): MorphEls | null =>
@@ -298,64 +344,71 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     if (prefs.makeRoom) makeRoom(owner, target.anchor, p.overLeft, p.overRight);
     const e = els();
     if (reducedMotion() || !e) return;
-    opening.current = morph(e, mediaOf(target.anchor).getBoundingClientRect(), p, 0, 1, OPEN_MS, easeOpen, true);
+    opening.current = morphOpen(e, mediaOf(target.anchor).getBoundingClientRect(), p);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => () => giveRoomBack(owner), [owner]);
 
-  // Close: back into the card from wherever it got to, or a quick fade if the page scrolled
-  // the card away or it's gone.
+  // Close: back into the card from wherever it got to, or a quick fade if the card is gone.
   useLayoutEffect(() => {
     if (!leaving) return;
     giveRoomBack(owner);
     const e = els();
     if (!e || reducedMotion()) return gone.current();
-    let animation: Animation;
-    if (scrolled.current || !target.anchor.isConnected) {
-      animation = e.box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" });
-    } else {
-      const open = opening.current;
-      const t = open && open.playState === "running" ? Number(open.currentTime ?? OPEN_MS) / OPEN_MS : 1;
-      const from = easeOpen(Math.min(1, t));
-      for (const el of [e.box, e.inner, e.ghost, e.body]) el.getAnimations().forEach((a) => a.cancel());
-      animation = morph(e, mediaOf(target.anchor).getBoundingClientRect(), p, from, 0, Math.max(160, CLOSE_MS * from), easeClose, false);
+    if (!target.anchor.isConnected) {
+      const fade = e.box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: "ease-out", fill: "forwards" });
+      let cancelled = false;
+      fade.finished.then(
+        () => !cancelled && gone.current(),
+        () => {},
+      );
+      return () => {
+        cancelled = true;
+      };
     }
-    let cancelled = false;
-    animation.finished.then(
-      () => !cancelled && gone.current(),
-      () => {},
-    );
-    return () => {
-      cancelled = true;
+    const open = opening.current;
+    const t = open && open.playState === "running" ? Number(open.currentTime ?? OPEN_MS) / OPEN_MS : 1;
+    return morphClose(e, target.anchor, p, easeOpen(Math.min(1, t)), () => gone.current());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaving]);
+
+  // Stay with the card. It sits on the page, so scrolling carries both along together; when
+  // the card itself moves (rows above it loading, its row scrolled sideways), so does the
+  // preview, rather than closing (the pointer would only open it again, over and over).
+  useEffect(() => {
+    if (leaving) return;
+    const el = box.current;
+    if (!el) return;
+    const home = () => {
+      const r = target.anchor.getBoundingClientRect();
+      return { x: r.left - slidBy(slotOf(target.anchor)) + window.scrollX, y: r.top + window.scrollY };
     };
+    const start = home();
+    const base = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+    let raf = 0;
+    const follow = () => {
+      if (!target.anchor.isConnected) return closeHover();
+      const now = home();
+      const x = `${base.x + now.x - start.x}px`;
+      const y = `${base.y + now.y - start.y}px`;
+      if (el.style.left !== x) el.style.left = x;
+      if (el.style.top !== y) el.style.top = y;
+      raf = requestAnimationFrame(follow);
+    };
+    raf = requestAnimationFrame(follow);
+    return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaving]);
 
   useEffect(() => {
     if (leaving) return;
-    // The card moved out from under it, or the window changed: it no longer belongs there.
+    // The window changed under it: it no longer belongs there.
     const close = () => closeHover();
-    // The preview sits on the page beside its card, so scrolling the page carries both
-    // along together. Only a scroll that moves the card within the page (its row scrolled
-    // sideways) leaves the preview behind; another row settling doesn't.
-    const where = (el: HTMLElement) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.left - slidBy(slotOf(el)) + window.scrollX, y: r.top + window.scrollY };
-    };
-    const at = where(target.anchor);
-    const onScroll = () => {
-      const now = where(target.anchor);
-      if (Math.abs(now.x - at.x) < 1 && Math.abs(now.y - at.y) < 1) return;
-      scrolled.current = true;
-      close();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     window.addEventListener("resize", close);
     window.addEventListener("blur", close);
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("scroll", onScroll, { capture: true });
       window.removeEventListener("resize", close);
       window.removeEventListener("blur", close);
       window.removeEventListener("keydown", onKey);
