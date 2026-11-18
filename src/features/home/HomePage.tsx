@@ -224,7 +224,7 @@ export function HomePage() {
         {(resume.isPending || (resume.data?.length ?? 0) > 0) && (
           <Row title="Continue Watching" variant="landscape" loading={resume.isPending}>
             {resume.data?.map((item) => (
-              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick onDismiss={removeFromResume} dismissLabel="Remove from Continue Watching" />
+              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick noPreview onDismiss={removeFromResume} dismissLabel="Remove from Continue Watching" />
             ))}
           </Row>
         )}
@@ -232,7 +232,7 @@ export function HomePage() {
         {(nextUp.isPending || nextUpItems.length > 0) && (
           <Row title="Next Up" variant="landscape" loading={nextUp.isPending}>
             {nextUpItems.map((item) => (
-              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick onDismiss={removeFromNextUp} dismissLabel="Remove from Next Up" />
+              <MediaCard key={item.Id} item={item} variant="landscape" playOnClick noPreview onDismiss={removeFromNextUp} dismissLabel="Remove from Next Up" />
             ))}
           </Row>
         )}

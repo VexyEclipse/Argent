@@ -12,7 +12,7 @@ import { JellyfinMark } from "@/components/JellyfinLogo";
 import { clearDismissed, readFeedback, subscribeFeedback } from "@/features/recommendations/feedback";
 import { announcesFollowed, refreshUpcoming, setUpcomingPref, useUpcomingEntries, useUpcomingPrefs } from "@/features/upcoming/store";
 import { desktop, useDesktopInfo, type DesktopInfo, type UpdateStatus } from "@/platform/desktop";
-import { getPlatformOverride, setPlatformOverride, type Platform } from "@/platform/platform";
+import { getPlatformOverride, setPlatformOverride, usePlatform, type Platform } from "@/platform/platform";
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
@@ -247,6 +247,7 @@ export default function ProfilePage() {
   const tab = params.get("tab") === "settings" ? "settings" : "media";
   const ratingPrefs = useRatingPrefs();
   const previewPrefs = usePreviewPrefs();
+  const activePlatform = usePlatform();
   const desktopApp = useDesktopInfo();
   const server = useQuery({ queryKey: ["server-info"], queryFn: () => getPublicInfo(client()), staleTime: 10 * 60_000 });
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
@@ -463,6 +464,14 @@ export default function ProfilePage() {
                   hint="Muted until you turn the sound on. Never on a connection that asks to save data."
                   checked={previewPrefs.trailers}
                   onChange={(v) => setPreviewPref("trailers", v)}
+                />
+              )}
+              {previewPrefs.enabled && activePlatform === "desktop" && (
+                <Toggle
+                  label="Make room for previews"
+                  hint="The poster grows into its preview and the ones beside it slide aside. Off: the preview opens over them."
+                  checked={previewPrefs.makeRoom}
+                  onChange={(v) => setPreviewPref("makeRoom", v)}
                 />
               )}
               <Toggle

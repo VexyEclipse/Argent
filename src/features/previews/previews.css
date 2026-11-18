@@ -92,13 +92,63 @@
     var(--shadow-3),
     0 0 0 1px rgb(0 0 0 / 0.4);
   overflow: hidden;
-  animation: hpreview-in 220ms var(--ease-out);
 }
-@keyframes hpreview-in {
+.hpreview.is-leaving {
+  pointer-events: none;
+}
+/* Laid out at the preview's full width from the start, so nothing reflows while the box
+   around it grows. */
+.hpreview__inner {
+  position: relative;
+}
+/* The card's own picture, growing into the preview's (see morph() in Previews.tsx). */
+.hpreview__ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  overflow: hidden;
+  background: var(--bg-2);
+  opacity: 0;
+  pointer-events: none;
+}
+.hpreview__ghost img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* The details unfold just behind the picture. */
+.hpreview__body {
+  animation: hpreview-body 300ms 110ms var(--ease-out) both;
+}
+.hpreview__sound {
+  animation: fade-in 260ms 200ms var(--ease-out) both;
+}
+@keyframes hpreview-body {
   from {
     opacity: 0;
-    transform: scale(0.62);
+    transform: translateY(8px);
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hpreview__body,
+  .hpreview__sound {
+    animation: none;
+  }
+}
+
+/* The card stands aside while its preview is out (the preview grows from and back into it). */
+.card.is-expanded .card__media,
+.card.is-expanded .card__overlay {
+  opacity: 0;
+  transition: none;
+}
+.card.is-expanded .card__text {
+  opacity: 0;
+}
+.card .card__text {
+  transition: opacity var(--dur) var(--ease-out);
 }
 .hpreview__media {
   display: block;

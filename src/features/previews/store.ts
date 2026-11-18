@@ -15,10 +15,12 @@ export interface PreviewPrefs {
   enabled: boolean;
   /** Play trailers in them (muted until you turn the sound on). */
   trailers: boolean;
+  /** Desktop: the cards beside a preview slide aside to make room for it. */
+  makeRoom: boolean;
 }
 
 const PREFS_KEY = "argent.previews";
-const DEFAULTS: PreviewPrefs = { enabled: true, trailers: true };
+const DEFAULTS: PreviewPrefs = { enabled: true, trailers: true, makeRoom: true };
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((fn) => fn());
 const subscribe = (fn: () => void) => {

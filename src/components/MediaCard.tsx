@@ -39,6 +39,8 @@ interface Props {
   noPlay?: boolean;
   /** A "Remind me" bell (Coming Up). */
   remind?: boolean;
+  /** No preview on hover, focus or hold (Continue Watching, Next Up: you know what these are). */
+  noPreview?: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export const MediaCard = memo(function MediaCard({
   rating,
   noPlay,
   remind,
+  noPreview,
 }: Props) {
   const navigate = useNavigate();
   // What the card shows and opens; `item` stays what the row was given (for dismissing it).
@@ -129,7 +132,7 @@ export const MediaCard = memo(function MediaCard({
 
   // Previews: hover on a desktop, focus on a TV (home only), press and hold on a phone.
   const platform = usePlatform();
-  const previews = usePreviewPrefs().enabled && item.Type !== "Person" && item.Type !== "Genre" && !selecting;
+  const previews = usePreviewPrefs().enabled && !noPreview && item.Type !== "Person" && item.Type !== "Genre" && !selecting;
   const cardRef = useRef<HTMLDivElement>(null);
   const press = useRef<{ timer: number; x: number; y: number; fired: boolean }>({ timer: 0, x: 0, y: 0, fired: false });
 
@@ -141,7 +144,9 @@ export const MediaCard = memo(function MediaCard({
     if (platform === "desktop") hoverLeave();
   };
   const onFocus = () => {
-    if (previews && platform === "tv" && cardRef.current?.closest(".home__rows")) setSpotlight(shown);
+    if (platform !== "tv" || !cardRef.current?.closest(".home__rows")) return;
+    // A card without a preview takes the spotlight down rather than leaving the last one up.
+    setSpotlight(previews ? shown : null);
   };
   const onTouchStart = (event: TouchEvent) => {
     if (!previews || platform !== "mobile") return;
