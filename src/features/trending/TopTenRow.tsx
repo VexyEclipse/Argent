@@ -26,7 +26,7 @@ export function KindTabs({ kinds, value, onChange }: { kinds: TrendKind[]; value
 /** One place in the ranking: the big number, then the card. */
 export function RankedCard({ row }: { row: TopRow }) {
   return (
-    <div className={`top10 ${row.rank >= 10 ? "top10--wide" : ""}`}>
+    <div className={`top10 ${row.rank >= 10 ? "top10--wide" : ""} ${row.rank === 1 ? "top10--one" : ""}`}>
       <span className="top10__rank" aria-hidden="true">
         {row.rank}
       </span>

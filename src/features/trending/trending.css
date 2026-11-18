@@ -36,6 +36,10 @@
   letter-spacing: -0.14em;
   margin-right: calc(var(--poster-w) * -0.12);
 }
+/* A 1 is narrow: tucked in as far as the others, the poster hides most of it. */
+.top10--one .top10__rank {
+  margin-right: calc(var(--poster-w) * -0.03);
+}
 .top10:hover .top10__rank,
 .top10:focus-within .top10__rank {
   -webkit-text-stroke-color: var(--silver-200);
