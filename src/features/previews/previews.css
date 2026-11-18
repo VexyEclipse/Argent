@@ -84,9 +84,10 @@
 /* ---------- Desktop: the card expands in place ---------- */
 /* Laid out at its full size from the start; it grows out of the card by a scale transform
    (see morph() in Previews.tsx), with its contents scaled back so they never stretch. */
+/* It sits on the page (it scrolls with its row) and slides under the top bar. */
 .hpreview {
-  position: fixed;
-  z-index: var(--z-overlay);
+  position: absolute;
+  z-index: calc(var(--z-nav) - 1);
   border-radius: var(--radius-lg);
   background: var(--bg-2);
   box-shadow:
@@ -113,7 +114,7 @@
   position: relative;
   transform-origin: 0 0;
 }
-/* The card's own picture, growing into the preview's and fading as it does. */
+/* The card's own picture, coming back as the preview shrinks into the card. */
 .hpreview__ghost {
   position: absolute;
   top: 0;

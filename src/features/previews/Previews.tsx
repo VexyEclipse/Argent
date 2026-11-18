@@ -44,9 +44,9 @@ function SoundButton({ muted, onToggle, className }: { muted: boolean; onToggle:
 
 // ---- desktop: the card expands in place ------------------------------------------------------
 //
-// The card's own picture grows into the preview (and fades into the backdrop as it does),
+// The card opens out into the preview (its own picture gives way to the preview's at once),
 // the details unfold below it, and the cards beside it slide aside to make room. Closing
-// runs the same the other way, back into the card.
+// runs the other way, the card's picture coming back as it shrinks into the card.
 //
 // Only transforms and opacity animate, so it stays smooth while the page is busy (a
 // backdrop decoding, the details arriving): the box scales from the card's rectangle up
@@ -96,9 +96,32 @@ const slidBy = (el: HTMLElement) => {
   return t && t !== "none" ? new DOMMatrixReadOnly(t).m41 : 0;
 };
 
-// The cards slid aside for the open preview, and by how much.
+// The cards slid aside for the open preview, and by how much, and the row they're in.
 let pushed = new Map<HTMLElement, number>();
 let pushOwner: object | null = null;
+let pushTrack: HTMLElement | null = null;
+
+// A row snaps to its cards: sliding them aside would have it scroll to snap again, and a
+// scroll closes the preview (which the pointer then opens again, and again). Its snapping
+// rests while a preview is open there, and comes back once its cards have slid home.
+function holdSnap(track: HTMLElement | null) {
+  if (track) track.style.scrollSnapType = "none";
+}
+
+function releaseSnap(track: HTMLElement | null, moving: HTMLElement[]) {
+  if (!track) return;
+  const restore = () => {
+    // A preview has opened in the row again meanwhile: it holds the snapping now.
+    if (pushTrack === track) return;
+    // Snapping while a card is still on its way home would scroll the row to the wrong one.
+    if (moving.some((el) => el.isConnected && Math.abs(slidBy(el)) > 0.5)) {
+      window.setTimeout(restore, 60);
+      return;
+    }
+    track.style.scrollSnapType = "";
+  };
+  window.setTimeout(restore, moving.length ? CLOSE_MS : 0);
+}
 
 function slide(el: HTMLElement, shift: number, opening: boolean) {
   el.style.transition = `transform ${opening ? OPEN_MS : CLOSE_MS}ms ${css(opening ? OPEN_CURVE : CLOSE_CURVE)}`;
@@ -113,8 +136,8 @@ function slide(el: HTMLElement, shift: number, opening: boolean) {
 
 /** Slides the cards on the same line as `anchor` out of the preview's way. */
 function makeRoom(owner: object, anchor: HTMLElement, left: number, right: number) {
-  pushOwner = owner;
   const slot = slotOf(anchor);
+  const track = slot.parentElement?.matches(".row__track") ? slot.parentElement : null;
   const line = slot.getBoundingClientRect().top;
   const next = new Map<HTMLElement, number>();
   let before = true;
@@ -128,17 +151,26 @@ function makeRoom(owner: object, anchor: HTMLElement, left: number, right: numbe
     if (shift) next.set(el, shift);
   }
   const previous = pushed;
+  const previousTrack = pushTrack;
+  pushOwner = owner;
+  pushTrack = track;
   pushed = next;
-  previous.forEach((_, el) => !next.has(el) && slide(el, 0, false));
+  holdSnap(track);
+  const home = [...previous.keys()].filter((el) => !next.has(el));
+  home.forEach((el) => slide(el, 0, false));
   next.forEach((shift, el) => slide(el, shift, true));
+  if (previousTrack !== track) releaseSnap(previousTrack, home);
 }
 
 function giveRoomBack(owner: object) {
   if (pushOwner !== owner) return;
+  const previous = [...pushed.keys()];
+  const track = pushTrack;
   pushOwner = null;
-  const previous = pushed;
+  pushTrack = null;
   pushed = new Map();
-  previous.forEach((_, el) => slide(el, 0, false));
+  previous.forEach((el) => slide(el, 0, false));
+  releaseSnap(track, previous);
 }
 
 interface Placement {
@@ -185,10 +217,13 @@ interface MorphEls {
  */
 function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: number, ms: number, ease: (t: number) => number, opening: boolean): Animation {
   const height = els.box.offsetHeight;
+  // Where the box is on screen now: it sits on the page, so the page may have scrolled.
+  const left = parseFloat(els.box.style.left) - window.scrollX;
+  const top = parseFloat(els.box.style.top) - window.scrollY;
   const sx0 = card.width / p.width;
   const sy0 = card.height / height;
-  const dx0 = card.left - p.left;
-  const dy0 = card.top - p.top;
+  const dx0 = card.left - left;
+  const dy0 = card.top - top;
   // The card's picture ends up covering the preview's, centred on it.
   const k = Math.max(p.width / card.width, p.mediaHeight / card.height);
   const gx1 = (p.width - card.width * k) / 2;
@@ -199,8 +234,8 @@ function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: num
   for (let i = 0; i <= steps; i++) {
     const offset = i / steps;
     const o = from + (to - from) * ease(offset);
-    // Opening, the pictures cross over evenly across it rather than all in its quick start;
-    // closing, the card's comes back as fast as the box shrinks.
+    // Opening, the card's picture is gone at once and the details fade in evenly across it;
+    // closing, the card's picture comes back as fast as the box shrinks.
     const f = opening ? from + (to - from) * offset : o;
     const sx = sx0 + (1 - sx0) * o;
     const sy = sy0 + (1 - sy0) * o;
@@ -209,7 +244,7 @@ function morph(els: MorphEls, card: DOMRect, p: Placement, from: number, to: num
     const s = 1 + (k - 1) * o;
     frames.box.push({ offset, transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` });
     frames.inner.push({ offset, transform: `scale(${1 / sx}, ${1 / sy}) translate(${-dx}px, ${-dy}px)` });
-    frames.ghost.push({ offset, transform: `translate(${dx0 + (gx1 - dx0) * o}px, ${dy0 + (gy1 - dy0) * o}px) scale(${s})`, opacity: Math.min(1, Math.max(0, 1 - (f - 0.12) / 0.5)) });
+    frames.ghost.push({ offset, transform: `translate(${dx0 + (gx1 - dx0) * o}px, ${dy0 + (gy1 - dy0) * o}px) scale(${s})`, opacity: opening ? 0 : Math.min(1, Math.max(0, 1 - (f - 0.12) / 0.5)) });
     const b = Math.min(1, Math.max(0, (f - 0.3) / 0.5));
     frames.body.push({ offset, opacity: b, transform: `translateY(${(1 - b) * 10}px)` });
   }
@@ -245,6 +280,8 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
   const [art] = useState(() => cardArt(target.anchor));
   const [cardSize] = useState(() => mediaOf(target.anchor).getBoundingClientRect());
   const [owner] = useState(() => ({}));
+  // On the page, not the screen: it scrolls with its row.
+  const [scroll] = useState(() => ({ x: window.scrollX, y: window.scrollY }));
   const box = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const ghost = useRef<HTMLDivElement>(null);
@@ -298,7 +335,17 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     if (leaving) return;
     // The card moved out from under it, or the window changed: it no longer belongs there.
     const close = () => closeHover();
+    // The preview sits on the page beside its card, so scrolling the page carries both
+    // along together. Only a scroll that moves the card within the page (its row scrolled
+    // sideways) leaves the preview behind; another row settling doesn't.
+    const where = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left - slidBy(slotOf(el)) + window.scrollX, y: r.top + window.scrollY };
+    };
+    const at = where(target.anchor);
     const onScroll = () => {
+      const now = where(target.anchor);
+      if (Math.abs(now.x - at.x) < 1 && Math.abs(now.y - at.y) < 1) return;
       scrolled.current = true;
       close();
     };
@@ -325,7 +372,7 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
     <div
       ref={box}
       className={`hpreview ${leaving ? "is-leaving" : ""}`}
-      style={{ left: p.left, top: p.top, width: p.width }}
+      style={{ left: p.left + scroll.x, top: p.top + scroll.y, width: p.width }}
       onMouseEnter={hoverHold}
       onMouseLeave={hoverLeave}
       role="dialog"
@@ -357,7 +404,7 @@ function HoverCard({ target, leaving, onGone }: { target: HoverTarget; leaving: 
           {genres.length > 0 && <p className="hpreview__genres">{genres.join(" · ")}</p>}
           {item.Overview && <p className="hpreview__overview">{item.Overview}</p>}
         </div>
-        {/* The card's own picture, which grows into the preview's and fades as it does. */}
+        {/* The card's own picture, which comes back as the preview shrinks into the card. */}
         <div ref={ghost} className="hpreview__ghost" style={{ width: cardSize.width, height: cardSize.height }} aria-hidden="true">
           {art && <img src={art} alt="" />}
         </div>
