@@ -14,6 +14,7 @@ import {
   learnedSegment,
   matchedRange,
   recordJump,
+  savedSkips,
   seasonKey,
   withFoundSegments,
   type Jump,
@@ -302,5 +303,19 @@ describe("correctedRange", () => {
   it("leaves it when they didn't land inside it", () => {
     expect(correctedRange(range, 130)).toBeUndefined();
     expect(correctedRange(range, 20)).toBeUndefined();
+  });
+});
+
+describe("savedSkips", () => {
+  const r = { start: 40, end: 130 };
+  it("lists seasons with a skip, by show and season", () => {
+    const map = {
+      a: { jumps: [], range: r, show: "Mob Psycho 100", seasonName: "Season 10" },
+      b: { jumps: [], range: r, show: "Mob Psycho 100", seasonName: "Season 2" },
+      c: { jumps: [], range: r, show: "Frieren", seasonName: "Season 1" },
+      d: { jumps: [{ ep: "e", from: 1, to: 50, at: 0 }] },
+      e: { jumps: [], range: r },
+    };
+    expect(savedSkips(map).map((s) => s.key)).toEqual(["c", "b", "a", "e"]);
   });
 });

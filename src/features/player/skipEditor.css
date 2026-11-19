@@ -1,0 +1,249 @@
+/* The skip editor (Learn skips): a card in the player with This season and All skips tabs,
+   and the list of skips in Settings → Skipping. */
+
+/* ---- the card in the player ---- */
+.skipedit--card {
+  position: absolute;
+  right: clamp(16px, 3vw, 48px);
+  bottom: 140px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 220px);
+  padding: var(--sp-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgb(16 17 19 / 0.92);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(18px);
+}
+.skipedit__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.skipedit__pane[hidden] {
+  display: none;
+}
+.skipedit__title {
+  font-weight: 600;
+  margin-bottom: var(--sp-1);
+}
+
+/* ---- tabs ---- */
+.skipedit__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: var(--sp-1);
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.06);
+}
+.skipedit__tab {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.skipedit__tab:hover {
+  color: var(--text-1);
+}
+.skipedit__tab.is-on {
+  background: rgb(255 255 255 / 0.14);
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* ---- the form: start, end, name, ask or auto ---- */
+.skipedit__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.skipedit__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.skipedit__label {
+  flex: 0 0 72px;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.skipedit__nudge {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--text-2);
+}
+.skipedit__nudge:hover,
+.skipedit__nudge:focus-visible {
+  background: rgb(255 255 255 / 0.14);
+  color: var(--text-1);
+}
+.skipedit__nudge:focus-visible,
+.skipedit__option:focus-visible,
+.skipedit__tab:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.skipedit__time,
+.skipedit__name {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--text-1);
+  font: inherit;
+}
+.skipedit__time {
+  flex: 0 0 84px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.skipedit__name {
+  flex: 1;
+}
+.skipedit__time:focus,
+.skipedit__name:focus {
+  outline: none;
+  border-color: var(--silver-300);
+}
+.skipedit__now {
+  margin-left: auto;
+}
+.skipedit__hint {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  margin-bottom: var(--sp-1);
+}
+.skipedit__choice {
+  display: flex;
+  flex: 1;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.06);
+}
+.skipedit__option {
+  flex: 1;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.skipedit__option.is-on {
+  background: var(--silver-100);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.skipedit__actions {
+  display: flex;
+  gap: 6px;
+  padding-top: var(--sp-2);
+}
+
+/* ---- the list of skips ---- */
+.skiplist {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.skiplist__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line-1);
+}
+.skiplist__item:first-child {
+  border-top: 0;
+}
+.skiplist__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.skiplist__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.skiplist__name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-1);
+}
+.skiplist__tag {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.1);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--text-2);
+}
+.skiplist__place,
+.skiplist__meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+.skiplist__place {
+  color: var(--text-2);
+}
+.skiplist__place a:hover {
+  color: var(--text-1);
+  text-decoration: underline;
+}
+.skiplist__meta {
+  font-variant-numeric: tabular-nums;
+}
+.skiplist__actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+.skiplist__empty {
+  margin: 0;
+  padding: var(--sp-3) 0;
+  font-size: var(--fs-small);
+  color: var(--text-3);
+}
+/* In the player's card, rows sit tighter and the buttons go under the text. */
+.skiplist--compact .skiplist__row {
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.skiplist--compact .skiplist__item {
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+}
+
+/* ---- phones ---- */
+html[data-platform="mobile"] .skipedit--card {
+  right: 16px;
+  bottom: 120px;
+  padding: var(--sp-3);
+}
+html[data-platform="mobile"] .skipedit__label {
+  flex-basis: 56px;
+}
+html[data-platform="mobile"] .skiplist__row {
+  flex-wrap: wrap;
+}

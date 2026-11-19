@@ -136,8 +136,27 @@ export interface SeasonSkips {
   auto?: boolean;
   /** How long (seconds) the episode it was saved in runs, to leave out specials of another length. */
   ref?: number;
+  /** For the list of skips: the show and season it's for, as when it was saved. */
+  show?: string;
+  seasonName?: string;
+  seriesId?: string;
   /** How often the skip has been offered. */
   asked?: number;
+}
+
+export interface SavedSkip {
+  key: string;
+  entry: SeasonSkips & { range: Range };
+}
+
+/** The seasons with a skip, by show and then season ("Season 2" before "Season 10"). */
+export function savedSkips(map: Record<string, SeasonSkips>): SavedSkip[] {
+  const order = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+  return Object.entries(map)
+    .filter((e): e is [string, SeasonSkips & { range: Range }] => Boolean(e[1]?.range))
+    .map(([key, entry]) => ({ key, entry }))
+    // Skips saved without a show name (resolved when listed) go last.
+    .sort((a, b) => Number(!a.entry.show) - Number(!b.entry.show) || order.compare(a.entry.show ?? "", b.entry.show ?? "") || order.compare(a.entry.seasonName ?? "", b.entry.seasonName ?? "") || a.key.localeCompare(b.key));
 }
 
 /** Learning is per season: its episodes share an opening. */

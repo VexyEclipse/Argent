@@ -228,6 +228,18 @@
   line-height: 1.45;
   color: var(--text-3);
 }
+/* A setting with content under its label (a list). */
+.setting--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+}
+.setting__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
 .setting__buttons {
   display: flex;
   flex: none;

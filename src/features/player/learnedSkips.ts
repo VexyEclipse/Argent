@@ -22,10 +22,12 @@ import {
   matchedRange,
   MAX_ASKS,
   recordJump,
+  savedSkips,
   seasonKey,
   withFoundSegments,
   type OpenJump,
   type Range,
+  type SavedSkip,
   type SeasonSkips,
 } from "./skipLearning";
 
@@ -50,15 +52,40 @@ export function saveLearnSkips(on: boolean) {
   }
 }
 
-/** Seasons with a learned skip, for Settings. */
-export function useLearnedSeasonCount(): number {
+/** The signed-in viewer's saved skips, by show and season (Settings, and the editor's All skips tab). */
+export function useSavedSkips(): SavedSkip[] {
   const map = seasons.use();
-  return Object.values(map).filter((e) => e.range).length;
+  return useMemo(() => savedSkips(map), [map]);
 }
 
-/** Forget everything learned, on every device. */
+/** Change a saved skip's times, name or ask-or-auto choice. */
+export function updateSkip(userId: string, key: string, edit: SkipEdit) {
+  const entry = seasons.read(userId)[key];
+  if (!entry) return;
+  seasons.set(userId, key, { ...entry, range: edit.range, name: edit.name || undefined, auto: edit.auto || undefined });
+  logEvent("skips", `Edited ${rangeLabel(edit.range)}${edit.auto ? " (automatic)" : ""} for ${key}`);
+}
+
+/** Delete one season's skip (and what led to it), on every device. A toast can bring it back. */
+export function deleteSkip(userId: string, key: string) {
+  const entry = seasons.read(userId)[key];
+  if (!entry) return;
+  seasons.remove(userId, key);
+  logEvent("skips", `Deleted ${key}`);
+  showToast(`Deleted the skip for ${skipPlace(entry)}`, { label: "Undo", run: () => seasons.set(userId, key, entry) });
+}
+
+/** Forget every skip and everything learned, on every device. A toast can bring them back. */
 export function forgetLearnedSkips(userId: string) {
-  for (const key of Object.keys(seasons.read(userId))) seasons.remove(userId, key);
+  const all = seasons.read(userId);
+  for (const key of Object.keys(all)) seasons.remove(userId, key);
+  logEvent("skips", "Forgot all");
+  showToast("Forgot all skips", { label: "Undo", run: () => Object.entries(all).forEach(([key, entry]) => seasons.set(userId, key, entry)) });
+}
+
+/** "Some Show, Season 1", as saved; "this season" for one saved without names. */
+export function skipPlace(entry: SeasonSkips): string {
+  return entry.show ? `${entry.show}${entry.seasonName ? `, ${entry.seasonName}` : ""}` : (entry.seasonName ?? "this season");
 }
 
 const seasonLabel = (item: BaseItem) => item.SeasonName ?? (item.ParentIndexNumber !== undefined ? `Season ${item.ParentIndexNumber}` : "this season");
@@ -90,10 +117,13 @@ const CORRECTION_WINDOW_MS = 8000;
 
 /**
  * The skip editor: a learned skip offered (its times editable before saying yes), one opened
- * to adjust, or a new one set by hand (the editor's shortcut in a season without one).
+ * to adjust, a new one set by hand (the editor's shortcut in a season without one), or only
+ * the list of skips (the shortcut in a film).
  */
 export interface SkipEditorState {
-  mode: "offer" | "edit" | "create";
+  mode: "offer" | "edit" | "create" | "list";
+  /** The season being watched (absent in a film). */
+  key?: string;
   range: Range;
   /** What it's called on its Skip card ("Opening"); undefined for "Intro". */
   name?: string;
@@ -144,7 +174,7 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
     const range = (entry.asked ?? 0) < MAX_ASKS ? matchedRange(entry, jump) : undefined;
     seasons.set(userId, key, range ? { ...entry, asked: (entry.asked ?? 0) + 1 } : entry);
     logEvent("skips", `Jump ${rangeLabel({ start: jump.from, end: jump.to })} in ${item.Id}${range ? `; offering ${rangeLabel(range)} for ${key}` : ""}`);
-    if (range) setEditor({ mode: "offer", range, auto: false, season: seasonLabel(item) });
+    if (range) setEditor({ mode: "offer", key, range, auto: false, season: seasonLabel(item) });
   }, [userId]);
 
   const finishCorrection = useCallback(() => {
@@ -193,14 +223,15 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
     const entry = userId && key ? seasons.read(userId)[key] : undefined;
     if (!entry?.range) return;
     correction.current = null;
-    setEditor({ mode: "edit", range: entry.range, name: entry.name, auto: Boolean(entry.auto), season: seasonLabel(item) });
+    setEditor({ mode: "edit", key, range: entry.range, name: entry.name, auto: Boolean(entry.auto), season: seasonLabel(item) });
   }, [userId]);
   const adjustRef = useRef(adjust);
   adjustRef.current = adjust;
 
   /**
    * The editor's shortcut: the season's skip to adjust, or a new one from where the video
-   * is (a typical opening's length, to set exactly). Pressed again, it closes the editor.
+   * is (a typical opening's length, to set exactly); in a film, the list of skips. Pressed
+   * again, it closes the editor.
    */
   const toggleEditor = useCallback(
     (currentSeconds: number) => {
@@ -214,8 +245,9 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
         showToast("Turn on Learn skips in Settings → Skipping to set skips");
         return;
       }
-      if (!userId || !key) {
-        showToast("Skips are set for a show's episodes, not films");
+      if (!userId) return;
+      if (!key) {
+        setEditor({ mode: "list", range: { start: 0, end: 0 }, auto: false, season: "" });
         return;
       }
       if (seasons.read(userId)[key]?.range) {
@@ -224,7 +256,7 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
       }
       correction.current = null;
       const range = editedRange({ start: currentSeconds, end: currentSeconds + NEW_SKIP_SECONDS }, "end", currentSeconds + NEW_SKIP_SECONDS, duration);
-      setEditor({ mode: "create", range, auto: false, season: seasonLabel(item) });
+      setEditor({ mode: "create", key, range, auto: false, season: seasonLabel(item) });
     },
     [on, userId, adjust],
   );
@@ -244,11 +276,14 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
   /** Save the editor's times, name and choice as the season's skip. */
   const save = useCallback(
     ({ range, name, auto }: SkipEdit) => {
-      const key = seasonKey(latest.current.item);
+      const { item, duration } = latest.current;
+      const key = seasonKey(item);
       if (!userId || !key) return;
       const mode = editor?.mode;
-      const ref = latest.current.duration > 0 ? Math.round(latest.current.duration) : undefined;
-      seasons.set(userId, key, { ...(seasons.read(userId)[key] ?? { jumps: [] }), range, name: name || undefined, auto: auto || undefined, ref });
+      const ref = duration > 0 ? Math.round(duration) : undefined;
+      // The show and season go with it, for the list of skips.
+      const place = { show: item.SeriesName, seasonName: seasonLabel(item), seriesId: item.SeriesId };
+      seasons.set(userId, key, { ...(seasons.read(userId)[key] ?? { jumps: [] }), range, name: name || undefined, auto: auto || undefined, ref, ...place });
       logEvent("skips", `${mode === "offer" ? "Learned" : mode === "create" ? "Set" : "Adjusted"} ${rangeLabel(range)}${auto ? " (automatic)" : ""} for ${key}`);
       setEditor(null);
       showToast(`Saved for every episode of ${seasonLabel(latest.current.item)}: ${auto ? "skips" : "asks to skip"} ${formatSkipTime(range.start)}–${formatSkipTime(range.end)}`);
@@ -256,14 +291,12 @@ export function useSkipLearning(opts: { item: BaseItem; segments: readonly Media
     [userId, editor?.mode],
   );
 
-  /** Forget the season's skip (and what led to it). */
+  /** Delete the season's skip (and what led to it); the toast can bring it back. */
   const forget = useCallback(() => {
     const key = seasonKey(latest.current.item);
     if (!userId || !key) return;
-    seasons.remove(userId, key);
-    logEvent("skips", `Forgot ${key}`);
+    deleteSkip(userId, key);
     setEditor(null);
-    showToast("Forgotten. Argent will learn this season again from your skips");
   }, [userId]);
 
   const close = useCallback(() => setEditor(null), []);

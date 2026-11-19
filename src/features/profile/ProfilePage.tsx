@@ -18,7 +18,8 @@ import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
 import { DEFAULT_SKIP_EDITOR_KEY, readAutoSkip, readPauseInfo, readSkipEditorKey, saveAutoSkip, savePauseInfo, saveSkipEditorKey } from "@/features/player/prefs";
 import { isModifierKey, keyLabel, shortcutProblem } from "@/features/player/playerLogic";
-import { forgetLearnedSkips, readLearnSkips, saveLearnSkips, useLearnedSeasonCount } from "@/features/player/learnedSkips";
+import { forgetLearnedSkips, readLearnSkips, saveLearnSkips, useSavedSkips } from "@/features/player/learnedSkips";
+import { SkipList } from "@/features/player/SkipEditor";
 import { setStillsPref, useStillsPref } from "@/features/manage/stills";
 import { TrendingSettings } from "@/features/trending/TrendingSettings";
 import { setPreviewPref, usePreviewPrefs } from "@/features/previews/store";
@@ -99,7 +100,7 @@ function SkippingSection() {
   const { isAdmin, user } = useAuth();
   const [skip, setSkip] = useState(readAutoSkip);
   const [learn, setLearn] = useState(readLearnSkips);
-  const learnedSeasons = useLearnedSeasonCount();
+  const savedSkips = useSavedSkips();
   const filler = useFillerPrefs();
   const change = (patch: Partial<typeof skip>) => {
     const next = { ...skip, ...patch };
@@ -130,15 +131,20 @@ function SkippingSection() {
         }}
       />
       {learn && <SkipEditorShortcut />}
-      {learn && learnedSeasons > 0 && user && (
-        <div className="setting">
-          <div className="setting__text">
-            <span className="setting__label">Learned skips</span>
-            <span className="setting__hint">{learnedSeasons === 1 ? "1 season" : `${learnedSeasons} seasons`}</span>
+      {learn && user && (
+        <div className="setting setting--stack">
+          <div className="setting__head">
+            <div className="setting__text">
+              <span className="setting__label">Your skips{savedSkips.length ? ` · ${savedSkips.length}` : ""}</span>
+              <span className="setting__hint">One per season, saved to your account. Edit or delete them here, or under All skips in the player's skip editor.</span>
+            </div>
+            {savedSkips.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => forgetLearnedSkips(user.Id)}>
+                Forget all
+              </Button>
+            )}
           </div>
-          <Button variant="secondary" size="sm" onClick={() => forgetLearnedSkips(user.Id)}>
-            Forget all
-          </Button>
+          <SkipList />
         </div>
       )}
       <Toggle
@@ -195,7 +201,7 @@ function SkipEditorShortcut() {
   }, [listening]);
   const hint = listening
     ? (problem ?? "Press the key to use, or Escape to keep the current one")
-    : "In the player, opens this season's skip to adjust, or starts a new one where the video is";
+    : "In the player, opens this season's skip to adjust (or starts a new one where the video is), with every season's skips under All skips";
   return (
     <div className="setting">
       <div className="setting__text">
