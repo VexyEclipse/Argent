@@ -20,6 +20,8 @@ import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/feat
 import { setStillsPref, useStillsPref } from "@/features/manage/stills";
 import { TrendingSettings } from "@/features/trending/TrendingSettings";
 import { setPreviewPref, usePreviewPrefs } from "@/features/previews/store";
+import { useVaultNews } from "@/features/vault/store";
+import { VaultSection } from "@/features/vault/VaultSection";
 import { AndroidSection, HelpSection } from "./DeviceSections";
 import { SettingsNav, SettingsSection, type SettingsNavItem } from "./SettingsLayout";
 import { MediaProfile } from "./MediaProfile";
@@ -253,6 +255,7 @@ export default function ProfilePage() {
   const dismissedCount = useSyncExternalStore(subscribeFeedback, () => Object.keys(readFeedback(user?.Id ?? "").dismissed).length);
   const cfg = user?.Configuration ?? {};
   const hasDesktop = Boolean(desktopApp.info);
+  const vaultNews = useVaultNews();
 
   // The settings menu, in the same order as the sections.
   const navItems = useMemo(() => {
@@ -264,6 +267,7 @@ export default function ProfilePage() {
       { id: "ratings", label: "Ratings", icon: "star", group: "Personal" },
       { id: "recommendations", label: "Recommendations", icon: "sparkle", group: "Personal" },
       { id: "top-10", label: "Top 10", icon: "trending", group: "Personal" },
+      { id: "vault", label: "Vault", icon: "vault", group: "Personal", badge: vaultNews },
       hasDesktop && { id: "desktop", label: "Desktop app", icon: "dashboard", group: "App" },
       Boolean(androidApp) && { id: "android", label: "Android app", icon: "remote", group: "App" },
       isAdmin && { id: "library", label: "Library", icon: "folder", group: "App" },
@@ -271,7 +275,7 @@ export default function ProfilePage() {
       { id: "help", label: "Help", icon: "bug", group: "Account" },
     ];
     return items.filter((i): i is SettingsNavItem => Boolean(i));
-  }, [hasDesktop, isAdmin]);
+  }, [hasDesktop, isAdmin, vaultNews]);
 
   const save = async (patch: Partial<UserConfiguration>) => {
     if (!user) return;
@@ -524,6 +528,8 @@ export default function ProfilePage() {
             </SettingsSection>
 
             <TrendingSettings />
+
+            <VaultSection />
 
             {desktopApp.info && <DesktopSection info={desktopApp.info} setSetting={desktopApp.setSetting} refresh={desktopApp.refresh} />}
 

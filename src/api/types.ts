@@ -206,6 +206,21 @@ export interface UserPolicy {
   EnablePlaybackRemuxing?: boolean;
   EnableCollectionManagement?: boolean;
   EnableSubtitleManagement?: boolean;
+  /** Parental control: titles with any of these tags (or a parent with one) are hidden from the user. */
+  BlockedTags?: string[];
+  EnableAllFolders?: boolean;
+  /** Library (collection folder) ids the user can see when EnableAllFolders is off. */
+  EnabledFolders?: string[];
+  /** The server needs the whole policy back when it's saved, so nothing is dropped. */
+  [field: string]: unknown;
+}
+
+/** A library as administrators see it (/Library/VirtualFolders). */
+export interface VirtualFolder {
+  Name: string;
+  ItemId: string;
+  CollectionType?: string;
+  Locations?: string[];
 }
 
 export interface UserConfiguration {

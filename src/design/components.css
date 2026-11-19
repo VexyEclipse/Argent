@@ -228,6 +228,25 @@
   border-color: transparent;
   padding: 0;
 }
+/* Administrators: hidden from someone (Settings → Vault). Under the count badge if there is one. */
+.card__lock {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(10 10 11 / 0.72);
+  border: 1px solid var(--line-2);
+  color: var(--silver-100);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.card__media:has(> .card__badge:not(.card__badge--rating)) .card__lock {
+  top: 36px;
+}
 .card__overlay {
   position: absolute;
   top: 0;

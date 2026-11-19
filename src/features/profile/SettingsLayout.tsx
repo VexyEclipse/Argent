@@ -6,12 +6,31 @@ export interface SettingsNavItem {
   label: string;
   icon: IconName;
   group: string;
+  /** A count beside the item (news waiting in that section). */
+  badge?: number;
 }
 
 const sectionId = (id: string) => `settings-${id}`;
 
-/** One block of settings: an icon, a title, a line on where it applies, then its rows. */
-export function SettingsSection({ id, icon, title, desc, children }: { id: string; icon: IconName; title: string; desc?: ReactNode; children: ReactNode }) {
+/**
+ * One block of settings: an icon, a title, a line on where it applies, then its rows.
+ * `bare` leaves the panels to the children (a section with more than one).
+ */
+export function SettingsSection({
+  id,
+  icon,
+  title,
+  desc,
+  children,
+  bare,
+}: {
+  id: string;
+  icon: IconName;
+  title: string;
+  desc?: ReactNode;
+  children: ReactNode;
+  bare?: boolean;
+}) {
   return (
     <section id={sectionId(id)} className="settings-section" aria-labelledby={`${sectionId(id)}-title`}>
       <header className="settings-section__head">
@@ -25,7 +44,7 @@ export function SettingsSection({ id, icon, title, desc, children }: { id: strin
           {desc && <p className="settings-section__desc">{desc}</p>}
         </div>
       </header>
-      <div className="panel settings-section__body">{children}</div>
+      {bare ? children : <div className="panel settings-section__body">{children}</div>}
     </section>
   );
 }
@@ -115,6 +134,11 @@ export function SettingsNav({ items }: { items: SettingsNavItem[] }) {
             >
               <Icon name={item.icon} size={18} />
               <span>{item.label}</span>
+              {item.badge ? (
+                <span className="settings__badge" aria-label={`${item.badge} new`}>
+                  {item.badge}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>

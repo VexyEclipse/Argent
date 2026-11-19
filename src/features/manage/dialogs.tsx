@@ -21,6 +21,7 @@ import { Icon } from "@/components/Icon";
 import { Spinner } from "@/components/States";
 import { showToast } from "@/components/Toast";
 import { useAuth } from "@/auth/AuthProvider";
+import { noteDeleted } from "@/features/vault/store";
 import { Dialog, namesOf } from "./Dialog";
 import { canFixEpisodes, fixEpisodes } from "./episodeFixes";
 import { closeDialog, endSelection } from "./store";
@@ -44,6 +45,7 @@ async function forEach(items: BaseItem[], run: (item: BaseItem) => Promise<unkno
 
 export function DeleteDialog({ items }: { items: BaseItem[] }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [typed, setTyped] = useState("");
@@ -67,8 +69,11 @@ export function DeleteDialog({ items }: { items: BaseItem[] }) {
   const run = async () => {
     setBusy(true);
     setError(null);
-    const failed = await forEach(items, (i) => deleteItem(i.Id));
+    const deleted: BaseItem[] = [];
+    const failed = await forEach(items, (i) => deleteItem(i.Id).then(() => deleted.push(i)));
     setBusy(false);
+    // You meant it: deleted titles leave your Vault rather than show up as missing.
+    if (user && deleted.length) noteDeleted(user.Id, deleted);
     qc.invalidateQueries();
     if (failed === items.length) {
       setError("The server didn't delete anything. Check that your account is allowed to delete media.");

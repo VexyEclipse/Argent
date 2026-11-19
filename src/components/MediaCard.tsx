@@ -12,6 +12,7 @@ import { usePosterScore } from "@/features/ratings/prefs";
 import { canWatchlist, useWatchlistToggle } from "@/features/watchlist/store";
 import { useNewBadge } from "@/features/upcoming/newBadges";
 import { useReminder } from "@/features/upcoming/reminders";
+import { useRestriction } from "@/features/vault/store";
 import { hoverEnter, hoverLeave, openSheet, setSpotlight, usePreviewPrefs } from "@/features/previews/store";
 import { usePlatform } from "@/platform/platform";
 import { Artwork } from "./Artwork";
@@ -129,6 +130,8 @@ export const MediaCard = memo(function MediaCard({
   const manageable = isAdmin && item.Type !== "Person" && item.Type !== "Genre" && item.LocationType !== "Virtual";
   const selecting = useSelecting() && manageable;
   const selected = useIsSelected(item.Id);
+  // Administrators: a lock on titles hidden from someone.
+  const restricted = useRestriction(item.Id);
 
   // Previews: hover on a desktop, focus on a TV (home only), press and hold on a phone.
   const platform = usePlatform();
@@ -255,6 +258,11 @@ export const MediaCard = memo(function MediaCard({
             </span>
           ) : null}
           {fresh && <span className="card__new">{fresh}</span>}
+          {restricted > 0 && !selecting && (
+            <span className="card__lock" title={`Hidden from ${restricted === 1 ? "1 person" : `${restricted} people`}`} aria-label={`Hidden from ${restricted === 1 ? "1 person" : `${restricted} people`}`}>
+              <Icon name="lock" size={13} />
+            </span>
+          )}
           {progress > 0 && progress < 100 && (
             <span className="card__progress" aria-label={`${Math.round(progress)}% watched`}>
               <span style={{ width: `${progress}%` }} />

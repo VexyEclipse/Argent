@@ -132,6 +132,20 @@
   border-radius: 3px;
   background: var(--accent-gradient);
 }
+.settings__badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  color: #1a0f0f;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 .settings__content {
   display: flex;
   flex-direction: column;

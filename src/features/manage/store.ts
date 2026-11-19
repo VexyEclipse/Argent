@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 import type { BaseItem } from "@/api/types";
 import type { IconName } from "@/components/Icon";
 
-export type DialogKind = "delete" | "refresh" | "collection" | "playlist" | "info" | "metadata" | "identify" | "images" | "subtitles";
+export type DialogKind = "delete" | "refresh" | "collection" | "playlist" | "info" | "metadata" | "identify" | "images" | "subtitles" | "visibility";
 
 /** An action the page adds to the menu for this item (e.g. "Download season"). */
 export interface MenuExtra {

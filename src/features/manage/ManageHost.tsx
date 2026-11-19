@@ -15,6 +15,8 @@ import { setIdentifyQueryClient } from "./identifyQueue";
 import { ImageEditor } from "./ImageEditor";
 import { MetadataEditor } from "./MetadataEditor";
 import { SubtitleEditor } from "./SubtitleEditor";
+import { VisibilityDialog } from "@/features/vault/VisibilityDialog";
+import { canRestrict } from "@/features/vault/access";
 import { closeMenu, endSelection, openDialog, useManageState } from "./store";
 import "./manage.css";
 
@@ -62,6 +64,16 @@ function SelectionBar({ items }: { items: BaseItem[] }) {
         </Button>
         <Button variant="ghost" size="sm" icon="refresh" disabled={none || busy} onClick={() => openDialog("refresh", items)}>
           Refresh
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="lock"
+          disabled={!items.some(canRestrict) || busy}
+          onClick={() => openDialog("visibility", items.filter(canRestrict))}
+          title="Choose who can see these films and shows"
+        >
+          Visibility
         </Button>
         <Button
           variant="ghost"
@@ -118,6 +130,7 @@ export function ManageHost() {
       {dialog?.kind === "identify" && <IdentifyDialog items={items} />}
       {dialog?.kind === "images" && <ImageEditor item={items[0]} />}
       {dialog?.kind === "subtitles" && <SubtitleEditor item={items[0]} />}
+      {dialog?.kind === "visibility" && <VisibilityDialog items={items} />}
       <IdentifyQueuePanel />
     </>
   );

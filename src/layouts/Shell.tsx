@@ -16,6 +16,7 @@ import { RatePromptHost } from "@/features/ratings/RatePrompt";
 import { useNewArrivalsSync } from "@/features/upcoming/newBadges";
 import { useUpcomingSync } from "@/features/upcoming/store";
 import { useTogether } from "@/features/together/store";
+import { useVaultNews, useVaultSync, VAULT_PATH } from "@/features/vault/store";
 import { androidApp } from "@/platform/android";
 import { usePlatform } from "@/platform/platform";
 import { installSpatialNavigation } from "@/platform/spatialNavigation";
@@ -62,6 +63,7 @@ function ProfileMenu() {
   const others = useOtherLibraries();
   const location = useLocation();
   const platform = usePlatform();
+  const vaultNews = useVaultNews();
 
   useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
@@ -84,8 +86,9 @@ function ProfileMenu() {
 
   return (
     <div className="menu" ref={ref}>
-      <button className="nav__avatar" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label="Account">
+      <button className="nav__avatar" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label={vaultNews ? "Account (news in your Vault)" : "Account"}>
         <Avatar />
+        {vaultNews > 0 && <span className="nav__dot" aria-hidden="true" />}
       </button>
       {open && (
         <div className="menu__panel" role="menu">
@@ -99,6 +102,12 @@ function ProfileMenu() {
           <Link className="menu__item" to="/profile" role="menuitem">
             <Icon name="gear" size={18} /> Profile & settings
           </Link>
+          {vaultNews > 0 && (
+            <Link className="menu__item" to={VAULT_PATH} role="menuitem">
+              <Icon name="vault" size={18} /> Vault
+              <span className="menu__badge">{vaultNews} missing</span>
+            </Link>
+          )}
           {platform === "mobile" && (
             <Link className="menu__item" to="/watchlist" role="menuitem">
               <Icon name="bookmark" size={18} /> Watchlist
@@ -260,6 +269,7 @@ export function Shell() {
   const openPath = useCallback((path: string) => navigate(path), [navigate]);
   useUpcomingSync(openPath);
   useNewArrivalsSync();
+  useVaultSync();
 
   useEffect(() => {
     window.scrollTo({ top: 0 });

@@ -247,6 +247,19 @@ const PATHS = {
   arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
   trending: <path d="m3.5 17 6-6 4 4 7-7.5M14.5 7.5h6v6" />,
   arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,
+  lock: (
+    <>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8.2 10.5V7.8a3.8 3.8 0 0 1 7.6 0v2.7M12 14.4v2" />
+    </>
+  ),
+  vault: (
+    <>
+      <rect x="3.5" y="4" width="17" height="14.5" rx="2" />
+      <circle cx="12" cy="11.25" r="3.4" />
+      <path d="M12 7.85v1.1M12 13.55v1.1M8.6 11.25h1.1M14.3 11.25h1.1M6.5 18.5V20M17.5 18.5V20" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

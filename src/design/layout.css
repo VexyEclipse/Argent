@@ -70,7 +70,19 @@
   background: rgb(255 255 255 / 0.08);
 }
 .nav__avatar {
+  position: relative;
   border-radius: 50%;
+}
+/* News waiting (titles that left the library). */
+.nav__dot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--bg-0);
 }
 
 .avatar {
@@ -154,6 +166,15 @@
 .menu__ext {
   margin-left: auto;
   color: var(--text-3);
+}
+.menu__badge {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: rgb(217 163 163 / 0.14);
+  color: var(--danger);
+  font-size: var(--fs-micro);
+  font-weight: 600;
 }
 
 /* ---------- Mobile ---------- */

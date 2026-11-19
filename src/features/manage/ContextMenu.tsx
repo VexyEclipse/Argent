@@ -10,6 +10,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Icon, type IconName } from "@/components/Icon";
 import { showToast } from "@/components/Toast";
 import { addToWatchlist, canWatchlist, removeFromWatchlist, useWatchlist } from "@/features/watchlist/store";
+import { canRestrict } from "@/features/vault/access";
 import { desktop } from "@/platform/desktop";
 import { closeMenu, openDialog, startSelection, type MenuExtra, type MenuState } from "./store";
 
@@ -135,6 +136,7 @@ function useActions(item: BaseItem, extras: MenuExtra[] = []): Action[][] {
     manage.push({ id: "info", label: "Media info", icon: "info", run: () => openDialog("info", [item]) });
   }
   manage.push({ id: "refresh", label: "Refresh metadata", icon: "refresh", run: () => openDialog("refresh", [item]) });
+  if (canRestrict(item)) manage.push({ id: "visibility", label: "Who can see this", icon: "lock", run: () => openDialog("visibility", [item]) });
 
   const danger: Action[] = [{ id: "delete", label: `Delete ${noun}`, icon: "trash", danger: true, run: () => openDialog("delete", [item]) }];
 
