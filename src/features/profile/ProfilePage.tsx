@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { APP_VERSION } from "@/api/client";
@@ -16,7 +16,9 @@ import { getPlatformOverride, setPlatformOverride, usePlatform, type Platform } 
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
-import { readAutoSkip, readPauseInfo, saveAutoSkip, savePauseInfo } from "@/features/player/prefs";
+import { DEFAULT_SKIP_EDITOR_KEY, readAutoSkip, readPauseInfo, readSkipEditorKey, saveAutoSkip, savePauseInfo, saveSkipEditorKey } from "@/features/player/prefs";
+import { isModifierKey, keyLabel, shortcutProblem } from "@/features/player/playerLogic";
+import { forgetLearnedSkips, readLearnSkips, saveLearnSkips, useLearnedSeasonCount } from "@/features/player/learnedSkips";
 import { setStillsPref, useStillsPref } from "@/features/manage/stills";
 import { TrendingSettings } from "@/features/trending/TrendingSettings";
 import { setPreviewPref, usePreviewPrefs } from "@/features/previews/store";
@@ -94,8 +96,10 @@ function ComingUpSection({ userId }: { userId: string }) {
 
 /** Skipping intros, credits and anime filler. */
 function SkippingSection() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const [skip, setSkip] = useState(readAutoSkip);
+  const [learn, setLearn] = useState(readLearnSkips);
+  const learnedSeasons = useLearnedSeasonCount();
   const filler = useFillerPrefs();
   const change = (patch: Partial<typeof skip>) => {
     const next = { ...skip, ...patch };
@@ -117,6 +121,27 @@ function SkippingSection() {
         onChange={(v) => change({ credits: v })}
       />
       <Toggle
+        label="Learn skips (experimental)"
+        hint="For shows the server hasn't marked: chapters named like an opening, ending, recap or preview get a Skip card, and Argent learns from you. Jump over the same stretch near the start of two episodes of a season and it offers to skip it in every episode. Before saying yes, or later with the shortcut below, you can set its start and end to the tenth of a second, name it, and choose whether it asks first or skips automatically. Seeking back just after one trims it. Learning happens in Argent's own player; what it learns is saved to your account."
+        checked={learn}
+        onChange={(v) => {
+          setLearn(v);
+          saveLearnSkips(v);
+        }}
+      />
+      {learn && <SkipEditorShortcut />}
+      {learn && learnedSeasons > 0 && user && (
+        <div className="setting">
+          <div className="setting__text">
+            <span className="setting__label">Learned skips</span>
+            <span className="setting__hint">{learnedSeasons === 1 ? "1 season" : `${learnedSeasons} seasons`}</span>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => forgetLearnedSkips(user.Id)}>
+            Forget all
+          </Button>
+        </div>
+      )}
+      <Toggle
         label="Mark filler episodes"
         hint="A Filler badge on anime episodes outside the source story. Each show's MyAnimeList episode list is read through jikan-edge (or Tenrai as a backup) by its ids or title; nothing about you is sent."
         checked={filler.badges}
@@ -135,6 +160,75 @@ function SkippingSection() {
         onChange={(v) => setFillerPref("skip", v)}
       />
     </SettingsSection>
+  );
+}
+
+/** The key that opens the skip editor in the player: click, then press the key to use. */
+function SkipEditorShortcut() {
+  const [key, setKey] = useState(readSkipEditorKey);
+  const [listening, setListening] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!listening) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isModifierKey(e.key)) return;
+      // Ahead of the app's own keys (Escape mustn't go back a page while choosing).
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === "Escape") {
+        setListening(false);
+        setProblem(null);
+        return;
+      }
+      const why = shortcutProblem(e);
+      if (why) {
+        setProblem(why);
+        return;
+      }
+      setKey(e.key);
+      saveSkipEditorKey(e.key);
+      setListening(false);
+      setProblem(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [listening]);
+  const hint = listening
+    ? (problem ?? "Press the key to use, or Escape to keep the current one")
+    : "In the player, opens this season's skip to adjust, or starts a new one where the video is";
+  return (
+    <div className="setting">
+      <div className="setting__text">
+        <span className="setting__label">Skip editor shortcut</span>
+        <span className="setting__hint">{hint}</span>
+      </div>
+      <div className="setting__buttons">
+        {key !== DEFAULT_SKIP_EDITOR_KEY && !listening && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setKey(DEFAULT_SKIP_EDITOR_KEY);
+              saveSkipEditorKey(DEFAULT_SKIP_EDITOR_KEY);
+            }}
+          >
+            Reset to {keyLabel(DEFAULT_SKIP_EDITOR_KEY)}
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          active={listening}
+          aria-label={listening ? "Waiting for a key" : `Skip editor shortcut: ${keyLabel(key)}. Change`}
+          onClick={() => {
+            setProblem(null);
+            setListening((l) => !l);
+          }}
+        >
+          {listening ? "Press a key…" : <kbd className="kbd">{keyLabel(key)}</kbd>}
+        </Button>
+      </div>
+    </div>
   );
 }
 

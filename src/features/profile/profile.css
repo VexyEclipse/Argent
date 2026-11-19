@@ -228,6 +228,12 @@
   line-height: 1.45;
   color: var(--text-3);
 }
+.setting__buttons {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+}
 .setting__note {
   padding: var(--sp-4) 0;
   font-size: var(--fs-small);

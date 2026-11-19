@@ -266,7 +266,8 @@ export function buildExternalRequest(input: {
     embeddedSubtitleCount: direct ? embedded(streams, "Subtitle").length : 0,
     segments: (input.segments ?? [])
       .filter((s) => ["Intro", "Recap", "Preview", "Commercial"].includes(s.Type))
-      .map((s) => ({ type: s.Type, start: s.StartTicks / TICKS, end: s.EndTicks / TICKS })),
+      // A learned skip's own name labels the native player's button ("Skip opening").
+      .map((s) => ({ type: s.Label ?? s.Type, start: s.StartTicks / TICKS, end: s.EndTicks / TICKS })),
     upNextAt: input.nextTitle ? input.upNextAt : undefined,
     next: input.nextTitle ? { title: input.nextTitle } : undefined,
     hasPrevious: input.hasPrevious,

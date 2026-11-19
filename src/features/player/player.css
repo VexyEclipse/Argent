@@ -525,6 +525,113 @@ html[data-platform="tv"] .player__skip {
   display: flex;
   gap: 6px;
   margin-top: auto;
+  /* Room between the episode line and the buttons, however tall the thumbnail is. */
+  padding-top: var(--sp-3);
+}
+
+/* ---- skip editor (Learn skips): where a skip starts and ends, its name, ask or auto ---- */
+.skipedit {
+  position: absolute;
+  right: clamp(16px, 3vw, 48px);
+  bottom: 140px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(400px, calc(100vw - 32px));
+  padding: var(--sp-4);
+  background: rgb(16 17 19 / 0.92);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(18px);
+}
+.skipedit__title {
+  font-weight: 600;
+  margin-bottom: var(--sp-1);
+}
+.skipedit__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.skipedit__label {
+  flex: 0 0 72px;
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.skipedit__nudge {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--text-2);
+}
+.skipedit__nudge:hover,
+.skipedit__nudge:focus-visible {
+  background: rgb(255 255 255 / 0.14);
+  color: var(--text-1);
+}
+.skipedit__nudge:focus-visible,
+.skipedit__option:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.skipedit__time,
+.skipedit__name {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--text-1);
+  font: inherit;
+}
+.skipedit__time {
+  flex: 0 0 84px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.skipedit__name {
+  flex: 1;
+}
+.skipedit__time:focus,
+.skipedit__name:focus {
+  outline: none;
+  border-color: var(--silver-300);
+}
+.skipedit__now {
+  margin-left: auto;
+}
+.skipedit__hint {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  margin-bottom: var(--sp-1);
+}
+.skipedit__choice {
+  display: flex;
+  flex: 1;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: rgb(255 255 255 / 0.06);
+}
+.skipedit__option {
+  flex: 1;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.skipedit__option.is-on {
+  background: var(--silver-100);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.skipedit__actions {
+  display: flex;
+  gap: 6px;
+  padding-top: var(--sp-2);
 }
 
 /* ---- loading, hand-off and error screens: a message in the middle of the screen ---- */
@@ -578,6 +685,14 @@ html[data-platform="mobile"] .pmenu {
 }
 html[data-platform="mobile"] .upnext__thumb {
   flex-basis: 110px;
+}
+html[data-platform="mobile"] .skipedit {
+  right: 16px;
+  bottom: 120px;
+  padding: var(--sp-3);
+}
+html[data-platform="mobile"] .skipedit__label {
+  flex-basis: 56px;
 }
 
 /* ---- TV ---- */

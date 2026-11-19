@@ -314,4 +314,10 @@ export interface MediaSegment {
   Type: "Unknown" | "Commercial" | "Preview" | "Recap" | "Outro" | "Intro";
   StartTicks: number;
   EndTicks: number;
+  /** Argent's own: a skip found in the chapter names, or learned from the viewer (see player/skipLearning.ts). The server's have none. */
+  Source?: "chapter" | "learned";
+  /** Argent's own: the name the viewer gave a learned skip ("Opening"), shown as "Skip Opening". */
+  Label?: string;
+  /** Argent's own: a learned skip the viewer set to skip without asking. */
+  Auto?: boolean;
 }

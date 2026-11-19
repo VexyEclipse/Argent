@@ -121,3 +121,18 @@ export function readSound(): { dialogue: boolean; level: boolean } {
 }
 
 export const saveSound = (value: { dialogue: boolean; level: boolean }) => writeValue(localStorage, SOUND_KEY, JSON.stringify(value));
+
+const SKIP_EDITOR_KEY = "argent.skipEditorKey";
+/** Opens the skip editor in the player (Learn skips), unless changed in Settings → Skipping. */
+export const DEFAULT_SKIP_EDITOR_KEY = "e";
+
+/** The key that opens the skip editor (this device). */
+export function readSkipEditorKey(): string {
+  try {
+    return localStorage.getItem(SKIP_EDITOR_KEY) || DEFAULT_SKIP_EDITOR_KEY;
+  } catch {
+    return DEFAULT_SKIP_EDITOR_KEY;
+  }
+}
+
+export const saveSkipEditorKey = (key: string) => writeValue(localStorage, SKIP_EDITOR_KEY, key);

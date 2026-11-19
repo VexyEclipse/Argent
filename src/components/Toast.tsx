@@ -1,19 +1,19 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 // One app-wide toast for quick confirmations ("Copied", "Refreshing…"), optionally with
-// one action ("Undo").
+// an action ("Undo") or two.
 
 interface ToastAction {
   label: string;
   run: () => void;
 }
 
-let current: { id: number; text: string; action?: ToastAction } | null = null;
+let current: { id: number; text: string; actions: ToastAction[] } | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((fn) => fn());
 
-export function showToast(text: string, action?: ToastAction) {
-  current = { id: (current?.id ?? 0) + 1, text, action };
+export function showToast(text: string, action?: ToastAction | ToastAction[]) {
+  current = { id: (current?.id ?? 0) + 1, text, actions: action ? ([] as ToastAction[]).concat(action) : [] };
   emit();
 }
 
@@ -36,26 +36,27 @@ export function ToastHost() {
           emit();
         }
       },
-      toast.action ? 6000 : 3200,
+      toast.actions.length ? 6000 : 3200,
     );
     return () => window.clearTimeout(t);
   }, [toast]);
   if (!toast) return null;
   return (
-    <div className={`toast ${toast.action ? "toast--action" : ""}`} role="status" key={toast.id}>
+    <div className={`toast ${toast.actions.length ? "toast--action" : ""}`} role="status" key={toast.id}>
       {toast.text}
-      {toast.action && (
+      {toast.actions.map((action) => (
         <button
+          key={action.label}
           className="toast__action"
           onClick={() => {
-            toast.action!.run();
+            action.run();
             current = null;
             emit();
           }}
         >
-          {toast.action.label}
+          {action.label}
         </button>
-      )}
+      ))}
     </div>
   );
 }

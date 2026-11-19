@@ -52,8 +52,9 @@ export function activeCredits(segments: readonly MediaSegment[] | undefined, sec
   return segments?.find((s) => s.Type === "Outro" && seconds >= s.StartTicks / TICKS && seconds < s.EndTicks / TICKS - 1);
 }
 
-/** "Skip Intro", "Skip Recap", "Skip Credits", "Skip Ad"… */
-export function skipLabel(type: MediaSegment["Type"]): string {
+/** "Skip Intro", "Skip Recap", "Skip Credits", "Skip Ad"… or the name given to a learned skip. */
+export function skipLabel(type: MediaSegment["Type"], label?: string): string {
+  if (label) return `Skip ${label}`;
   if (type === "Commercial") return "Skip Ad";
   if (type === "Outro") return "Skip Credits";
   return `Skip ${type}`;
@@ -69,7 +70,8 @@ export interface AutoSkipPrefs {
 /**
  * What to skip on its own right now: an intro, or the credits when there's a next episode
  * to go to (a film's credits may hide a final scene). Each segment once, so seeking back
- * into one you chose to watch is left alone.
+ * into one you chose to watch is left alone. A skip Argent learned from your own skips
+ * follows its own choice (ask, or skip automatically), whatever the setting for intros.
  */
 export function autoSkipNow(
   segments: readonly MediaSegment[] | undefined,
@@ -78,7 +80,7 @@ export function autoSkipNow(
   opts: { hasNext: boolean; done: ReadonlySet<string> },
 ): MediaSegment | undefined {
   const intro = activeSkip(segments, seconds);
-  if (prefs.intro && intro?.Type === "Intro" && !opts.done.has(intro.Id)) return intro;
+  if (intro && !opts.done.has(intro.Id) && (intro.Source === "learned" ? intro.Auto === true : prefs.intro && intro.Type === "Intro")) return intro;
   const credits = activeCredits(segments, seconds);
   if (prefs.credits && opts.hasNext && credits && !opts.done.has(credits.Id)) return credits;
   return undefined;
@@ -95,7 +97,20 @@ export function nextChapter(chapters: BaseItem["Chapters"], seconds: number): nu
     .find((t) => t > seconds + 1);
 }
 
-/** When Up Next appears: at the credits (outro segment), else 30 seconds from the end. */
+/** The Up Next card in Argent's own player shows for the last this many seconds. */
+export const UP_NEXT_CARD_SECONDS = 10;
+
+/**
+ * When Argent's own player shows Up Next: the last ten seconds, so the credits and anything
+ * after them play out. The card never moves on by itself; the episode ending does.
+ */
+export const upNextCardAt = (durationSeconds: number) => durationSeconds - UP_NEXT_CARD_SECONDS;
+
+/**
+ * When the native players (Android) show their Next button: at the credits (outro
+ * segment), else 30 seconds from the end. It's only a button: they move on when the
+ * episode ends.
+ */
 export function upNextAt(segments: readonly MediaSegment[] | undefined, durationSeconds: number): number {
   const outro = segments?.find((s) => s.Type === "Outro");
   return outro ? outro.StartTicks / TICKS : durationSeconds - UP_NEXT_SECONDS;
@@ -129,3 +144,33 @@ export function missingTrack(r: DecodeReport): "audio" | "picture" | null {
 
 /** Autoplay stops after a few unattended episodes and asks first. */
 export const shouldAskStillWatching = (chain: number) => chain >= MAX_UNATTENDED_EPISODES;
+
+/**
+ * Keys the player already uses (see the keyboard handler in PlayerPage), so a shortcut the
+ * viewer picks can't take one over. Case matters: Shift+N is next, n is free.
+ */
+export const PLAYER_KEYS: readonly string[] = [
+  " ", "k", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "j", "l", "f", "m", "c", "N", "P", "s", "S",
+  "PageUp", "Escape", "Backspace", "Tab",
+];
+const MODIFIERS = ["Shift", "Control", "Alt", "Meta", "AltGraph", "CapsLock", "OS"];
+/** Keys the browser or system acts on before the page sees them. */
+const RESERVED = ["F5", "F11", "F12", "Unidentified", "Dead"];
+
+/** Shift, Ctrl…: held for another key, never a shortcut by themselves. */
+export const isModifierKey = (key: string) => MODIFIERS.includes(key);
+
+/** Why a key can't open something in the player, or null when it can. */
+export function shortcutProblem(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "metaKey">): string | null {
+  if (e.ctrlKey || e.altKey || e.metaKey) return "Pick a key without Ctrl, Alt or ⌘: the browser keeps those";
+  if (e.key.startsWith("Media") || e.key.startsWith("Browser") || e.key.startsWith("Audio") || RESERVED.includes(e.key)) return "The system or browser keeps that key";
+  if (PLAYER_KEYS.includes(e.key)) return "The player already uses that key";
+  return null;
+}
+
+/** A key as the viewer knows it: "E", "Shift+E", "Space", "F2"… */
+export function keyLabel(key: string): string {
+  if (key === " ") return "Space";
+  if (key.length === 1 && key !== key.toLowerCase()) return `Shift+${key}`;
+  return key.length === 1 ? key.toUpperCase() : key;
+}

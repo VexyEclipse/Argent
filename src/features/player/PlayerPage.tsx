@@ -29,7 +29,7 @@ import { ExternalPlayback } from "./ExternalPlayback";
 import { episodeNeighbours, needsHlsJs, requestStream, resolvePlayable, type StreamInfo, type StreamOptions } from "./playback";
 import { activeCredits, activeSkip, autoSkipNow, nextChapter, outroStart, skipLabel, startTicks, subtitleChange, toggledSubtitle } from "./playerLogic";
 import { BottomBar, PlaybackInfo, TopBar, type Menu } from "./PlayerChrome";
-import { readAutoSkip, readMatchFrameRate, readPauseInfo, readSound, saveSound, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
+import { readAutoSkip, readMatchFrameRate, readPauseInfo, readSkipEditorKey, readSound, saveSound, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
 import { useAudioEffects, type SoundPrefs } from "./audioEffects";
 import { PauseInfo } from "./PauseInfo";
 import { PlaybackReporter } from "./reporter";
@@ -43,6 +43,8 @@ import { findDownload, readDownloads } from "@/features/downloads/store";
 import { FillerBadge } from "@/features/filler/FillerBadge";
 import { useEpisodeTitle } from "@/features/filler/names";
 import { useFillerIds } from "@/features/filler/store";
+import { useSkipLearning, useSkipSegments } from "./learnedSkips";
+import { SkipEditor } from "./SkipEditor";
 import { useSubtitles } from "./useSubtitles";
 import { useUpNext } from "./useUpNext";
 import "./player.css";
@@ -79,6 +81,7 @@ function OfflineRoute({ id }: { id: string }) {
   const [record] = useState(() => findDownload(id));
   const [{ prev, next }] = useState(() => offlineNeighbours(readDownloads(), id));
   const position = useRef(0);
+  const segments = useSkipSegments(record?.item, record?.segments);
   const exit = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     if (window.history.length > 1) navigate(-1);
@@ -88,7 +91,7 @@ function OfflineRoute({ id }: { id: string }) {
   if (!record || record.state !== "done") return <PlaybackError message="This title isn't downloaded on this device." onBack={exit} />;
   const start = params.get("start") !== null ? startTicks(record.item, params.get("start")) : offlineStart(record);
   return (
-    <WebPlayer item={record.item} next={next} prev={prev} segments={record.segments} startTicks={start} subtitleIndex={record.subtitleIndex} position={position} exit={exit} playItem={playItem} offline={record} />
+    <WebPlayer item={record.item} next={next} prev={prev} segments={segments} startTicks={start} subtitleIndex={record.subtitleIndex} position={position} exit={exit} playItem={playItem} offline={record} />
   );
 }
 
@@ -139,6 +142,8 @@ function PlayerRoute({ id }: { id: string }) {
     enabled: Boolean(item),
     staleTime: Infinity,
   });
+  // Plus, with Learn skips on, those found in chapter names and learned this season.
+  const skipSegments = useSkipSegments(item, segments.data);
 
   const exit = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -204,7 +209,7 @@ function PlayerRoute({ id }: { id: string }) {
     let next = neighbours.data ? neighbours.data.next : undefined;
     if (next === null && item.SeriesId && !series.isSuccess && !series.isError) next = undefined;
     const target = ratingTarget(item, next, { seasons: readRatingPrefs().rateSeasons, seriesStatus: series.data?.Status });
-    if (isFinished(position.current, duration, outroStart(segments.data)) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
+    if (isFinished(position.current, duration, outroStart(skipSegments)) && shouldPrompt(target, readRatings(user.Id))) queueRatePrompt(target);
   };
   useEffect(
     () => () => {
@@ -259,7 +264,7 @@ function PlayerRoute({ id }: { id: string }) {
         item={item}
         next={neighbours.data?.next ?? null}
         prev={neighbours.data?.prev ?? null}
-        segments={segments.data ?? []}
+        segments={skipSegments ?? []}
         startTicks={start}
         mediaSourceId={version ?? undefined}
         audioIndex={numberParam(params.get("audio"))}
@@ -280,7 +285,7 @@ function PlayerRoute({ id }: { id: string }) {
       item={item}
       next={neighbours.data?.next ?? null}
       prev={neighbours.data?.prev ?? null}
-      segments={segments.data}
+      segments={skipSegments}
       startTicks={start}
       mediaSourceId={version ?? undefined}
       audioIndex={numberParam(params.get("audio"))}
@@ -637,7 +642,17 @@ function WebPlayer(props: {
     el.currentTime = to;
     setCurrent(el.currentTime);
   }, []);
-  const seekBy = useCallback((d: number) => seekTo((video.current?.currentTime ?? 0) + d), [seekTo]);
+  // The viewer's own seeks (not skips or resuming) teach Learn skips what they jump over.
+  const learning = useSkipLearning({ item, segments, duration, active: !sync });
+  const userSeek = useCallback(
+    (t: number) => {
+      const from = video.current?.currentTime ?? 0;
+      seekTo(t);
+      learning.observe(from, Math.max(0, Math.min(t, video.current?.duration || Infinity)));
+    },
+    [seekTo, learning],
+  );
+  const seekBy = useCallback((d: number) => userSeek((video.current?.currentTime ?? 0) + d), [userSeek]);
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     // The whole page, not the player: the player remounts for the next episode, which
@@ -720,7 +735,7 @@ function WebPlayer(props: {
         goPrev();
         break;
       case "seek":
-        seekTo(c.seconds);
+        userSeek(c.seconds);
         break;
       case "seekBy":
         seekBy(c.seconds);
@@ -749,7 +764,6 @@ function WebPlayer(props: {
   const upNext = useUpNext({
     video,
     next: sync ? null : next,
-    segments,
     current,
     duration,
     playing,
@@ -757,24 +771,29 @@ function WebPlayer(props: {
     playItem: props.playItem,
     exit,
   });
-  // Skipping: intros and recaps get a card; the credits too, unless Up Next is up (with a
-  // next episode, the Up Next card is the credits card). S does whichever is showing.
+  // Skipping: intros and recaps get a card; the credits too (to the next episode, when
+  // there is one) until Up Next takes over for the last seconds. S does whichever is showing.
   const credits = activeCredits(segments, current);
-  const skipCard = activeSegment ?? (credits && !(next && upNext.showUpNext && !sync) ? credits : undefined);
+  // While a skip is being edited, the editor is the card.
+  const skipCard = learning.editor ? undefined : (activeSegment ?? (credits && !(next && upNext.showUpNext && !sync) ? credits : undefined));
   const creditsToNext = Boolean(credits && next && !sync);
   const skipNow = useCallback(
     (segment: MediaSegment | undefined) => {
       if (segment?.Type === "Outro" && next && !syncRef.current) props.playItem(next);
-      else if (segment) seekTo(segment.EndTicks / TICKS_PER_SECOND);
+      else if (segment) {
+        seekTo(segment.EndTicks / TICKS_PER_SECOND);
+        learning.skipped(segment);
+      }
     },
-    [next, props, seekTo],
+    [next, props, seekTo, learning],
   );
   // Automatic skips (Settings → Skipping). Not in a Watch Together group: everyone's
   // player would jump at once.
   const autoSkip = useMemo(readAutoSkip, []);
   const autoSkipped = useRef(new Set<string>());
   useEffect(() => {
-    if (!playing || sync || !reachedStart.current) return;
+    // Not while a skip is being edited: finding its edges means playing through it.
+    if (!playing || sync || !reachedStart.current || learning.editor) return;
     const segment = autoSkipNow(segments, current, autoSkip, { hasNext: Boolean(next), done: autoSkipped.current });
     if (!segment) return;
     autoSkipped.current.add(segment.Id);
@@ -783,8 +802,9 @@ function WebPlayer(props: {
       return;
     }
     seekTo(segment.EndTicks / TICKS_PER_SECOND);
-    showToast(`Skipped the ${segment.Type.toLowerCase()}`, { label: "Watch it", run: () => seekTo(segment.StartTicks / TICKS_PER_SECOND) });
-  }, [current, playing, sync, segments, autoSkip, next, upNext, seekTo]);
+    const watch = { label: "Watch it", run: () => seekTo(segment.StartTicks / TICKS_PER_SECOND) };
+    showToast(`Skipped the ${(segment.Label ?? segment.Type).toLowerCase()}`, segment.Source === "learned" ? [watch, { label: "Adjust", run: learning.adjust }] : watch);
+  }, [current, playing, sync, segments, autoSkip, next, upNext, seekTo, learning]);
 
   // A group moves on together when its episode ends.
   useEffect(() => {
@@ -796,6 +816,7 @@ function WebPlayer(props: {
   }, [sync, exit]);
 
   // ---- keyboard & remote ----------------------------------------------------------
+  const skipEditorKey = useMemo(readSkipEditorKey, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -803,11 +824,12 @@ function WebPlayer(props: {
       if (isBackKey(e)) {
         e.preventDefault();
         if (menu) setMenu(null);
+        else if (learning.editor) learning.close();
         else if (document.fullscreenElement && platform !== "tv") document.exitFullscreen();
         else exit();
         return;
       }
-      const onControl = target.closest(".pc button, .seek, .pmenu");
+      const onControl = target.closest(".pc button, .seek, .pmenu, .skipedit");
       // With controls up on TV, the D-pad moves between controls.
       if (platform === "tv" && visible && onControl && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && !target.classList.contains("seek")) {
         const dir = ({ ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" } as const)[e.key as "ArrowUp"];
@@ -818,6 +840,13 @@ function WebPlayer(props: {
       // Enter activates the focused control; Space always means play/pause, so it can
       // never trigger whichever button was clicked last (e.g. "previous episode").
       if (onControl && e.key === "Enter") {
+        poke();
+        return;
+      }
+      // The skip editor's shortcut (Settings → Skipping).
+      if (e.key === skipEditorKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        learning.toggleEditor(video.current?.currentTime ?? 0);
+        e.preventDefault();
         poke();
         return;
       }
@@ -880,7 +909,7 @@ function WebPlayer(props: {
         case "PageUp": {
           const chapter = nextChapter(item.Chapters, video.current?.currentTime ?? 0);
           if (chapter === undefined) return;
-          seekTo(chapter);
+          userSeek(chapter);
           break;
         }
         default:
@@ -1015,10 +1044,23 @@ function WebPlayer(props: {
       {skipCard && !upNext.stillWatching && (
         <SkipCard
           key={skipCard.Id}
-          label={skipLabel(skipCard.Type)}
+          label={skipLabel(skipCard.Type, skipCard.Label)}
           progress={(current - skipCard.StartTicks / TICKS_PER_SECOND) / ((skipCard.EndTicks - skipCard.StartTicks) / TICKS_PER_SECOND)}
           keyHint={platform === "desktop"}
           onSkip={() => skipNow(skipCard)}
+        />
+      )}
+
+      {learning.editor && (
+        <SkipEditor
+          key={`${learning.editor.mode}-${learning.editor.range.start}-${learning.editor.range.end}`}
+          state={learning.editor}
+          duration={duration}
+          currentTime={() => video.current?.currentTime ?? 0}
+          onSeek={seekTo}
+          onSave={learning.save}
+          onForget={learning.forget}
+          onClose={learning.close}
         />
       )}
 
@@ -1088,7 +1130,7 @@ function WebPlayer(props: {
         setSubOffset={subs.setSubOffset}
         subtitlesAdjustable={Boolean(subs.textTrack || subs.assTrack)}
         onMouseUp={releaseFocus}
-        onSeek={seekTo}
+        onSeek={userSeek}
         onScrub={setScrubbing}
         onSeekBy={seekBy}
         onTogglePlay={togglePlay}

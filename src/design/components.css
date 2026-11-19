@@ -979,6 +979,10 @@ html[data-platform="tv"] .row__header {
   font-weight: 600;
   font-size: var(--fs-small);
 }
+/* Two actions sit closer to each other than to the text. */
+.toast__action + .toast__action {
+  margin-left: calc(var(--sp-2) - var(--sp-4));
+}
 .toast__action:focus-visible {
   box-shadow: var(--focus-ring);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaSegment } from "@/api/types";
-import { activeCredits, activeSkip, autoSkipNow, missingTrack, skipLabel, nextChapter, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt } from "./playerLogic";
+import { activeCredits, activeSkip, autoSkipNow, missingTrack, skipLabel, nextChapter, shouldAskStillWatching, startTicks, subtitleChange, toggledSubtitle, upNextAt, upNextCardAt, isModifierKey, keyLabel, shortcutProblem } from "./playerLogic";
 
 const T = 10_000_000;
 const seg = (Type: MediaSegment["Type"], start: number, end: number): MediaSegment => ({ Id: Type, ItemId: "i", Type, StartTicks: start * T, EndTicks: end * T });
@@ -35,10 +35,11 @@ describe("segments", () => {
     expect(activeSkip(segments, 149.5)).toBeUndefined();
     expect(activeSkip(segments, 1350)).toBeUndefined();
   });
-  it("shows Up Next at the credits, else 30 s from the end", () => {
+  it("shows the native players' Next button at the credits, else 30 s from the end", () => {
     expect(upNextAt(segments, 1400)).toBe(1300);
     expect(upNextAt([], 1400)).toBe(1370);
   });
+  it("shows the Up Next card for the last 10 s, after the credits", () => expect(upNextCardAt(1400)).toBe(1390));
 });
 
 describe("nextChapter", () => {
@@ -93,5 +94,31 @@ describe("skipping", () => {
   it("leaves a film's credits and a segment you went back to", () => {
     expect(autoSkipNow(segments, 1310, on, { hasNext: false, done: new Set() })).toBeUndefined();
     expect(autoSkipNow(segments, 70, on, { hasNext: true, done: new Set(["Intro"]) })).toBeUndefined();
+  });
+});
+
+describe("player shortcuts", () => {
+  const press = (key: string, mods: Partial<Record<"ctrlKey" | "altKey" | "metaKey", boolean>> = {}) => ({ key, ctrlKey: false, altKey: false, metaKey: false, ...mods });
+  it("takes a free key", () => {
+    expect(shortcutProblem(press("e"))).toBeNull();
+    expect(shortcutProblem(press("n"))).toBeNull();
+    expect(shortcutProblem(press("F2"))).toBeNull();
+  });
+  it("refuses keys the player uses, case and all", () => {
+    expect(shortcutProblem(press("s"))).toMatch(/already/);
+    expect(shortcutProblem(press("N"))).toMatch(/already/);
+    expect(shortcutProblem(press(" "))).toMatch(/already/);
+  });
+  it("refuses keys the browser or system keeps", () => {
+    expect(shortcutProblem(press("e", { ctrlKey: true }))).toMatch(/Ctrl/);
+    expect(shortcutProblem(press("F5"))).toMatch(/system/);
+    expect(shortcutProblem(press("MediaPlayPause"))).toMatch(/system/);
+  });
+  it("names keys", () => {
+    expect(keyLabel("e")).toBe("E");
+    expect(keyLabel("E")).toBe("Shift+E");
+    expect(keyLabel(" ")).toBe("Space");
+    expect(keyLabel("F2")).toBe("F2");
+    expect(isModifierKey("Shift")).toBe(true);
   });
 });
