@@ -122,7 +122,7 @@ function SkippingSection() {
         onChange={(v) => change({ credits: v })}
       />
       <Toggle
-        label="Learn skips (experimental)"
+        label="Learn skips"
         hint="For shows the server hasn't marked: chapters named like an opening, ending, recap or preview get a Skip card, and Argent learns from you. Jump over the same stretch near the start of two episodes of a season and it offers to skip it in every episode. Before saying yes, or later with the shortcut below, you can set its start and end to the tenth of a second, name it, and choose whether it asks first or skips automatically. Seeking back just after one trims it. Learning happens in Argent's own player; what it learns is saved to your account."
         checked={learn}
         onChange={(v) => {

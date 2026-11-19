@@ -1,4 +1,4 @@
-// Learn skips (Settings → Skipping, experimental): skips found in chapter names, and the
+// Learn skips (Settings → Skipping, off until turned on): skips found in chapter names, and the
 // intro a viewer keeps jumping over in a season, offered as a Skip card in its other
 // episodes. The rules are in skipLearning.ts; what each season has taught Argent is kept
 // in the viewer's Jellyfin account, so every device offers the same skips.
@@ -35,7 +35,7 @@ const seasons = createSyncedMap<SeasonSkips>({ prefsId: "argent-skips", field: "
 
 const PREF_KEY = "argent.learnSkips";
 
-/** Experimental, off unless turned on (this device). */
+/** Off unless turned on (this device). */
 export function readLearnSkips(): boolean {
   try {
     return localStorage.getItem(PREF_KEY) === "true";
