@@ -98,31 +98,111 @@ function set(next: Partial<State>) {
   emit();
 }
 
-export const usePreviewState = () => useSyncExternalStore(subscribe, () => state);
+export const readPreviewState = () => state;
+export const usePreviewState = () => useSyncExternalStore(subscribe, readPreviewState);
 export const useSpotlightFocus = () => useSyncExternalStore(subscribe, () => state.focus);
 /** Whether something is playing or spotlit over the page (the featured header pauses). */
 export const usePreviewCovers = () => useSyncExternalStore(subscribe, () => state.playing || state.focus !== null);
 
-// Desktop hover: open after the pointer rests, close a moment after it leaves (so it can
-// travel from the card onto the preview without it closing).
-const OPEN_AFTER_MS = 650;
+// Desktop hover: a card opens once the pointer has come to rest on it, not while it passes
+// over on its way somewhere else, and not when scrolling (or the page shifting) brings the
+// card under a pointer that's standing still: that waits until the pointer moves. A preview
+// closes a moment after the pointer leaves (so it can travel from the card onto it).
+
+/** How long the pointer rests on a card before it opens. */
+const OPEN_REST_MS = 500;
+/** With another preview open, to move it along to this card. */
+const SWITCH_REST_MS = 250;
+/** Moving less than this still counts as resting (a hand on the mouse is never quite still). */
+const REST_RADIUS = 10;
+/** A real move this recent made the enter (the move event can come just after it). */
+const MOVED_IN_MS = 100;
 const CLOSE_AFTER_MS = 140;
 let openTimer = 0;
 let closeTimer = 0;
 
-export function hoverEnter(target: HoverTarget) {
-  window.clearTimeout(closeTimer);
+/** The card under the pointer, waiting for the pointer to rest on it. */
+let pending: { target: HoverTarget; armed: boolean; since: number } | null = null;
+/** Where the pointer last really moved to, and where (and since when) it has been resting. */
+const pointer = { x: NaN, y: NaN, at: -Infinity, restX: NaN, restY: NaN, restSince: -Infinity };
+let tracking = false;
+
+function onPointerMove(e: PointerEvent) {
+  if (e.pointerType === "touch") return;
+  // Not a move: the browser saying again where the pointer is after the page moved under it.
+  if (Math.abs(e.clientX - pointer.x) < 0.5 && Math.abs(e.clientY - pointer.y) < 0.5) return;
+  const now = performance.now();
+  pointer.x = e.clientX;
+  pointer.y = e.clientY;
+  pointer.at = now;
+  if (!(Math.hypot(e.clientX - pointer.restX, e.clientY - pointer.restY) <= REST_RADIUS)) {
+    pointer.restX = e.clientX;
+    pointer.restY = e.clientY;
+    pointer.restSince = now;
+  }
+  // The pointer moving on the card it had stood still over: now it may open.
+  if (pending && !pending.armed) arm(now);
+}
+
+function onScroll(e: Event) {
+  // The card is scrolling under the pointer: it waits for the pointer to move again.
+  const scrolled = e.target as Partial<Node> | null;
+  if (!pending?.armed || !scrolled?.contains?.(pending.target.anchor)) return;
+  pending.armed = false;
   window.clearTimeout(openTimer);
-  if (state.hover?.anchor === target.anchor) return;
-  openTimer = window.setTimeout(
-    () => {
-      if (target.anchor.isConnected) set({ hover: target, playing: false });
-    },
-    state.hover ? 120 : OPEN_AFTER_MS,
-  );
+}
+
+function track() {
+  if (tracking) return;
+  tracking = true;
+  window.addEventListener("pointermove", onPointerMove, { capture: true, passive: true });
+  window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+}
+
+function arm(now: number) {
+  if (!pending) return;
+  pending.armed = true;
+  pending.since = now;
+  window.clearTimeout(closeTimer);
+  settle();
+}
+
+/** Opens the pending card once the pointer has rested on it long enough, else checks again then. */
+function settle() {
+  window.clearTimeout(openTimer);
+  if (!pending?.armed) return;
+  const { target } = pending;
+  if (!target.anchor.isConnected) {
+    pending = null;
+    return;
+  }
+  const due = Math.max(pending.since, pointer.restSince) + (state.hover ? SWITCH_REST_MS : OPEN_REST_MS);
+  const wait = due - performance.now();
+  if (wait > 1) {
+    openTimer = window.setTimeout(settle, wait);
+    return;
+  }
+  pending = null;
+  set({ hover: target, playing: false });
+}
+
+export function hoverEnter(target: HoverTarget) {
+  track();
+  window.clearTimeout(openTimer);
+  if (state.hover?.anchor === target.anchor) {
+    pending = null;
+    window.clearTimeout(closeTimer);
+    return;
+  }
+  const now = performance.now();
+  pending = { target, armed: false, since: now };
+  // The pointer came onto the card. Otherwise the card came under it (a scroll, the page
+  // shifting), and it waits for the pointer to move; meanwhile any open preview closes.
+  if (now - pointer.at < MOVED_IN_MS) arm(now);
 }
 
 export function hoverLeave() {
+  pending = null;
   window.clearTimeout(openTimer);
   window.clearTimeout(closeTimer);
   closeTimer = window.setTimeout(() => set({ hover: null, playing: false }), CLOSE_AFTER_MS);
@@ -134,6 +214,7 @@ export function hoverHold() {
 }
 
 export function closeHover() {
+  pending = null;
   window.clearTimeout(openTimer);
   window.clearTimeout(closeTimer);
   if (state.hover) set({ hover: null, playing: false });
