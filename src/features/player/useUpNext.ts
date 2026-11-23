@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { BaseItem } from "@/api/types";
-import { readAutoplayChain, writeAutoplayChain } from "./prefs";
+import { readAskStillWatching, readAutoplayChain, writeAutoplayChain } from "./prefs";
 import { shouldAskStillWatching, upNextCardAt } from "./playerLogic";
 
 /** Stuck this long in the last moments of an episode counts as its end. */
@@ -9,9 +9,9 @@ const END_MARGIN_SECONDS = 1.5;
 
 /**
  * Up Next for the last ten seconds of an episode, moving on when the episode ends (its
- * button goes early), and the "Are you still watching?" pause after a few unattended
- * episodes, so a player left running doesn't work through a season (and mark it watched)
- * on its own.
+ * button goes early), and (when turned on in Settings) the "Are you still watching?" pause
+ * after a few unattended episodes, so a player left running doesn't work through a season
+ * (and mark it watched) on its own.
  */
 export function useUpNext(opts: {
   video: RefObject<HTMLVideoElement | null>;
@@ -33,7 +33,7 @@ export function useUpNext(opts: {
 
   const autoplayNext = useCallback(() => {
     if (!next) return;
-    if (shouldAskStillWatching(readAutoplayChain())) {
+    if (shouldAskStillWatching(readAutoplayChain(), readAskStillWatching())) {
       video.current?.pause();
       setStillWatching(true);
       return;

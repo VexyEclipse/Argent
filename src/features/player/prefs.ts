@@ -108,6 +108,19 @@ export function readPauseInfo(): boolean {
 
 export const savePauseInfo = (on: boolean) => writeValue(localStorage, PAUSE_INFO_KEY, String(on));
 
+const STILL_WATCHING_KEY = "argent.askStillWatching";
+
+/** Pause autoplay after a few unattended episodes to ask "Are you still watching?" (this device, off until turned on). */
+export function readAskStillWatching(): boolean {
+  try {
+    return localStorage.getItem(STILL_WATCHING_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export const saveAskStillWatching = (on: boolean) => writeValue(localStorage, STILL_WATCHING_KEY, String(on));
+
 const SOUND_KEY = "argent.sound";
 
 /** Dialogue boost and volume levelling (this device); also passed to the native players. */

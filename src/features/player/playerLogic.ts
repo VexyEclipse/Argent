@@ -142,8 +142,8 @@ export function missingTrack(r: DecodeReport): "audio" | "picture" | null {
   return null;
 }
 
-/** Autoplay stops after a few unattended episodes and asks first. */
-export const shouldAskStillWatching = (chain: number) => chain >= MAX_UNATTENDED_EPISODES;
+/** With "Ask if I'm still watching" on, autoplay stops after a few unattended episodes and asks first. */
+export const shouldAskStillWatching = (chain: number, enabled: boolean) => enabled && chain >= MAX_UNATTENDED_EPISODES;
 
 /**
  * Keys the player already uses (see the keyboard handler in PlayerPage), so a shortcut the

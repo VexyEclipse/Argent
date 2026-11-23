@@ -16,7 +16,7 @@ import { getPlatformOverride, setPlatformOverride, usePlatform, type Platform } 
 import { setRatingPref, useRatingPrefs } from "@/features/ratings/prefs";
 import { androidApp } from "@/platform/android";
 import { setFillerPref, useFillerPrefs } from "@/features/filler/store";
-import { DEFAULT_SKIP_EDITOR_KEY, readAutoSkip, readPauseInfo, readSkipEditorKey, saveAutoSkip, savePauseInfo, saveSkipEditorKey } from "@/features/player/prefs";
+import { DEFAULT_SKIP_EDITOR_KEY, readAskStillWatching, readAutoSkip, readPauseInfo, readSkipEditorKey, saveAskStillWatching, saveAutoSkip, savePauseInfo, saveSkipEditorKey } from "@/features/player/prefs";
 import { isModifierKey, keyLabel, shortcutProblem } from "@/features/player/playerLogic";
 import { forgetLearnedSkips, readLearnSkips, saveLearnSkips, useSavedSkips } from "@/features/player/learnedSkips";
 import { SkipList } from "@/features/player/SkipEditor";
@@ -345,6 +345,7 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [platform, setPlatform] = useState<Platform | "auto">(getPlatformOverride);
   const [pauseInfo, setPauseInfo] = useState(readPauseInfo);
+  const [askStillWatching, setAskStillWatching] = useState(readAskStillWatching);
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "settings" ? "settings" : "media";
   const ratingPrefs = useRatingPrefs();
@@ -508,6 +509,17 @@ export default function ProfilePage() {
                 checked={cfg.EnableNextEpisodeAutoPlay !== false}
                 onChange={(v) => save({ EnableNextEpisodeAutoPlay: v })}
               />
+              {cfg.EnableNextEpisodeAutoPlay !== false && (
+                <Toggle
+                  label="Ask if I'm still watching"
+                  hint="This device only. After three episodes in a row with no one touching anything, pause and ask before playing the next."
+                  checked={askStillWatching}
+                  onChange={(v) => {
+                    setAskStillWatching(v);
+                    saveAskStillWatching(v);
+                  }}
+                />
+              )}
               <Toggle
                 label="Play default audio track"
                 hint="Regardless of language preference"

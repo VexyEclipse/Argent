@@ -69,8 +69,9 @@ describe("missingTrack", () => {
 });
 
 it("asks if anyone's watching after three unattended episodes", () => {
-  expect(shouldAskStillWatching(2)).toBe(false);
-  expect(shouldAskStillWatching(3)).toBe(true);
+  expect(shouldAskStillWatching(2, true)).toBe(false);
+  expect(shouldAskStillWatching(3, true)).toBe(true);
+  expect(shouldAskStillWatching(5, false)).toBe(false);
 });
 
 describe("skipping", () => {

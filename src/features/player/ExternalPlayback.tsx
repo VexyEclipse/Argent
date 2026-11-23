@@ -11,7 +11,7 @@ import type { ExternalEngine } from "./external";
 import { buildExternalRequest, indexOfOrdinal, type ExternalResult, type ExternalState } from "./externalPlan";
 import { requestStream, type StreamInfo } from "./playback";
 import { autoSkipNow, shouldAskStillWatching, upNextAt } from "./playerLogic";
-import { readAutoSkip, readAutoplayChain, readQuality, readSound, writeAutoplayChain } from "./prefs";
+import { readAskStillWatching, readAutoSkip, readAutoplayChain, readQuality, readSound, writeAutoplayChain } from "./prefs";
 import { QUALITY_OPTIONS } from "./deviceProfile";
 import { PlaybackReporter } from "./reporter";
 
@@ -157,7 +157,7 @@ export function ExternalPlayback(props: {
           return;
         case "next":
           // Skipping the credits on its own is autoplay, which stops to ask after a few episodes.
-          if (creditsSkipped && !result.interacted && shouldAskStillWatching(readAutoplayChain())) {
+          if (creditsSkipped && !result.interacted && shouldAskStillWatching(readAutoplayChain(), readAskStillWatching())) {
             setStillWatching(true);
             return;
           }
@@ -169,7 +169,7 @@ export function ExternalPlayback(props: {
           return;
         case "ended":
           if (now.next && now.autoplay) {
-            if (shouldAskStillWatching(readAutoplayChain())) {
+            if (shouldAskStillWatching(readAutoplayChain(), readAskStillWatching())) {
               setStillWatching(true);
               return;
             }
