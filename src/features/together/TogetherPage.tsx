@@ -4,14 +4,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { client } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, formatClock } from "@/api/format";
-import { getControllableSessions, getSessionById, remoteCommand, remotePlaystate, syncPlay, type SessionInfo } from "@/api/sessions";
+import { getControllableSessions, getSessionById, remoteCommand, remotePlaystate, syncPlay, type PlaystateCommand, type SessionInfo } from "@/api/sessions";
 import { useAuth } from "@/auth/AuthProvider";
 import { Artwork } from "@/components/Artwork";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { EmptyState } from "@/components/States";
 import { showToast } from "@/components/Toast";
-import { createGroup, getTogether, joinGroup, leaveGroup, setPlayTarget, useTogether } from "./store";
+import { castBridge } from "@/features/cast/bridge";
+import { castCommand, castConnect, castDisconnect, RECEIVER_CLIENT, RECEIVER_NAMESPACE, receiverDeviceId, useCastDevices } from "@/features/cast/cast";
+import { logEvent } from "@/features/diagnostics/log";
+import { createGroup, getTogether, joinGroup, leaveGroup, setPlayTarget, useTogether, type TogetherState } from "./store";
 import "./together.css";
 
 const TICKS = 10_000_000;
@@ -50,8 +53,24 @@ export default function TogetherPage() {
 function PlayOn() {
   const { target } = useTogether();
   const sessions = useQuery({ queryKey: ["sessions", "controllable"], queryFn: getControllableSessions, refetchInterval: 10_000 });
+  const castDevices = useCastDevices();
+  const [connecting, setConnecting] = useState<string | null>(null);
   const ownDevice = client().deviceId;
-  const devices = (sessions.data ?? []).filter((s) => s.DeviceId !== ownDevice && s.SupportsRemoteControl);
+  // A Chromecast's receiver shows up as a session too, but only takes commands over Cast.
+  const devices = (sessions.data ?? []).filter((s) => s.DeviceId !== ownDevice && s.SupportsRemoteControl && s.Client !== RECEIVER_CLIENT);
+
+  const chooseCast = async (device: { id: string; name: string }) => {
+    setConnecting(device.id);
+    try {
+      await castConnect(device);
+      setPlayTarget({ Id: "", DeviceId: receiverDeviceId(device.name), DeviceName: device.name, Client: RECEIVER_CLIENT, CastId: device.id });
+    } catch (e) {
+      logEvent("cast", `Couldn't connect to ${device.name}: ${e instanceof Error ? e.message : e}`, "error");
+      showToast(`Couldn't connect to ${device.name}`);
+    } finally {
+      setConnecting(null);
+    }
+  };
 
   return (
     <section className="panel together__section">
@@ -64,12 +83,26 @@ function PlayOn() {
           <Icon name="check" size={18} className="together__tick" />
           <span className="together__device-name">This device</span>
         </button>
+        {castDevices.map((d) => (
+          <button
+            key={d.id}
+            role="radio"
+            aria-checked={target?.CastId === d.id}
+            className={`together__device ${target?.CastId === d.id ? "is-active" : ""}`}
+            disabled={connecting !== null}
+            onClick={() => target?.CastId !== d.id && chooseCast(d)}
+          >
+            <Icon name="check" size={18} className="together__tick" />
+            <span className="together__device-name">{d.name}</span>
+            <span className="together__device-meta">{connecting === d.id ? "Connecting…" : d.model || "Google Cast"}</span>
+          </button>
+        ))}
         {devices.map((s) => (
           <button
             key={s.Id}
             role="radio"
-            aria-checked={target?.DeviceId === s.DeviceId}
-            className={`together__device ${target?.DeviceId === s.DeviceId ? "is-active" : ""}`}
+            aria-checked={!target?.CastId && target?.DeviceId === s.DeviceId}
+            className={`together__device ${!target?.CastId && target?.DeviceId === s.DeviceId ? "is-active" : ""}`}
             onClick={() => setPlayTarget({ Id: s.Id, DeviceId: s.DeviceId, DeviceName: s.DeviceName, Client: s.Client })}
           >
             <Icon name="check" size={18} className="together__tick" />
@@ -77,26 +110,99 @@ function PlayOn() {
             <span className="together__device-meta">{s.NowPlayingItem ? `Playing ${s.NowPlayingItem.SeriesName ?? s.NowPlayingItem.Name}` : s.UserName}</span>
           </button>
         ))}
-        {sessions.isSuccess && devices.length === 0 && (
-          <p className="together__desc">No other devices are open right now. Open Argent or another Jellyfin app on your TV and it appears here.</p>
+        {sessions.isSuccess && devices.length === 0 && castDevices.length === 0 && (
+          <p className="together__desc">
+            No other devices are open right now. Open Argent or another Jellyfin app on your TV and it appears here
+            {castBridge ? ", as do Chromecasts and Google TVs on your network" : ""}.
+          </p>
         )}
       </div>
-      {target && <RemoteControl deviceId={target.DeviceId!} />}
+      {target && <RemoteControl key={target.CastId ?? target.DeviceId} target={target} />}
     </section>
   );
 }
 
-function RemoteControl({ deviceId }: { deviceId: string }) {
+/** What the remote's buttons do: Jellyfin's remote control, or Cast for a Chromecast. */
+interface Controls {
+  playstate(command: PlaystateCommand, seekPositionTicks?: number): Promise<unknown>;
+  /** 0–100 */
+  volume(level: number): Promise<unknown>;
+  mute(muted: boolean): Promise<unknown>;
+  audio(index: number): Promise<unknown>;
+  subtitles(index: number): Promise<unknown>;
+}
+
+function jellyfinControls(sessionId: string): Controls {
+  return {
+    playstate: (command, ticks) => remotePlaystate(sessionId, command, ticks),
+    volume: (level) => remoteCommand(sessionId, "SetVolume", { Volume: String(level) }),
+    mute: () => remoteCommand(sessionId, "ToggleMute"),
+    audio: (index) => remoteCommand(sessionId, "SetAudioStreamIndex", { Index: String(index) }),
+    subtitles: (index) => remoteCommand(sessionId, "SetSubtitleStreamIndex", { Index: String(index) }),
+  };
+}
+
+function castControls(device: { id: string; name: string }): Controls {
+  const bridge = castBridge!;
+  return {
+    playstate: (command, ticks) =>
+      command === "Seek"
+        ? castCommand(device, "Seek", { position: (ticks ?? 0) / TICKS })
+        : castCommand(device, command === "Rewind" || command === "FastForward" ? "PlayPause" : command),
+    // The receiver leaves volume to the device itself.
+    volume: (level) => bridge.volume(device.id, { level: level / 100 }),
+    mute: (muted) => bridge.volume(device.id, { muted }),
+    audio: (index) => castCommand(device, "SetAudioStreamIndex", { index }),
+    subtitles: (index) => castCommand(device, "SetSubtitleStreamIndex", { index }),
+  };
+}
+
+function RemoteControl({ target }: { target: NonNullable<TogetherState["target"]> }) {
+  const deviceId = target.DeviceId!;
+  const castId = target.CastId;
+  const castName = target.DeviceName ?? "";
   const session = useQuery({ queryKey: ["sessions", "device", deviceId], queryFn: () => getSessionById(deviceId), refetchInterval: 1500 });
   const s = session.data;
+  const qc = useQueryClient();
   // The server gives a reconnected app a new session id; follow it.
   useEffect(() => {
-    if (s && s.Id !== getTogether().target?.Id) setPlayTarget({ Id: s.Id, DeviceId: s.DeviceId, DeviceName: s.DeviceName, Client: s.Client });
-  }, [s]);
+    if (!castId && s && s.Id !== getTogether().target?.Id) setPlayTarget({ Id: s.Id, DeviceId: s.DeviceId, DeviceName: s.DeviceName, Client: s.Client });
+  }, [s, castId]);
+  // A Chromecast's receiver says when playback starts, stops or changes; show it at once.
+  useEffect(() => {
+    if (!castId || !castBridge) return;
+    return castBridge.onMessage((m) => {
+      if (m.id === castId && m.namespace === RECEIVER_NAMESPACE) qc.invalidateQueries({ queryKey: ["sessions", "device", deviceId] });
+    });
+  }, [castId, deviceId, qc]);
   const [scrub, setScrub] = useState<number | null>(null);
-  const qc = useQueryClient();
   if (session.isPending) return null;
+  const cast = castId ? { id: castId, name: castName } : null;
+  const disconnect = cast && (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon="logout"
+      onClick={() => {
+        setPlayTarget(null);
+        castDisconnect(cast).catch(() => {});
+      }}
+    >
+      Disconnect
+    </Button>
+  );
+  // The receiver has no session until it first plays something.
+  if (!s && cast)
+    return (
+      <div className="remote">
+        <p className="together__desc">
+          Connected to {cast.name}. Pick something in Argent and press Play: it starts there. <Link to="/">Browse</Link>
+        </p>
+        <div className="remote__row">{disconnect}</div>
+      </div>
+    );
   if (!s) return <p className="together__desc">That device has gone offline.</p>;
+  const control = cast ? castControls(cast) : jellyfinControls(s.Id);
   const item = s.NowPlayingItem;
   const ps = s.PlayState ?? {};
   const duration = (item?.RunTimeTicks ?? 0) / TICKS;
@@ -136,25 +242,25 @@ function RemoteControl({ deviceId }: { deviceId: string }) {
                 aria-label="Position"
                 onChange={(e) => setScrub(Number(e.target.value))}
                 onPointerUp={() => {
-                  if (scrub !== null) send(() => remotePlaystate(s.Id, "Seek", Math.round(scrub * TICKS))).finally(() => setScrub(null));
+                  if (scrub !== null) send(() => control.playstate("Seek", Math.round(scrub * TICKS))).finally(() => setScrub(null));
                 }}
                 onKeyUp={(e) => {
-                  if (scrub !== null && (e.key === "ArrowLeft" || e.key === "ArrowRight")) send(() => remotePlaystate(s.Id, "Seek", Math.round(scrub * TICKS))).finally(() => setScrub(null));
+                  if (scrub !== null && (e.key === "ArrowLeft" || e.key === "ArrowRight")) send(() => control.playstate("Seek", Math.round(scrub * TICKS))).finally(() => setScrub(null));
                 }}
               />
               <span>{formatClock(duration)}</span>
             </div>
           )}
           <div className="remote__buttons">
-            <Button variant="icon" size="lg" icon="skipPrev" aria-label="Previous" onClick={() => send(() => remotePlaystate(s.Id, "PreviousTrack"))} />
-            <Button variant="icon" size="lg" icon="replay10" aria-label="Back 10 seconds" onClick={() => send(() => remotePlaystate(s.Id, "Seek", Math.max(0, (ps.PositionTicks ?? 0) - 10 * TICKS)))} />
-            <Button variant="primary" size="lg" icon={ps.IsPaused ? "play" : "pause"} aria-label={ps.IsPaused ? "Play" : "Pause"} onClick={() => send(() => remotePlaystate(s.Id, "PlayPause"))} />
-            <Button variant="icon" size="lg" icon="forward10" aria-label="Forward 10 seconds" onClick={() => send(() => remotePlaystate(s.Id, "Seek", (ps.PositionTicks ?? 0) + 10 * TICKS))} />
-            <Button variant="icon" size="lg" icon="skipNext" aria-label="Next" onClick={() => send(() => remotePlaystate(s.Id, "NextTrack"))} />
-            <Button variant="icon" size="lg" icon="stop" aria-label="Stop" onClick={() => send(() => remotePlaystate(s.Id, "Stop"))} />
+            <Button variant="icon" size="lg" icon="skipPrev" aria-label="Previous" onClick={() => send(() => control.playstate("PreviousTrack"))} />
+            <Button variant="icon" size="lg" icon="replay10" aria-label="Back 10 seconds" onClick={() => send(() => control.playstate("Seek", Math.max(0, (ps.PositionTicks ?? 0) - 10 * TICKS)))} />
+            <Button variant="primary" size="lg" icon={ps.IsPaused ? "play" : "pause"} aria-label={ps.IsPaused ? "Play" : "Pause"} onClick={() => send(() => control.playstate("PlayPause"))} />
+            <Button variant="icon" size="lg" icon="forward10" aria-label="Forward 10 seconds" onClick={() => send(() => control.playstate("Seek", (ps.PositionTicks ?? 0) + 10 * TICKS))} />
+            <Button variant="icon" size="lg" icon="skipNext" aria-label="Next" onClick={() => send(() => control.playstate("NextTrack"))} />
+            <Button variant="icon" size="lg" icon="stop" aria-label="Stop" onClick={() => send(() => control.playstate("Stop"))} />
           </div>
           <div className="remote__row">
-            <Button variant="icon" size="md" icon={ps.IsMuted ? "volumeOff" : "volume"} aria-label={ps.IsMuted ? "Unmute" : "Mute"} onClick={() => send(() => remoteCommand(s.Id, "ToggleMute"))} />
+            <Button variant="icon" size="md" icon={ps.IsMuted ? "volumeOff" : "volume"} aria-label={ps.IsMuted ? "Unmute" : "Mute"} onClick={() => send(() => control.mute(!ps.IsMuted))} />
             <input
               type="range"
               className="remote__range"
@@ -163,7 +269,7 @@ function RemoteControl({ deviceId }: { deviceId: string }) {
               step={5}
               defaultValue={ps.VolumeLevel ?? 100}
               aria-label="Volume"
-              onChange={(e) => send(() => remoteCommand(s.Id, "SetVolume", { Volume: e.target.value }))}
+              onChange={(e) => send(() => control.volume(Number(e.target.value)))}
             />
           </div>
           {(audio.length > 1 || subs.length > 0) && (
@@ -173,7 +279,7 @@ function RemoteControl({ deviceId }: { deviceId: string }) {
                   className="select select--compact"
                   aria-label="Audio"
                   value={ps.AudioStreamIndex ?? ""}
-                  onChange={(e) => send(() => remoteCommand(s.Id, "SetAudioStreamIndex", { Index: e.target.value }))}
+                  onChange={(e) => send(() => control.audio(Number(e.target.value)))}
                 >
                   {audio.map((a) => (
                     <option key={a.Index} value={a.Index}>
@@ -187,7 +293,7 @@ function RemoteControl({ deviceId }: { deviceId: string }) {
                   className="select select--compact"
                   aria-label="Subtitles"
                   value={ps.SubtitleStreamIndex ?? -1}
-                  onChange={(e) => send(() => remoteCommand(s.Id, "SetSubtitleStreamIndex", { Index: e.target.value }))}
+                  onChange={(e) => send(() => control.subtitles(Number(e.target.value)))}
                 >
                   <option value={-1}>Subtitles off</option>
                   {subs.map((a) => (
@@ -205,6 +311,7 @@ function RemoteControl({ deviceId }: { deviceId: string }) {
           Nothing is playing on {s.DeviceName}. Pick something in Argent and press Play: it starts there. <Link to="/">Browse</Link>
         </p>
       )}
+      {disconnect && <div className="remote__row">{disconnect}</div>}
     </div>
   );
 }

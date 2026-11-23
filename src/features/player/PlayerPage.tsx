@@ -13,6 +13,7 @@ import { Icon } from "@/components/Icon";
 import { JellyfinMark } from "@/components/JellyfinLogo";
 import { showToast, ToastHost } from "@/components/Toast";
 import { logEvent } from "@/features/diagnostics/log";
+import { castPlay } from "@/features/cast/cast";
 import { buildDiagnostics, copyText } from "@/features/diagnostics/report";
 import { isFinished, ratingTarget, shouldPrompt } from "@/features/ratings/logic";
 import { readRatingPrefs } from "@/features/ratings/prefs";
@@ -167,7 +168,8 @@ function PlayerRoute({ id }: { id: string }) {
     (async () => {
       const target = getTogether().target;
       if (target && !here) {
-        await remotePlay(target.Id, [item.Id], start, version ?? undefined);
+        if (target.CastId) await castPlay({ id: target.CastId, name: target.DeviceName ?? "" }, item, start, version ?? undefined);
+        else await remotePlay(target.Id, [item.Id], start, version ?? undefined);
         logEvent("remote", `Sent ${item.Id} to ${target.DeviceName}`);
         if (!cancelled) navigate("/together", { replace: true });
         return;
@@ -540,13 +542,24 @@ function WebPlayer(props: {
     const onPlay = () => reporter.progress("Unpause");
     const onWaiting = () => setLoading(true);
     const onCanPlay = () => setLoading(false);
+    // Browsers send "waiting" for seeks and short stalls (the jump to the resume point,
+    // a skip, hls.js nudging past a gap) but don't always follow it with "playing" or
+    // "canplay", which left the spinner over a video that was playing. So the spinner
+    // also goes once the picture is seen moving, or a seek lands on buffered video.
+    const ready = () => el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && !el.seeking;
+    let lastTime = el.currentTime;
     const onTime = () => {
       setCurrent(el.currentTime);
       if (el.buffered.length) setBuffered(el.buffered.end(el.buffered.length - 1));
+      const moved = el.currentTime !== lastTime;
+      lastTime = el.currentTime;
+      if (moved && !el.paused && ready()) setLoading(false);
     };
     const onSeeked = () => {
       // A completed seek (ours to the resume point, or the viewer's) means currentTime is real.
       if (el.currentTime > 1 || startSeconds.current < 1) reachedStart.current = true;
+      lastTime = el.currentTime;
+      if (ready()) setLoading(false);
       reporter.nudge("TimeUpdate");
     };
     const onVolume = () => {

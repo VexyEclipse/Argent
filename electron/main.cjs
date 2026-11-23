@@ -11,6 +11,7 @@ const settings = require("./settings.cjs");
 const updater = require("./updater.cjs");
 const tray = require("./tray.cjs");
 const mpv = require("./mpv.cjs");
+const cast = require("./cast.cjs");
 
 // `npm run desktop:dev` loads the Vite dev server instead of the built files.
 const DEV_URL = process.argv.includes("--dev") ? process.env.ARGENT_DEV_URL || "http://localhost:5173" : null;
@@ -194,6 +195,38 @@ ipcMain.on("now-playing", (_e, info) => {
   refreshTray();
 });
 
+// ---- Chromecast ---------------------------------------------------------------------------
+
+// The page drives Cast devices through these: find them, start a receiver app, pass it
+// JSON, set the TV's volume, stop. Only Argent's own window may ask.
+const fromApp = (e) => mainWindow && e.sender === mainWindow.webContents;
+const castId = (id) => typeof id === "string" && id.length < 200;
+ipcMain.handle("cast:scan", (e) => (fromApp(e) ? cast.scan() : []));
+ipcMain.handle("cast:launch", (e, id, appId) => {
+  if (!fromApp(e) || !castId(id) || !/^[A-Za-z0-9]{1,32}$/.test(appId)) throw new Error("Invalid request");
+  return cast.launch(id, appId);
+});
+ipcMain.handle("cast:send", (e, id, namespace, payload, appId) => {
+  if (!fromApp(e) || !castId(id) || typeof namespace !== "string" || !namespace.startsWith("urn:x-cast:") || typeof payload !== "string") throw new Error("Invalid request");
+  if (namespace.startsWith("urn:x-cast:com.google.cast.")) throw new Error("Invalid request");
+  return cast.send(id, namespace, payload, /^[A-Za-z0-9]{1,32}$/.test(appId) ? appId : undefined);
+});
+ipcMain.handle("cast:volume", (e, id, volume) => {
+  if (!fromApp(e) || !castId(id) || !volume || typeof volume !== "object") throw new Error("Invalid request");
+  return cast.volume(id, { level: volume.level, muted: volume.muted });
+});
+ipcMain.handle("cast:status", (e, id) => {
+  if (!fromApp(e) || !castId(id)) throw new Error("Invalid request");
+  return cast.status(id);
+});
+ipcMain.handle("cast:stop", (e, id) => {
+  if (!fromApp(e) || !castId(id)) throw new Error("Invalid request");
+  return cast.stop(id);
+});
+cast.events.on("devices", (devices) => mainWindow?.webContents.send("cast:devices", devices));
+cast.events.on("message", (message) => mainWindow?.webContents.send("cast:message", message));
+cast.events.on("status", (status) => mainWindow?.webContents.send("cast:status", status));
+
 // ---- window ---------------------------------------------------------------------------
 
 let mainWindow = null;
@@ -286,6 +319,8 @@ app.whenReady().then(() => {
 app.on("before-quit", () => {
   quitting = true;
   mpv.stop();
+  // The TV keeps playing; it just loses this remote.
+  cast.closeAll();
 });
 
 app.on("window-all-closed", () => app.quit());

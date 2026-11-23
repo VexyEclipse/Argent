@@ -342,6 +342,54 @@ public class MainActivity extends Activity {
             }
         }
 
+        // ---- Chromecast (CastBridge): answers come as "castReply" events with the request id.
+
+        /** Looks for Cast devices for a minute; returns those known so far (JSON array). */
+        @JavascriptInterface
+        public String castScan() {
+            return CastBridge.get(MainActivity.this).scan();
+        }
+
+        @JavascriptInterface
+        public void castLaunch(String requestId, String id, String appId) {
+            CastBridge cast = CastBridge.get(MainActivity.this);
+            cast.request(requestId, () -> cast.launch(id, appId));
+        }
+
+        @JavascriptInterface
+        public void castSend(String requestId, String id, String namespace, String payload, String appId) {
+            CastBridge cast = CastBridge.get(MainActivity.this);
+            cast.request(requestId, () -> {
+                if (namespace == null || !namespace.startsWith("urn:x-cast:") || namespace.startsWith("urn:x-cast:com.google.cast.")) throw new IllegalArgumentException("Invalid namespace");
+                cast.send(id, namespace, payload, appId);
+                return null;
+            });
+        }
+
+        @JavascriptInterface
+        public void castVolume(String requestId, String id, String volume) {
+            CastBridge cast = CastBridge.get(MainActivity.this);
+            cast.request(requestId, () -> {
+                cast.volume(id, new JSONObject(volume));
+                return null;
+            });
+        }
+
+        @JavascriptInterface
+        public void castStatus(String requestId, String id) {
+            CastBridge cast = CastBridge.get(MainActivity.this);
+            cast.request(requestId, () -> cast.status(id));
+        }
+
+        @JavascriptInterface
+        public void castStop(String requestId, String id) {
+            CastBridge cast = CastBridge.get(MainActivity.this);
+            cast.request(requestId, () -> {
+                cast.stop(id);
+                return null;
+            });
+        }
+
         @JavascriptInterface
         public void requestNotifications() {
             if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return;

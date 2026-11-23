@@ -23,8 +23,11 @@ export interface TogetherState {
   offsetMs: number;
   /** Round trip to the server (ms), reported to the group so it can allow for it. */
   rttMs: number;
-  /** The device Play buttons send to, instead of playing here. */
-  target: Pick<SessionInfo, "Id" | "DeviceName" | "Client" | "DeviceId"> | null;
+  /**
+   * The device Play buttons send to, instead of playing here. A Chromecast has CastId (its
+   * Cast device id); DeviceId is then the session its Jellyfin receiver reports as.
+   */
+  target: (Pick<SessionInfo, "Id" | "DeviceName" | "Client" | "DeviceId"> & { CastId?: string }) | null;
 }
 
 let state: TogetherState = { group: null, queue: [], playingIndex: 0, startSeconds: 0, command: null, offsetMs: 0, rttMs: 0, target: readTarget() };

@@ -36,4 +36,16 @@ contextBridge.exposeInMainWorld("argentDesktop", {
   chooseMpv: () => ipcRenderer.invoke("mpv:choose"),
   /** Shows a file (or opens a folder) of the server's in File Explorer: "shown" | "folder" | "missing" | "invalid". */
   showInFolder: (path) => ipcRenderer.invoke("file:show", path),
+  /** Chromecast: looks for devices for a minute; resolves with those known so far. */
+  castScan: () => ipcRenderer.invoke("cast:scan"),
+  /** Starts (or joins) a receiver app on a device. */
+  castLaunch: (id, appId) => ipcRenderer.invoke("cast:launch", id, appId),
+  /** Sends a JSON string to the receiver app on a namespace. */
+  castSend: (id, namespace, payload, appId) => ipcRenderer.invoke("cast:send", id, namespace, payload, appId),
+  castVolume: (id, volume) => ipcRenderer.invoke("cast:volume", id, volume),
+  castStatus: (id) => ipcRenderer.invoke("cast:status", id),
+  castStop: (id) => ipcRenderer.invoke("cast:stop", id),
+  onCastDevices: (fn) => subscribe("cast:devices", fn),
+  onCastMessage: (fn) => subscribe("cast:message", fn),
+  onCastStatus: (fn) => subscribe("cast:status", fn),
 });
