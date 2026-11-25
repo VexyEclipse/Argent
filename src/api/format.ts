@@ -1,3 +1,4 @@
+import { folderSeason } from "./duplicates";
 import type { BaseItem } from "./types";
 
 export const TICKS_PER_SECOND = 10_000_000;
@@ -69,6 +70,21 @@ export function cardSubtitle(item: BaseItem): string {
   if (item.Type === "BoxSet") return item.ChildCount ? `${item.ChildCount} titles` : "Collection";
   const y = yearOf(item);
   return y ? String(y) : "";
+}
+
+/**
+ * How many seasons a show has: its numbered seasons, each counted once (Jellyfin lists a
+ * season once per folder it's in). Specials and folders that aren't seasons ("Original",
+ * "Season Unknown") don't count; one named for a season Jellyfin didn't number ("Part 2")
+ * counts as that season.
+ */
+export function seasonTotal(seasons: Pick<BaseItem, "IndexNumber" | "Name">[]): number {
+  const numbers = new Set<number>();
+  for (const s of seasons) {
+    const n = s.IndexNumber ?? folderSeason(s.Name ?? "");
+    if (n !== null && n > 0) numbers.add(n);
+  }
+  return numbers.size;
 }
 
 export function seasonCountLabel(count?: number): string {

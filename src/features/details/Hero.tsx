@@ -45,7 +45,7 @@ interface HeroProps {
   eyebrow?: ReactNode;
   showPoster?: boolean;
   extraActions?: ReactNode;
-  /** A show's seasons, counted once each (Jellyfin counts a season once per folder it's in). */
+  /** A show's real seasons (see seasonTotal); nothing is shown until it's known. */
   seasonCount?: number;
   children?: ReactNode;
 }
@@ -84,8 +84,10 @@ export function Hero({ item, playTarget, playLabel, eyebrow, showPoster = true, 
   const years = yearRange(item);
   if (years) meta.push(years);
   if (item.OfficialRating) meta.push(<span className="cert">{item.OfficialRating}</span>);
-  if (item.Type === "Series" && (seasonCount ?? item.ChildCount)) meta.push(seasonCountLabel(seasonCount ?? item.ChildCount));
-  else if (item.RunTimeTicks) meta.push(formatRuntime(item.RunTimeTicks));
+  // Jellyfin's own count (ChildCount) takes in Specials and folders that aren't seasons.
+  if (item.Type === "Series") {
+    if (seasonCount) meta.push(seasonCountLabel(seasonCount));
+  } else if (item.RunTimeTicks) meta.push(formatRuntime(item.RunTimeTicks));
   if (typeof item.CommunityRating === "number")
     meta.push(
       <span className="hero__rating">

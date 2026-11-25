@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { copyIds } from "@/api/duplicates";
 import { CARD_FIELDS, getEpisodes, getItemFull, getItems, getSeasons } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
-import { episodeCode, formatRuntime, progressOf } from "@/api/format";
+import { episodeCode, formatRuntime, progressOf, seasonTotal } from "@/api/format";
 import type { BaseItem } from "@/api/types";
 import { Artwork } from "@/components/Artwork";
 import { Button } from "@/components/Button";
@@ -134,7 +134,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
     <div className="details">
       <Hero
         item={item}
-        seasonCount={seasonList.length ? new Set(seasonList.map((s) => s.IndexNumber ?? s.Name)).size : undefined}
+        seasonCount={seasons.data ? seasonTotal(seasonList) : undefined}
         playTarget={playTarget}
         playLabel={
           playTarget ? `${started ? (progressOf(playTarget) > 0 ? "Resume" : "Continue") : "Play"} ${episodeCode(playTarget).replace(" · ", "")}` : undefined

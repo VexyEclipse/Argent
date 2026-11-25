@@ -6,6 +6,7 @@ import { blurHashToDataUrl } from "@/components/blurhash";
 import { Icon } from "@/components/Icon";
 import type { MediaBarConfig } from "./config";
 import { plateColours, truncatePlot } from "./logic";
+import { useSeasonTotal } from "@/features/details/useSeasonTotal";
 
 interface SlideProps {
   item: BaseItem;
@@ -51,6 +52,7 @@ function CriticIcon({ score, config }: { score: number; config: MediaBarConfig }
 }
 
 function SpecLine({ item, config }: { item: BaseItem; config: MediaBarConfig }) {
+  const seasons = useSeasonTotal(item);
   const year = yearOf(item);
   const parts: ReactNode[] = [];
   if (year) parts.push(<span key="y">{year}</span>);
@@ -68,8 +70,9 @@ function SpecLine({ item, config }: { item: BaseItem; config: MediaBarConfig }) 
         {item.CriticRating.toFixed(0)}%
       </span>,
     );
-  if (item.ChildCount) parts.push(<span key="s">{seasonCountLabel(item.ChildCount)}</span>);
-  else if (item.RunTimeTicks) parts.push(<span key="t">{formatRuntime(item.RunTimeTicks)}</span>);
+  if (item.Type === "Series") {
+    if (seasons) parts.push(<span key="s">{seasonCountLabel(seasons)}</span>);
+  } else if (item.RunTimeTicks) parts.push(<span key="t">{formatRuntime(item.RunTimeTicks)}</span>);
   return (
     <div className="mb-spec">
       {parts.map((p, i) => (
@@ -83,6 +86,7 @@ function SpecLine({ item, config }: { item: BaseItem; config: MediaBarConfig }) 
 }
 
 function ClassicInfo({ item, config }: { item: BaseItem; config: MediaBarConfig }) {
+  const seasons = useSeasonTotal(item);
   const fields: ReactNode[] = [];
   if (typeof item.CommunityRating === "number")
     fields.push(
@@ -106,8 +110,9 @@ function ClassicInfo({ item, config }: { item: BaseItem; config: MediaBarConfig 
         {item.OfficialRating}
       </span>,
     );
-  if (item.ChildCount) fields.push(<span key="s">{seasonCountLabel(item.ChildCount)}</span>);
-  else if (item.RunTimeTicks) fields.push(<span key="e">Ends at {endsAt(item.RunTimeTicks)}</span>);
+  if (item.Type === "Series") {
+    if (seasons) fields.push(<span key="s">{seasonCountLabel(seasons)}</span>);
+  } else if (item.RunTimeTicks) fields.push(<span key="e">Ends at {endsAt(item.RunTimeTicks)}</span>);
   return (
     <div className="mb-spec">
       {fields.map((f, i) => (
