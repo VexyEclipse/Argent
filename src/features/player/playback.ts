@@ -1,4 +1,5 @@
 import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
+import { editionName } from "@/api/duplicates";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
 import { logEvent } from "@/features/diagnostics/log";
 import { skipFiller } from "@/features/filler/store";
@@ -33,8 +34,10 @@ export interface StreamInfo {
   hls: boolean;
   method: PlayMethod;
   source: MediaSource;
-  /** Every version of the title, for the version menu. */
+  /** Every version of the title, for the version menu: its own, then its copies' (another edition's). */
   versions: MediaSource[];
+  /** The episode a copy's version belongs to, by version id: choosing one plays that episode. */
+  copyOf?: Record<string, string>;
   playSessionId: string;
   audioIndex?: number;
   subtitleIndex?: number;
@@ -83,10 +86,21 @@ export async function seriesPlayTarget(seriesId: string): Promise<BaseItem | nul
 
 export async function resolvePlayable(id: string): Promise<BaseItem> {
   const item = await getItemFull(id);
-  // A hidden duplicate (Next Up can offer one): play the copy shown in the episode list.
+  // A hidden duplicate (Next Up can offer one): play the copy shown in the episode list,
+  // that is, of the show's chosen edition. The others come along for the version menu.
   if (item.Type === "Episode" && item.SeriesId) {
-    const shown = (await getEpisodes(item.SeriesId, item.SeasonId).catch(() => ({ Items: [] as BaseItem[] }))).Items.find((e) => e.Copies?.some((c) => c.Id === item.Id));
-    if (shown) return getItemFull(shown.Id);
+    const list = (await getEpisodes(item.SeriesId, item.SeasonId).catch(() => ({ Items: [] as BaseItem[] }))).Items;
+    const shown = list.find((e) => e.Id === item.Id || e.Copies?.some((c) => c.Id === item.Id));
+    if (shown && shown.Id !== item.Id) {
+      // The copy shown resumes wherever any copy was left.
+      const full = await getItemFull(shown.Id);
+      return {
+        ...full,
+        Copies: shown.Copies,
+        UserData: full.UserData && { ...full.UserData, PlaybackPositionTicks: shown.UserData?.PlaybackPositionTicks ?? full.UserData.PlaybackPositionTicks },
+      };
+    }
+    if (shown?.Copies) return { ...item, Copies: shown.Copies };
   }
   if (item.Type === "Series") {
     const target = await seriesPlayTarget(id);
@@ -208,7 +222,7 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
     hls: method === "Transcode" && (source.TranscodingSubProtocol === "hls" || /\.m3u8/.test(url)),
     method,
     source,
-    versions: versions.length ? versions : [source],
+    ...withCopies(item, versions.length ? versions : [source]),
     playSessionId: info.PlaySessionId,
     audioIndex: built.audioIndex,
     subtitleIndex: built.subtitleIndex,
@@ -217,6 +231,23 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
     assTracks: source.MediaStreams.filter((s) => clientDelivered(s) && isAssCodec(s.Codec)).map((s) => ({ index: s.Index, url: withAuth(s.DeliveryUrl!) })),
     fonts: fontAttachments(source).map(withAuth),
   };
+}
+
+/**
+ * An episode's versions with its copies' added, each named for its edition ("Blu-ray",
+ * "Original") when there are copies, so the version menu switches between editions.
+ */
+export function withCopies(item: BaseItem, own: MediaSource[]): Pick<StreamInfo, "versions" | "copyOf"> {
+  const copies = (item.Copies ?? []).filter((c) => c.MediaSources?.[0]);
+  if (!copies.length) return { versions: own };
+  const named = (v: MediaSource, path?: string): MediaSource => ({ ...v, Name: editionName(v.Path ?? path) });
+  const copyOf: Record<string, string> = {};
+  const others = copies.map((c) => {
+    const v = c.MediaSources![0];
+    copyOf[v.Id] = c.Id;
+    return named(v, c.Path);
+  });
+  return { versions: [...(own.length === 1 ? [named(own[0], item.Path)] : own), ...others], copyOf };
 }
 
 export function streamsOfType(source: MediaSource | undefined, type: MediaStream["Type"]): MediaStream[] {

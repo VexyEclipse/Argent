@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { copyIds, hasCopies, looksUnnamed, mergeDuplicateEpisodes, noteCopies, numberFromPath, unwatchedCount } from "./duplicates";
+import {
+  copyIds,
+  copyOnlySeasons,
+  editionName,
+  editionsOf,
+  folderOf,
+  hasCopies,
+  looksUnnamed,
+  mergeDuplicateEpisodes,
+  noteCopies,
+  numberFromPath,
+  unwatchedCount,
+} from "./duplicates";
 import type { BaseItem } from "./types";
 
 const ep = (Id: string, s: number, e: number, extra: Partial<BaseItem> = {}): BaseItem => ({ Id, Name: Id, Type: "Episode", ParentIndexNumber: s, IndexNumber: e, ...extra });
@@ -14,7 +26,7 @@ describe("duplicate episodes", () => {
       ep("e4", 1, 4),
     ]);
     expect(list.map((e) => e.Id)).toEqual(["e2", "e3-real", "e4"]);
-    expect(list[1].Copies).toEqual([
+    expect(list[1].Copies?.map(({ Id, Path }) => ({ Id, Path }))).toEqual([
       { Id: "e3-ghost", Path: "D:\\Test\\a.mkv" },
       { Id: "e3-ghost2", Path: undefined },
     ]);
@@ -190,5 +202,72 @@ describe("copies left behind by a removed library folder", () => {
     );
     expect(kept.Id).toBe("here");
     expect(kept.ImageTags?.Primary).toBeUndefined();
+  });
+});
+
+describe("editions", () => {
+  // One show in two releases: a sharp one in its season folder, the first release in a folder of its own.
+  const file = (path: string, width: number, height: number) => [
+    {
+      Id: path,
+      Path: path,
+      SupportsDirectPlay: true,
+      SupportsDirectStream: true,
+      SupportsTranscoding: true,
+      MediaStreams: [
+        { Index: 0, Type: "Video" as const, Width: width, Height: height },
+        { Index: 1, Type: "Audio" as const },
+      ],
+    },
+  ];
+  const sharp = (n: number, extra: Partial<BaseItem> = {}) =>
+    ep(`bd${n}`, 1, n, { SeasonId: "s1", MediaSources: file(`X:\\Shows\\Show\\Season 1\\[Group A]Show_-_0${n}_(BD1080p).mkv`, 1440, 1080), ...extra });
+  const first = (n: number, extra: Partial<BaseItem> = {}) =>
+    ep(`og${n}`, 1, n, {
+      SeasonId: "orig",
+      ImageTags: { Primary: "pic" },
+      MediaSources: file(`X:\\Shows\\Show\\Original\\[Group B] Show - 0${n}.mkv`, 720, 480),
+      ...extra,
+    });
+  const extra = ep("extra", 1, 0, {
+    IndexNumber: undefined,
+    ParentIndexNumber: undefined,
+    SeasonId: "sp",
+    MediaSources: file("X:\\Shows\\Show\\Specials\\Extra.mkv", 720, 480),
+  });
+
+  it("shows the sharpest edition's copies, even where the other has the picture or the progress", () => {
+    const list = mergeDuplicateEpisodes([first(1), sharp(1), first(2, { UserData: { PlaybackPositionTicks: 9 } }), sharp(2)]);
+    expect(list.map((e) => e.Id)).toEqual(["bd1", "bd2"]);
+    expect(list[1].UserData?.PlaybackPositionTicks).toBe(9);
+    expect(list[0].Copies?.[0]).toMatchObject({ Id: "og1", SeasonId: "orig", Path: "X:\\Shows\\Show\\Original\\[Group B] Show - 01.mkv" });
+  });
+
+  it("shows the chosen edition's copies, and falls back where it has no copy", () => {
+    const list = mergeDuplicateEpisodes([sharp(1), first(1), sharp(2), sharp(3), first(3)], null, "x:/shows/show/original");
+    expect(list.map((e) => e.Id)).toEqual(["og1", "bd2", "og3"]);
+    expect(mergeDuplicateEpisodes([sharp(1), first(1)], null, "x:/elsewhere").map((e) => e.Id)).toEqual(["bd1"]);
+  });
+
+  it("names the editions, and finds the season that only holds copies", () => {
+    const merged = mergeDuplicateEpisodes([sharp(1), first(1), sharp(2), first(2), extra]);
+    expect(editionsOf(merged).map((e) => [e.name, e.group, e.episodes, e.shown])).toEqual([
+      ["Blu-ray", "Group A", 2, 2],
+      ["Original", "Group B", 2, 0],
+    ]);
+    // Both seasons hold only copies here; the show page keeps the numbered one.
+    expect([...copyOnlySeasons(merged)]).toEqual(["s1", "orig"]);
+    // A season with an episode of its own stays.
+    expect([...copyOnlySeasons(mergeDuplicateEpisodes([sharp(1), first(1), first(4)]))]).toEqual(["s1"]);
+    expect(editionsOf(mergeDuplicateEpisodes([sharp(1), sharp(2)]))).toEqual([]);
+  });
+
+  it("calls a plain season folder by what its files are", () => {
+    expect(editionName("X:/Show/Season 1/Show.S01E01.1080p.BluRay.x264.mkv")).toBe("Blu-ray");
+    expect(editionName("X:/Show/Season 01/[Grp] Show - 01 [DVDRip].mkv")).toBe("DVD");
+    expect(editionName("X:/Show/S1/Show S01E01 WEB-DL.mkv")).toBe("Web");
+    expect(editionName("X:/Show/Season 1/[Grp] Show - 01.mkv")).toBe("Grp");
+    expect(editionName("X:/Show/Remastered/Show - 01.mkv")).toBe("Remastered");
+    expect(folderOf("X:\\Show\\Season 1\\a.mkv")).toBe("x:/show/season 1");
   });
 });

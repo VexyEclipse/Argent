@@ -183,7 +183,7 @@ export interface BaseItem {
   /** Special features: "BehindTheScenes", "DeletedScene", "Featurette", "Interview"… */
   ExtraType?: string;
   /** Argent's own: other library items for the same episode, hidden behind this one (see api/duplicates.ts). */
-  Copies?: { Id: string; Path?: string }[];
+  Copies?: { Id: string; Path?: string; SeasonId?: string; MediaSources?: MediaSource[] }[];
   /** Argent's own: the copy whose picture this episode shows, when it has none itself. */
   PrimaryImageItemId?: string;
   /** Argent's own: the title shown came from another copy (this one has only a file name). */

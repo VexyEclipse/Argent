@@ -25,6 +25,7 @@ import { useFillerIds } from "@/features/filler/store";
 import { DownloadButton } from "@/features/downloads/DownloadButton";
 import { useDownloadDialog } from "@/features/downloads/DownloadDialog";
 import { downloadsSupported } from "@/features/downloads/store";
+import { EditionPicker, useEditions } from "./EditionPicker";
 import { Hero } from "./Hero";
 import { CastRow, ExtrasRow, InfoTable, SimilarRow } from "./Sections";
 import { earlierUnwatched } from "./episodes";
@@ -82,8 +83,13 @@ function SeriesDetails({ item }: { item: BaseItem }) {
   const seasons = useQuery({ queryKey: ["seasons", item.Id], queryFn: () => getSeasons(item.Id).then((r) => r.Items), staleTime: 60_000 });
   const nextUp = useQuery({ queryKey: ["nextup", item.Id], queryFn: () => seriesPlayTarget(item.Id), staleTime: 30_000 });
 
-  const seasonList = seasons.data ?? [];
-  const selectedId = params.get("season") ?? nextUp.data?.SeasonId ?? seasonList.find((s) => (s.IndexNumber ?? 0) > 0)?.Id ?? seasonList[0]?.Id;
+  // A folder holding another edition of the show (a Blu-ray beside the first release) isn't a season of its own.
+  const { editions, seasons: seasonList } = useEditions(item, seasons.data);
+  // Up next may be another edition's copy, in a season left out: open its numbered season instead.
+  const upNextSeason =
+    seasonList.find((s) => s.Id === nextUp.data?.SeasonId)?.Id ??
+    (nextUp.data?.ParentIndexNumber !== undefined ? seasonList.find((s) => s.IndexNumber === nextUp.data?.ParentIndexNumber)?.Id : undefined);
+  const selectedId = params.get("season") ?? upNextSeason ?? seasonList.find((s) => (s.IndexNumber ?? 0) > 0)?.Id ?? seasonList[0]?.Id;
 
   const ratings = useRatings();
   const rateDialog = useRateDialog();
@@ -139,6 +145,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
           )
         }
       >
+        <EditionPicker seriesId={item.Id} editions={editions} />
         {playTarget && started && (
           <p className="hero__next">
             <span className="eyebrow">Up next</span> {episodeCode(playTarget)} — {playTarget.Name}

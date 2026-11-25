@@ -19,14 +19,16 @@ const RES_LABELS: [number, string][] = [
   [2500, "1440p"],
   [1900, "1080p"],
   [1200, "720p"],
-  [700, "576p"],
+  [1000, "576p"],
+  [800, "480p"],
   [0, "SD"],
 ];
 
 export function resolutionLabel(width?: number, height?: number): string | undefined {
   if (!width && !height) return undefined;
-  // Wide films are short for their width (1920×800 is still 1080p), so go by width.
-  const w = width ?? Math.round((height ?? 0) * (16 / 9));
+  // Wide films are short for their width (1920×800 is still 1080p), and 4:3 pictures
+  // narrow for their height (1440×1080 is still 1080p): go by the wider reading.
+  const w = Math.max(width ?? 0, Math.round((height ?? 0) * (16 / 9)));
   return RES_LABELS.find(([min]) => w >= min)![1];
 }
 

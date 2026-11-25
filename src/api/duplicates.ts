@@ -53,7 +53,8 @@ export function inLibraryPath(path: string | undefined, roots: readonly string[]
   return roots.some((r) => p.startsWith(r.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() + "/"));
 }
 
-const inLibrary = (e: BaseItem, roots: readonly string[] | null) => inLibraryPath(e.MediaSources?.[0]?.Path ?? e.Path, roots);
+const pathOf = (e: Pick<BaseItem, "MediaSources" | "Path">) => e.MediaSources?.[0]?.Path ?? e.Path;
+const inLibrary = (e: Pick<BaseItem, "MediaSources" | "Path">, roots: readonly string[] | null) => inLibraryPath(pathOf(e), roots);
 
 /** A copy with both a picture track and a sound track (a cut-off or broken file may lack one). */
 function isWhole(e: BaseItem): boolean {
@@ -65,13 +66,14 @@ function isWhole(e: BaseItem): boolean {
 /**
  * How good a copy is to show and play, most important first: its file is in one of the
  * library's folders (a copy left behind by a removed folder has no file any more), it's
- * a real file, whole, with a picture.
+ * a real file, whole, of the edition shown (see "editions" below), with a picture.
  */
-function score(e: BaseItem, roots: readonly string[] | null): number {
+function score(e: BaseItem, roots: readonly string[] | null, edition: string | null = null): number {
   let s = 0;
-  if (inLibrary(e, roots) !== false) s += 64;
-  if (e.LocationType !== "Virtual") s += 32;
-  if (isWhole(e)) s += 16;
+  if (inLibrary(e, roots) !== false) s += 128;
+  if (e.LocationType !== "Virtual") s += 64;
+  if (isWhole(e)) s += 32;
+  if (edition && folderOf(pathOf(e)) === edition) s += 16;
   if (e.ImageTags?.Primary) s += 8;
   if ((e.UserData?.PlaybackPositionTicks ?? 0) > 0) s += 2;
   if (e.Overview) s += 1;
@@ -112,13 +114,14 @@ function keyOf(e: BaseItem): string | null {
  * title and the story from another copy when it has none of its own. A borrowed title is
  * marked `BorrowedName`, so it can be saved to the copy kept.
  */
-export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly string[] | null = null): BaseItem[] {
+export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly string[] | null = null, chosen: string | null = null): BaseItem[] {
   const groups = new Map<string, BaseItem[]>();
   for (const e of episodes) {
     const key = keyOf(e);
     if (key) groups.set(key, [...(groups.get(key) ?? []), e]);
   }
-  const pick = (group: BaseItem[]) => group.reduce((a, b) => (score(b, roots) > score(a, roots) ? b : a));
+  const edition = pickEdition([...groups.values()], roots, chosen);
+  const pick = (group: BaseItem[]) => group.reduce((a, b) => (score(b, roots, edition) > score(a, roots, edition) ? b : a));
   const out: BaseItem[] = [];
   for (const e of episodes) {
     const key = keyOf(e);
@@ -151,7 +154,9 @@ export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly str
         PlaybackPositionTicks: resume?.UserData?.PlaybackPositionTicks ?? best.UserData?.PlaybackPositionTicks,
         PlayedPercentage: resume?.UserData?.PlayedPercentage ?? best.UserData?.PlayedPercentage,
       },
-      Copies: others.length ? others.map((x) => ({ Id: x.Id, Path: x.MediaSources?.[0]?.Path })) : undefined,
+      Copies: others.length
+        ? others.map((x) => ({ Id: x.Id, Path: x.MediaSources?.[0]?.Path, SeasonId: x.SeasonId, MediaSources: x.MediaSources }))
+        : undefined,
     });
   }
   return out;
@@ -207,3 +212,142 @@ export function subscribeCopies(fn: () => void) {
 
 /** Unwatched episodes, counting each episode once however many copies it has. */
 export const unwatchedCount = (merged: BaseItem[]) => merged.filter((e) => e.LocationType !== "Virtual" && !e.UserData?.Played).length;
+
+// ---- editions ---------------------------------------------------------------------------
+// A show kept in two releases side by side (a Blu-ray in "Season 1" and the first release
+// in "Original") has each episode twice. Each folder holding such copies is an edition:
+// the one chosen for the show (remembered on this device) is the copy shown and played,
+// else the sharpest. A season folder holding nothing but another edition's copies isn't a
+// season of its own, so the show page leaves it out.
+
+/** The folder a file is in, as compared and remembered ("d:/shows/x/season 1"); null when unknown. */
+export function folderOf(path: string | undefined): string | null {
+  const p = path?.replace(/\\/g, "/");
+  const i = p?.lastIndexOf("/") ?? -1;
+  return p && i > 0 ? p.slice(0, i).toLowerCase() : null;
+}
+
+/** A copy's picture height, reading a wide film by its width (1920×800 counts as 1080). */
+function linesOf(e: Pick<BaseItem, "MediaSources" | "MediaStreams">): number {
+  const v = (e.MediaSources?.[0]?.MediaStreams ?? e.MediaStreams)?.find((s) => s.Type === "Video");
+  return Math.max(v?.Height ?? 0, Math.round(((v?.Width ?? 0) * 9) / 16));
+}
+
+/**
+ * The edition to show: the one chosen, if this list has it; else the folder whose copies
+ * are sharpest, when one is. Null when there's nothing to choose between.
+ */
+function pickEdition(groups: BaseItem[][], roots: readonly string[] | null, chosen: string | null): string | null {
+  const best = new Map<string, number>();
+  for (const group of groups) {
+    const real = group.filter((x) => x.LocationType !== "Virtual" && inLibrary(x, roots) !== false);
+    if (real.length < 2) continue;
+    for (const x of real) {
+      const folder = folderOf(pathOf(x));
+      if (folder) best.set(folder, Math.max(best.get(folder) ?? 0, linesOf(x)));
+    }
+  }
+  if (best.size < 2) return null;
+  if (chosen && best.has(chosen)) return chosen;
+  const ranked = [...best].sort((a, b) => b[1] - a[1]);
+  return ranked[0][1] > ranked[ranked.length - 1][1] ? ranked[0][0] : null;
+}
+
+const SEASON_FOLDER = /^(?:season|series|staffel|saison|temporada|s)[\s._-]*\d+$|^specials?$/i;
+
+/** The release group in a file name's leading brackets ("[Group]Show_-_01" → "Group"). */
+export function releaseGroup(path: string | undefined): string | undefined {
+  const file = path?.split(/[\\/]/).pop() ?? "";
+  return /^\[([^\]]+)\]/.exec(file)?.[1].trim() || undefined;
+}
+
+/**
+ * What to call an edition: its folder's name ("Original"), or for a plain season folder
+ * what its file names say it is ("Blu-ray", "DVD", "Web") or who released it.
+ */
+export function editionName(path: string | undefined): string {
+  const parts = (path ?? "").split(/[\\/]/);
+  const file = parts.pop() ?? "";
+  const folder = parts.pop() ?? "";
+  if (folder && !SEASON_FOLDER.test(folder)) return folder;
+  if (/(?:^|[^a-z])(?:bd(?:rip|remux)?|blu-?ray)(?![a-z])/i.test(file)) return "Blu-ray";
+  if (/(?:^|[^a-z])dvd(?:rip)?(?![a-z])/i.test(file)) return "DVD";
+  if (/(?:^|[^a-z])web(?:-?dl|-?rip)?(?![a-z])/i.test(file)) return "Web";
+  return releaseGroup(path) ?? (folder || "Copy");
+}
+
+export interface Edition {
+  /** As compared and remembered (see folderOf). */
+  folder: string;
+  name: string;
+  group?: string;
+  /** One of its files, for its resolution and format. */
+  source?: NonNullable<BaseItem["MediaSources"]>[number];
+  /** How many episodes it has a copy of. */
+  episodes: number;
+  /** How many of the copies shown are its own. */
+  shown: number;
+}
+
+/** The editions in a merged episode list (from mergeDuplicateEpisodes), largest first; none when there's only one. */
+export function editionsOf(merged: BaseItem[], roots: readonly string[] | null = null): Edition[] {
+  const found = new Map<string, Edition>();
+  const add = (x: Pick<BaseItem, "MediaSources" | "Path" | "LocationType">, shown: boolean) => {
+    const path = pathOf(x);
+    const folder = folderOf(path);
+    if (!folder || x.LocationType === "Virtual" || inLibraryPath(path, roots) === false) return;
+    const e = found.get(folder) ?? { folder, name: editionName(path), group: releaseGroup(path), source: x.MediaSources?.[0], episodes: 0, shown: 0 };
+    e.episodes++;
+    if (shown) e.shown++;
+    found.set(folder, e);
+  };
+  for (const row of merged) {
+    if (!row.Copies?.length) continue;
+    add(row, true);
+    for (const c of row.Copies) add(c, false);
+  }
+  const list = [...found.values()].sort((a, b) => b.episodes - a.episodes);
+  return list.length > 1 ? list : [];
+}
+
+/**
+ * Seasons holding nothing but copies of episodes that are also elsewhere: an edition's
+ * own folder ("Original") that Jellyfin took for a season. The show page leaves out the
+ * ones without a number (a numbered season is always a season).
+ */
+export function copyOnlySeasons(merged: BaseItem[]): Set<string> {
+  const copied = new Set<string>();
+  const own = new Set<string>();
+  for (const row of merged) {
+    if (row.Copies?.length) {
+      if (row.SeasonId) copied.add(row.SeasonId);
+      for (const c of row.Copies) if (c.SeasonId) copied.add(c.SeasonId);
+    } else if (row.SeasonId) own.add(row.SeasonId);
+  }
+  return new Set([...copied].filter((id) => !own.has(id)));
+}
+
+const EDITIONS_KEY = "argent.editions";
+
+function readEditions(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(EDITIONS_KEY) || "{}") ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** The edition (folder) chosen for a show on this device, if one was. */
+export const chosenEdition = (seriesId: string): string | null => readEditions()[seriesId] ?? null;
+
+/** Remembers the edition to show and play for a show (null: the sharpest again). */
+export function chooseEdition(seriesId: string, folder: string | null) {
+  const all = readEditions();
+  if (folder) all[seriesId] = folder;
+  else delete all[seriesId];
+  try {
+    localStorage.setItem(EDITIONS_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}

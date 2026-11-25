@@ -23,8 +23,10 @@ function videoBadge(streams: MediaStream[] = []): string[] {
   const badges: string[] = [];
   const video = streams.find((s) => s.Type === "Video");
   if (video?.Width) {
-    if (video.Width >= 3800) badges.push("4K");
-    else if (video.Width >= 1900) badges.push("HD");
+    // A 4:3 picture is narrow for its height (1440×1080 is HD).
+    const width = Math.max(video.Width, Math.round((video.Height ?? 0) * (16 / 9)));
+    if (width >= 3800) badges.push("4K");
+    else if (width >= 1900) badges.push("HD");
     else badges.push("SD");
   }
   if (video?.VideoRangeType && !/SDR/i.test(video.VideoRangeType)) badges.push(/DOVI/i.test(video.VideoRangeType) ? "Dolby Vision" : "HDR");

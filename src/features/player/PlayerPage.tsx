@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type Hls from "hls.js";
+import { chooseEdition, folderOf } from "@/api/duplicates";
 import { getEpisodes, getItem, getMediaSegments } from "@/api/jellyfin";
 import { landscapeImage } from "@/api/images";
 import { episodeCode, TICKS_PER_SECOND } from "@/api/format";
@@ -295,6 +296,7 @@ function PlayerRoute({ id }: { id: string }) {
       position={position}
       exit={exit}
       playItem={playItem}
+      playCopy={(copyId, s) => navigate(`/play/${copyId}?start=${s}&engine=web`, { replace: true })}
     />
   );
 }
@@ -353,6 +355,8 @@ function WebPlayer(props: {
   position: React.MutableRefObject<number>;
   exit: () => void;
   playItem: (item: BaseItem | null | undefined) => void;
+  /** Switch to another edition's copy of this episode, at this many seconds in. */
+  playCopy?: (id: string, seconds: number) => void;
   /** Play this download from the device rather than streaming from the server. */
   offline?: DownloadRecord;
 }) {
@@ -717,6 +721,13 @@ function WebPlayer(props: {
   const selectVersion = (sourceId: string) => {
     setMenu(null);
     if (!stream || sourceId === stream.source.Id) return;
+    // Another edition's copy of this episode: play that one, and keep to its edition.
+    const copy = stream.copyOf?.[sourceId];
+    if (copy && props.playCopy) {
+      if (item.SeriesId) chooseEdition(item.SeriesId, folderOf(stream.versions.find((v) => v.Id === sourceId)?.Path));
+      props.playCopy(copy, Math.floor(positionNow()));
+      return;
+    }
     rememberVersion(item.Id, sourceId);
     // Another file has its own tracks: let the server pick by language preference again.
     reload({ mediaSourceId: sourceId, audioIndex: undefined, subtitleIndex: undefined, disableDirectPlay: false, compatibleAudio: false });

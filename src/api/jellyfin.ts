@@ -1,5 +1,5 @@
 import { JellyfinClient, type Query } from "./client";
-import { mergeDuplicateEpisodes, noteCopies } from "./duplicates";
+import { chosenEdition, mergeDuplicateEpisodes, noteCopies } from "./duplicates";
 import type {
   AuthenticationResult,
   BaseItem,
@@ -238,7 +238,7 @@ export const getEpisodes = async (seriesId: string, seasonId?: string) => {
       },
     })
     .then((r) => {
-      const Items = mergeDuplicateEpisodes(r.Items, roots);
+      const Items = mergeDuplicateEpisodes(r.Items, roots, chosenEdition(seriesId));
       noteCopies(seriesId, Items, !seasonId);
       return { ...r, Items };
     });

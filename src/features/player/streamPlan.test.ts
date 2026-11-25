@@ -17,6 +17,10 @@ describe("version labels", () => {
     expect(resolutionLabel(1920, 800)).toBe("1080p");
     expect(resolutionLabel(3840, 1600)).toBe("4K");
     expect(resolutionLabel(1280, 720)).toBe("720p");
+    expect(resolutionLabel(1440, 1080)).toBe("1080p");
+    expect(resolutionLabel(720, 576)).toBe("576p");
+    expect(resolutionLabel(720, 480)).toBe("480p");
+    expect(resolutionLabel(640, 360)).toBe("SD");
     expect(resolutionLabel(undefined, undefined)).toBeUndefined();
   });
   it("prefers Jellyfin's name, then the resolution", () => {
