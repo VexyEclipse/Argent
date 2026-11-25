@@ -4,6 +4,7 @@ import {
   copyOnlySeasons,
   editionName,
   editionsOf,
+  episodeKey,
   episodeSeasons,
   folderOf,
   folderSeason,
@@ -264,6 +265,15 @@ describe("editions", () => {
     // A file name that says its season wins over the folder.
     const named = ep("n1", 1, 1, { MediaSources: file("X:\\Shows\\Show\\Part 2\\Show - S01E01.mkv", 1920, 1080) });
     expect(mergeDuplicateEpisodes([named])[0].ParentIndexNumber).toBe(1);
+  });
+
+  it("gives an episode's copies the same key, and a Part 2 or a folder you set apart its own", () => {
+    const withShow = (e: BaseItem) => ({ ...e, SeriesId: "show", Path: e.MediaSources?.[0]?.Path, MediaSources: undefined });
+    const part2 = ep("p2", 1, 2, { SeasonId: "part2", MediaSources: file("X:\\Shows\\Show\\Part 2\\Show - 02.mkv", 1920, 1080) });
+    expect(episodeKey(withShow(sharp(2)))).toBe(episodeKey(withShow(first(2))));
+    expect(episodeKey(withShow(part2))).not.toBe(episodeKey(withShow(sharp(2))));
+    expect(episodeKey(withShow(first(2)), { removed: ["x:/shows/show/original"] })).not.toBe(episodeKey(withShow(sharp(2))));
+    expect(episodeKey(sharp(2))).toBeNull(); // no show
   });
 
   describe("your corrections", () => {

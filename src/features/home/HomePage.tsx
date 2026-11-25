@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { episodeKey } from "@/api/duplicates";
+import { editionSettingsOf } from "@/api/editionSettings";
 import { CARD_FIELDS, getItems, getNextUp, getResume } from "@/api/jellyfin";
 import type { BaseItem } from "@/api/types";
 import { useAuth } from "@/auth/AuthProvider";
@@ -143,11 +145,16 @@ export function HomePage() {
 
   const onOpen = useCallback((item: BaseItem) => user && recordOpen(user.Id, item.Id), [user]);
 
-  // Continue Watching and Next Up overlap for shows mid-episode; keep each once.
+  // Continue Watching and Next Up overlap for shows mid-episode; keep each once. An episode
+  // in the library twice (a Blu-ray beside the first release) counts as one: Next Up can
+  // offer the copy you haven't started of the episode you're partway through.
   const hiddenNextUp = useHiddenNextUp();
   const nextUpItems = useMemo(() => {
-    const resumeIds = new Set((resume.data ?? []).map((i) => i.Id));
-    return (nextUp.data ?? []).filter((i) => !resumeIds.has(i.Id) && !hiddenNextUp.isHidden(i));
+    const resumed = resume.data ?? [];
+    const resumeIds = new Set(resumed.map((i) => i.Id));
+    const keyOf = (i: BaseItem) => (i.SeriesId ? episodeKey(i, editionSettingsOf(i.SeriesId)) : null);
+    const resumeEpisodes = new Set(resumed.map(keyOf).filter(Boolean));
+    return (nextUp.data ?? []).filter((i) => !resumeIds.has(i.Id) && !resumeEpisodes.has(keyOf(i)) && !hiddenNextUp.isHidden(i));
   }, [resume.data, nextUp.data, hiddenNextUp]);
 
   // "Remove from row": Continue Watching forgets the resume point on the server; an

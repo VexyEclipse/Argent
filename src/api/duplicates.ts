@@ -179,6 +179,17 @@ function placeBySeason(episodes: BaseItem[]): BaseItem[] {
   return out;
 }
 
+/**
+ * Which episode of its show this is, the same for each of its copies ("Show:1:2:"), as
+ * the episode list matches them (with the show's edition corrections). Null when it has
+ * no number, or isn't an episode.
+ */
+export function episodeKey(e: BaseItem, settings: EditionSettings = {}): string | null {
+  if (e.Type !== "Episode" || !e.SeriesId) return null;
+  const key = keyOf(prepared(e, settings));
+  return key && `${e.SeriesId}:${key}`;
+}
+
 function keyOf(e: BaseItem): string | null {
   // A folder that isn't an edition: its episodes are never anything's copies.
   const apart = e.SeparateFolder ? `:${folderOf(pathOf(e))}` : "";
