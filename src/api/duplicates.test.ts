@@ -4,6 +4,7 @@ import {
   copyOnlySeasons,
   editionName,
   editionsOf,
+  episodeSeasons,
   folderOf,
   hasCopies,
   looksUnnamed,
@@ -241,6 +242,12 @@ describe("editions", () => {
     expect(list.map((e) => e.Id)).toEqual(["bd1", "bd2"]);
     expect(list[1].UserData?.PlaybackPositionTicks).toBe(9);
     expect(list[0].Copies?.[0]).toMatchObject({ Id: "og1", SeasonId: "orig", Path: "X:\\Shows\\Show\\Original\\[Group B] Show - 01.mkv" });
+  });
+
+  it("knows which seasons have episodes, copies included, unless an episode's season is unknown", () => {
+    expect([...episodeSeasons(mergeDuplicateEpisodes([sharp(1), first(1), extra]))!].sort()).toEqual(["orig", "s1", "sp"]);
+    expect(episodeSeasons(mergeDuplicateEpisodes([sharp(1), ep("loose", 1, 2, { SeasonId: "00000000-0000-0000-0000-000000000000" })]))).toBeNull();
+    expect(episodeSeasons([ep("loose", 1, 2)])).toBeNull();
   });
 
   it("shows the chosen edition's copies, and falls back where it has no copy", () => {

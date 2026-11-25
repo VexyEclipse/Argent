@@ -327,6 +327,22 @@ export function copyOnlySeasons(merged: BaseItem[]): Set<string> {
   return new Set([...copied].filter((id) => !own.has(id)));
 }
 
+const NO_ID = /^[0-]*$/;
+
+/**
+ * The seasons a merged episode list's episodes and their copies are in, to tell an empty
+ * season (a "Season Unknown" left behind by a scan) from one with episodes. Null when an
+ * episode's season isn't known: Jellyfin then files it under a season by name alone.
+ */
+export function episodeSeasons(merged: BaseItem[]): Set<string> | null {
+  const ids = new Set<string>();
+  for (const x of merged.flatMap((row) => [row, ...(row.Copies ?? [])])) {
+    if (!x.SeasonId || NO_ID.test(x.SeasonId)) return null;
+    ids.add(x.SeasonId);
+  }
+  return ids;
+}
+
 const EDITIONS_KEY = "argent.editions";
 
 function readEditions(): Record<string, string> {

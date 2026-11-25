@@ -3,7 +3,7 @@
 // another edition's folder. See "editions" in api/duplicates.ts.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { chooseEdition, chosenEdition, copyOnlySeasons, editionsOf, hasCopies, type Edition } from "@/api/duplicates";
+import { chooseEdition, chosenEdition, copyOnlySeasons, editionsOf, episodeSeasons, hasCopies, type Edition } from "@/api/duplicates";
 import { getEpisodes, getLibraryRoots } from "@/api/jellyfin";
 import type { BaseItem } from "@/api/types";
 import { Icon } from "@/components/Icon";
@@ -17,7 +17,7 @@ export function editionDetail(e: Pick<Edition, "source" | "group" | "name">): st
 
 /**
  * A show's editions, and the seasons to leave out because they only hold another
- * edition's copies. Only looked into when the seasons hint at copies: a season with no
+ * edition's copies, or nothing at all. Only looked into when the seasons hint at copies: a season with no
  * number, two seasons with the same number, or copies seen on this show before.
  */
 export function useEditions(series: BaseItem, seasons: BaseItem[] | undefined) {
@@ -27,16 +27,16 @@ export function useEditions(series: BaseItem, seasons: BaseItem[] | undefined) {
     queryKey: ["episodes", series.Id, "editions"],
     queryFn: async () => {
       const [episodes, roots] = await Promise.all([getEpisodes(series.Id).then((r) => r.Items), getLibraryRoots()]);
-      return { editions: editionsOf(episodes, roots), copyOnly: copyOnlySeasons(episodes) };
+      return { editions: editionsOf(episodes, roots), copyOnly: copyOnlySeasons(episodes), filled: episodeSeasons(episodes) };
     },
     enabled: Boolean(seasons) && hint,
     staleTime: 60_000,
   });
-  const copyOnly = query.data?.copyOnly;
+  const { copyOnly, filled } = query.data ?? {};
   return {
     editions: query.data?.editions ?? [],
-    /** The seasons worth a tab: a numbered season always is. */
-    seasons: (seasons ?? []).filter((s) => (s.IndexNumber ?? null) !== null || !copyOnly?.has(s.Id)),
+    /** The seasons worth a tab: a numbered season always is; one without a number needs episodes of its own. */
+    seasons: (seasons ?? []).filter((s) => (s.IndexNumber ?? null) !== null || !(copyOnly?.has(s.Id) || (filled && !filled.has(s.Id)))),
   };
 }
 
