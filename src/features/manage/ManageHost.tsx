@@ -16,6 +16,7 @@ import { ImageEditor } from "./ImageEditor";
 import { MetadataEditor } from "./MetadataEditor";
 import { SubtitleEditor } from "./SubtitleEditor";
 import { VisibilityDialog } from "@/features/vault/VisibilityDialog";
+import { EditionsDialog } from "@/features/details/EditionsDialog";
 import { canRestrict } from "@/features/vault/access";
 import { closeMenu, endSelection, openDialog, useManageState } from "./store";
 import "./manage.css";
@@ -131,6 +132,7 @@ export function ManageHost() {
       {dialog?.kind === "images" && <ImageEditor item={items[0]} />}
       {dialog?.kind === "subtitles" && <SubtitleEditor item={items[0]} />}
       {dialog?.kind === "visibility" && <VisibilityDialog items={items} />}
+      {dialog?.kind === "editions" && <EditionsDialog series={items[0]} />}
       <IdentifyQueuePanel />
     </>
   );

@@ -1031,3 +1031,43 @@ html[data-platform="mobile"] .idq {
   width: auto;
   bottom: calc(var(--sp-3) + var(--tabbar-h, 0px));
 }
+
+/* Editions (details/EditionsDialog.tsx) */
+.editions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.editions__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius);
+}
+.editions__row.is-on {
+  border-color: var(--line-2, var(--line-1));
+  background: rgb(255 255 255 / 0.02);
+}
+.editions__folder {
+  font-weight: 600;
+}
+.editions__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  padding-left: 26px;
+}
+@media (max-width: 560px) {
+  .editions__fields {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+}
+.editions__reset {
+  margin-right: auto;
+}

@@ -191,6 +191,9 @@
   min-width: 0;
   max-width: min(520px, 100%);
 }
+.hero__version .btn--icon {
+  flex: 0 0 auto;
+}
 .hero__progress {
   width: min(320px, 100%);
   height: 3px;

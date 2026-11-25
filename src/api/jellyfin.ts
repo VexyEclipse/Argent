@@ -1,5 +1,6 @@
 import { JellyfinClient, type Query } from "./client";
 import { chosenEdition, mergeDuplicateEpisodes, noteCopies } from "./duplicates";
+import { editionSettingsOf } from "./editionSettings";
 import type {
   AuthenticationResult,
   BaseItem,
@@ -226,26 +227,39 @@ export function getLibraryRoots(): Promise<string[] | null> {
 /** A show's episodes (or one season's), with an episode that's in the library more than once shown once. */
 export const getEpisodes = async (seriesId: string, seasonId?: string) => {
   const roots = await getLibraryRoots();
-  return client()
-    .request<ItemsResult>(`/Shows/${seriesId}/Episodes`, {
-      query: {
-        userId: uid(),
-        seasonId,
-        // DateCreated: when each episode arrived (filler checks).
-        fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources", "DateCreated"],
-        enableImageTypes: IMAGE_TYPES,
-        enableUserData: true,
-      },
-    })
-    .then((r) => {
-      // Jellyfin lists a "Part 2" folder's episodes under Season 1 too: they have a tab of their own.
-      const Items = mergeDuplicateEpisodes(r.Items, roots, chosenEdition(seriesId)).filter(
-        (e) => !(seasonId && e.SeasonFromFolder && e.SeasonId && e.SeasonId !== seasonId),
-      );
-      noteCopies(seriesId, Items, !seasonId);
-      return { ...r, Items };
-    });
+  const settings = editionSettingsOf(seriesId);
+  // A folder you made an edition of another season: Jellyfin lists its episodes under the
+  // season it numbered them in, so that season's list is taken from the whole show's.
+  const remapped = Object.values(settings.added ?? {}).some((n) => n !== null);
+  const r = await client().request<ItemsResult>(`/Shows/${seriesId}/Episodes`, {
+    query: {
+      userId: uid(),
+      seasonId: remapped ? undefined : seasonId,
+      // DateCreated: when each episode arrived (filler checks).
+      fields: ["Overview", "PrimaryImageAspectRatio", "MediaSources", "DateCreated"],
+      enableImageTypes: IMAGE_TYPES,
+      enableUserData: true,
+    },
+  });
+  let Items = mergeDuplicateEpisodes(r.Items, roots, chosenEdition(seriesId), settings);
+  if (seasonId && remapped) {
+    const number = (await getSeasons(seriesId)).Items.find((s) => s.Id === seasonId)?.IndexNumber;
+    Items = Items.filter((e) => inSeasonTab(e, seasonId, number));
+  } else if (seasonId) {
+    // Jellyfin lists a "Part 2" folder's episodes under Season 1 too: they have a tab of their own.
+    Items = Items.filter((e) => !((e.SeasonFromFolder || e.SeparateFolder) && e.SeasonId && e.SeasonId !== seasonId));
+  }
+  noteCopies(seriesId, Items, !seasonId);
+  return { ...r, Items };
 };
+
+/** Whether a merged episode belongs in a season's tab, going by its number as Argent sees it. */
+function inSeasonTab(e: BaseItem, seasonId: string, number: number | undefined | null): boolean {
+  const own = e.SeasonId === seasonId || Boolean(e.Copies?.some((c) => c.SeasonId === seasonId));
+  if (number === undefined || number === null) return own;
+  if (e.SeparateFolder && e.SeasonId !== seasonId) return false;
+  return e.ParentIndexNumber === number || (e.ParentIndexNumber === undefined && own);
+}
 
 export const getLocalTrailers = (id: string) => client().request<BaseItem[]>(`/Items/${id}/LocalTrailers`, { query: { userId: uid() } });
 

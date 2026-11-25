@@ -7,6 +7,7 @@ import {
   episodeSeasons,
   folderOf,
   folderSeason,
+  foldersOf,
   hasCopies,
   looksUnnamed,
   mergeDuplicateEpisodes,
@@ -263,6 +264,39 @@ describe("editions", () => {
     // A file name that says its season wins over the folder.
     const named = ep("n1", 1, 1, { MediaSources: file("X:\\Shows\\Show\\Part 2\\Show - S01E01.mkv", 1920, 1080) });
     expect(mergeDuplicateEpisodes([named])[0].ParentIndexNumber).toBe(1);
+  });
+
+  describe("your corrections", () => {
+    const part2 = (n: number) => ep(`p${n}`, 1, n, { SeasonId: "part2", MediaSources: file(`X:\\Shows\\Show\\Part 2\\Show - 0${n}.mkv`, 1920, 1080) });
+    const s2 = (n: number) => ep(`s2-${n}`, 2, n, { SeasonId: "s2", MediaSources: file(`X:\\Shows\\Show\\Season 2\\Show - S02E0${n}.mkv`, 1920, 1080) });
+
+    it("removes an edition: its episodes are nobody's copies, and come after their season", () => {
+      const merged = mergeDuplicateEpisodes([sharp(1), first(1), sharp(2), first(2), s2(1)], null, null, { removed: ["x:/shows/show/original"] });
+      expect(merged.map((e) => e.Id)).toEqual(["bd1", "bd2", "og1", "og2", "s2-1"]);
+      expect(merged.every((e) => !e.Copies)).toBe(true);
+      expect(merged[2].SeparateFolder).toBe(true);
+      expect(editionsOf(merged)).toEqual([]);
+    });
+
+    it("adds an edition the folder's name hid, as numbered or as copies of a season you pick", () => {
+      const asNumbered = mergeDuplicateEpisodes([sharp(1), part2(1)], null, null, { added: { "x:/shows/show/part 2": null } });
+      expect(asNumbered.map((e) => e.Id)).toEqual(["bd1"]);
+      expect(asNumbered[0].Copies?.map((c) => c.Id)).toEqual(["p1"]);
+      // Jellyfin numbered them season 1; you said they're copies of season 2.
+      const ofSeason2 = mergeDuplicateEpisodes([sharp(1), part2(1), s2(1)], null, null, { added: { "x:/shows/show/part 2": 2 } });
+      expect(ofSeason2.map((e) => e.Id)).toEqual(["bd1", "s2-1"]);
+      expect(ofSeason2[1].Copies?.map((c) => c.Id)).toEqual(["p1"]);
+    });
+
+    it("names editions your way, and lists every folder with its copies", () => {
+      const merged = mergeDuplicateEpisodes([sharp(1), first(1), sharp(2), extra]);
+      expect(editionsOf(merged, null, { "x:/shows/show/original": "TV broadcast" }).map((e) => e.name)).toEqual(["Blu-ray", "TV broadcast"]);
+      expect(foldersOf(merged).map((f) => [f.folder, f.episodes, f.copied, f.seasonId])).toEqual([
+        ["x:/shows/show/original", 1, 1, "orig"],
+        ["x:/shows/show/season 1", 2, 1, "s1"],
+        ["x:/shows/show/specials", 1, 0, "sp"],
+      ]);
+    });
   });
 
   it("reads the season a folder's name says", () => {

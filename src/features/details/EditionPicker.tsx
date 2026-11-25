@@ -2,11 +2,16 @@
 // folder): which one the show page lists and Play plays, and which seasons are really just
 // another edition's folder. See "editions" in api/duplicates.ts.
 
+import { useId } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chooseEdition, chosenEdition, copyOnlySeasons, editionsOf, episodeSeasons, hasCopies, type Edition } from "@/api/duplicates";
+import { useEditionSettings } from "@/api/editionSettings";
 import { getEpisodes, getLibraryRoots } from "@/api/jellyfin";
 import type { BaseItem } from "@/api/types";
+import { useAuth } from "@/auth/AuthProvider";
+import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
+import { openDialog } from "@/features/manage/store";
 import { resolutionLabel } from "@/features/player/streamPlan";
 
 /** "1080p · Group": what tells an edition apart besides its name. */
@@ -18,16 +23,19 @@ export function editionDetail(e: Pick<Edition, "source" | "group" | "name">): st
 /**
  * A show's editions, and the seasons to leave out because they only hold another
  * edition's copies, or nothing at all. Only looked into when the seasons hint at copies: a season with no
- * number, two seasons with the same number, or copies seen on this show before.
+ * number, two seasons with the same number, copies seen on this show before, or your own
+ * corrections to its editions.
  */
 export function useEditions(series: BaseItem, seasons: BaseItem[] | undefined) {
+  const settings = useEditionSettings(series.Id);
   const numbers = seasons?.map((s) => s.IndexNumber) ?? [];
-  const hint = numbers.some((n) => n === undefined || n === null) || new Set(numbers).size < numbers.length || hasCopies(series.Id);
+  const hint =
+    numbers.some((n) => n === undefined || n === null) || new Set(numbers).size < numbers.length || hasCopies(series.Id) || Object.keys(settings).length > 0;
   const query = useQuery({
-    queryKey: ["episodes", series.Id, "editions"],
+    queryKey: ["episodes", series.Id, "editions", JSON.stringify(settings)],
     queryFn: async () => {
       const [episodes, roots] = await Promise.all([getEpisodes(series.Id).then((r) => r.Items), getLibraryRoots()]);
-      return { editions: editionsOf(episodes, roots), copyOnly: copyOnlySeasons(episodes), filled: episodeSeasons(episodes) };
+      return { editions: editionsOf(episodes, roots, settings.names), copyOnly: copyOnlySeasons(episodes), filled: episodeSeasons(episodes) };
     },
     enabled: Boolean(seasons) && hint,
     staleTime: 60_000,
@@ -40,17 +48,21 @@ export function useEditions(series: BaseItem, seasons: BaseItem[] | undefined) {
   };
 }
 
-export function EditionPicker({ seriesId, editions }: { seriesId: string; editions: Edition[] }) {
+export function EditionPicker({ series, editions }: { series: BaseItem; editions: Edition[] }) {
   const queryClient = useQueryClient();
+  const { isAdmin } = useAuth();
+  const id = useId();
   if (editions.length < 2) return null;
+  const seriesId = series.Id;
   const chosen = chosenEdition(seriesId);
   const current = editions.find((e) => e.folder === chosen) ?? editions.reduce((a, b) => (b.shown > a.shown ? b : a));
   return (
-    <label className="hero__version">
-      <span className="hero__version-label">
+    <div className="hero__version">
+      <label className="hero__version-label" htmlFor={id}>
         <Icon name="layers" size={15} /> Edition
-      </span>
+      </label>
       <select
+        id={id}
         className="select select--compact"
         value={current.folder}
         onChange={(e) => {
@@ -67,6 +79,9 @@ export function EditionPicker({ seriesId, editions }: { seriesId: string; editio
           );
         })}
       </select>
-    </label>
+      {isAdmin && (
+        <Button variant="icon" size="sm" icon="pencil" onClick={() => openDialog("editions", [series])} aria-label="Edit editions" title="Edit editions" />
+      )}
+    </div>
   );
 }

@@ -59,6 +59,7 @@ export interface MediaStream {
   DisplayTitle?: string;
   IsDefault?: boolean;
   IsForced?: boolean;
+  IsHearingImpaired?: boolean;
   IsExternal?: boolean;
   IsTextSubtitleStream?: boolean;
   SupportsExternalStream?: boolean;
@@ -186,6 +187,8 @@ export interface BaseItem {
   Copies?: { Id: string; Path?: string; SeasonId?: string; MediaSources?: MediaSource[] }[];
   /** Argent's own: the season number comes from the folder's name ("Part 2"), not Jellyfin. */
   SeasonFromFolder?: boolean;
+  /** Argent's own: in a folder you said isn't an edition, so it's nobody's copy. */
+  SeparateFolder?: boolean;
   /** Argent's own: the copy whose picture this episode shows, when it has none itself. */
   PrimaryImageItemId?: string;
   /** Argent's own: the title shown came from another copy (this one has only a file name). */

@@ -145,7 +145,7 @@ function SeriesDetails({ item }: { item: BaseItem }) {
           )
         }
       >
-        <EditionPicker seriesId={item.Id} editions={editions} />
+        <EditionPicker series={item} editions={editions} />
         {playTarget && started && (
           <p className="hero__next">
             <span className="eyebrow">Up next</span> {episodeCode(playTarget)} — {playTarget.Name}

@@ -131,6 +131,8 @@ function useActions(item: BaseItem, extras: MenuExtra[] = []): Action[][] {
   // Fix a wrong match (e.g. it picked up another show's metadata).
   if (canIdentify(item)) manage.push({ id: "identify", label: "Identify", icon: "search", run: () => openDialog("identify", [item]) });
   manage.push({ id: "images", label: "Edit images", icon: "image", run: () => openDialog("images", [item]) });
+  // Name a show's editions, or set right which folders are editions.
+  if (item.Type === "Series") manage.push({ id: "editions", label: "Editions", icon: "layers", run: () => openDialog("editions", [item]) });
   if (isFile) {
     manage.push({ id: "subtitles", label: "Edit subtitles", icon: "subtitles", run: () => openDialog("subtitles", [item]) });
     manage.push({ id: "info", label: "Media info", icon: "info", run: () => openDialog("info", [item]) });

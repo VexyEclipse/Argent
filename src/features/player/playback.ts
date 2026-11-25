@@ -1,5 +1,6 @@
 import { CARD_FIELDS, client, getEpisodes, getItemFull, getItems, getNextUp, getPlaybackInfo } from "@/api/jellyfin";
-import { editionName } from "@/api/duplicates";
+import { editionName, folderOf } from "@/api/duplicates";
+import { editionSettingsOf } from "@/api/editionSettings";
 import type { BaseItem, MediaSource, MediaStream } from "@/api/types";
 import { logEvent } from "@/features/diagnostics/log";
 import { skipFiller } from "@/features/filler/store";
@@ -240,7 +241,11 @@ export async function requestStream(item: BaseItem, opts: StreamOptions): Promis
 export function withCopies(item: BaseItem, own: MediaSource[]): Pick<StreamInfo, "versions" | "copyOf"> {
   const copies = (item.Copies ?? []).filter((c) => c.MediaSources?.[0]);
   if (!copies.length) return { versions: own };
-  const named = (v: MediaSource, path?: string): MediaSource => ({ ...v, Name: editionName(v.Path ?? path) });
+  const names = item.SeriesId ? (editionSettingsOf(item.SeriesId).names ?? {}) : {};
+  const named = (v: MediaSource, path?: string): MediaSource => {
+    const file = v.Path ?? path;
+    return { ...v, Name: names[folderOf(file) ?? ""] || editionName(file) };
+  };
   const copyOf: Record<string, string> = {};
   const others = copies.map((c) => {
     const v = c.MediaSources![0];

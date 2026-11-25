@@ -127,18 +127,45 @@ export function folderSeason(name: string): number | null {
  * numbered 01, 02… would pass for a copy of the first.
  */
 function withFolderSeason(e: BaseItem): BaseItem {
-  const path = pathOf(e);
-  if (!path || numberFromPath(path) || e.ParentIndexNumber === 0) return e;
-  const n = folderSeason(path.split(/[\\/]/).slice(-2, -1)[0] ?? "");
-  return n !== null && n !== e.ParentIndexNumber ? { ...e, ParentIndexNumber: n, SeasonFromFolder: true } : e;
+  return inSeason(e, folderSeason(pathOf(e)?.split(/[\\/]/).slice(-2, -1)[0] ?? ""));
 }
 
-/** Episodes moved to another season by their folder go after that season's others (Jellyfin sorted them as season 1). */
+/** An episode moved to season `n`, unless its file name gives the season or it's a special. */
+function inSeason(e: BaseItem, n: number | null): BaseItem {
+  if (n === null || n === e.ParentIndexNumber || e.ParentIndexNumber === 0 || numberFromPath(pathOf(e))) return e;
+  return { ...e, ParentIndexNumber: n, SeasonFromFolder: true };
+}
+
+/**
+ * Your corrections to a show's editions, by folder (as folderOf gives it): names of your
+ * own, folders that are editions though not recognised as such (with the season their
+ * episodes are copies of, when their file names don't say; null: as Jellyfin numbered
+ * them), and folders that aren't editions at all.
+ */
+export interface EditionSettings {
+  names?: Record<string, string>;
+  added?: Record<string, number | null>;
+  removed?: string[];
+}
+
+/** An episode numbered and matched as your corrections, else its folder's name, say. */
+function prepared(e: BaseItem, settings: EditionSettings): BaseItem {
+  const folder = folderOf(pathOf(e));
+  if (folder && settings.added && folder in settings.added) return inSeason(e, settings.added[folder]);
+  const moved = withFolderSeason(e);
+  return folder && settings.removed?.includes(folder) ? { ...moved, SeparateFolder: true } : moved;
+}
+
+/**
+ * Episodes moved to another season by their folder, and those of a folder that isn't an
+ * edition, go after that season's others (Jellyfin sorted them in among season 1's).
+ */
 function placeBySeason(episodes: BaseItem[]): BaseItem[] {
-  if (!episodes.some((e) => e.SeasonFromFolder)) return episodes;
-  const out = episodes.filter((e) => !e.SeasonFromFolder);
-  for (const e of episodes.filter((x) => x.SeasonFromFolder)) {
-    const n = e.ParentIndexNumber!;
+  const apart = (e: BaseItem) => e.SeasonFromFolder || e.SeparateFolder;
+  if (!episodes.some(apart)) return episodes;
+  const out = episodes.filter((e) => !apart(e));
+  for (const e of episodes.filter(apart)) {
+    const n = e.ParentIndexNumber ?? 1;
     let at = -1;
     out.forEach((x, i) => {
       if ((x.ParentIndexNumber ?? 0) > 0 && x.ParentIndexNumber! <= n) at = i;
@@ -153,9 +180,11 @@ function placeBySeason(episodes: BaseItem[]): BaseItem[] {
 }
 
 function keyOf(e: BaseItem): string | null {
-  if (e.IndexNumber !== undefined) return `${e.ParentIndexNumber ?? ""}:${e.IndexNumber}:${e.IndexNumberEnd ?? ""}`;
+  // A folder that isn't an edition: its episodes are never anything's copies.
+  const apart = e.SeparateFolder ? `:${folderOf(pathOf(e))}` : "";
+  if (e.IndexNumber !== undefined) return `${e.ParentIndexNumber ?? ""}:${e.IndexNumber}:${e.IndexNumberEnd ?? ""}${apart}`;
   const n = numberFromPath(e.MediaSources?.[0]?.Path ?? e.Path);
-  return n ? `${n.season}:${n.episode}:` : null;
+  return n ? `${n.season}:${n.episode}:${apart}` : null;
 }
 
 /**
@@ -168,10 +197,16 @@ function keyOf(e: BaseItem): string | null {
  * part-way, and borrows a picture (only from a copy whose file is still there), a proper
  * title and the story from another copy when it has none of its own. A borrowed title is
  * marked `BorrowedName`, so it can be saved to the copy kept. An episode whose folder
- * names its season ("Part 2") is numbered and placed as that season's (`SeasonFromFolder`).
+ * names its season ("Part 2") is numbered and placed as that season's (`SeasonFromFolder`),
+ * and `settings`, your corrections, can add and remove editions.
  */
-export function mergeDuplicateEpisodes(listed: BaseItem[], roots: readonly string[] | null = null, chosen: string | null = null): BaseItem[] {
-  const episodes = placeBySeason(listed.map(withFolderSeason));
+export function mergeDuplicateEpisodes(
+  listed: BaseItem[],
+  roots: readonly string[] | null = null,
+  chosen: string | null = null,
+  settings: EditionSettings = {},
+): BaseItem[] {
+  const episodes = placeBySeason(listed.map((e) => prepared(e, settings)));
   const groups = new Map<string, BaseItem[]>();
   for (const e of episodes) {
     const key = keyOf(e);
@@ -347,13 +382,20 @@ export interface Edition {
 }
 
 /** The editions in a merged episode list (from mergeDuplicateEpisodes), largest first; none when there's only one. */
-export function editionsOf(merged: BaseItem[], roots: readonly string[] | null = null): Edition[] {
+export function editionsOf(merged: BaseItem[], roots: readonly string[] | null = null, names: Record<string, string> = {}): Edition[] {
   const found = new Map<string, Edition>();
   const add = (x: Pick<BaseItem, "MediaSources" | "Path" | "LocationType">, shown: boolean) => {
     const path = pathOf(x);
     const folder = folderOf(path);
     if (!folder || x.LocationType === "Virtual" || inLibraryPath(path, roots) === false) return;
-    const e = found.get(folder) ?? { folder, name: editionName(path), group: releaseGroup(path), source: x.MediaSources?.[0], episodes: 0, shown: 0 };
+    const e = found.get(folder) ?? {
+      folder,
+      name: names[folder] || editionName(path),
+      group: releaseGroup(path),
+      source: x.MediaSources?.[0],
+      episodes: 0,
+      shown: 0,
+    };
     e.episodes++;
     if (shown) e.shown++;
     found.set(folder, e);
@@ -365,6 +407,41 @@ export function editionsOf(merged: BaseItem[], roots: readonly string[] | null =
   }
   const list = [...found.values()].sort((a, b) => b.episodes - a.episodes);
   return list.length > 1 ? list : [];
+}
+
+export interface EpisodeFolder {
+  /** As compared and remembered (see folderOf). */
+  folder: string;
+  /** One of its files, as the server gives it. */
+  path: string;
+  episodes: number;
+  /** How many of its episodes have a copy in another folder. */
+  copied: number;
+  /** The season Jellyfin filed most of its episodes in. */
+  seasonId?: string;
+}
+
+/** Every folder a merged episode list's episodes (and their copies) are in, by path. */
+export function foldersOf(merged: BaseItem[], roots: readonly string[] | null = null): EpisodeFolder[] {
+  const found = new Map<string, EpisodeFolder & { seasons: Map<string, number> }>();
+  const add = (x: Pick<BaseItem, "MediaSources" | "Path" | "LocationType" | "SeasonId">, copied: boolean) => {
+    const path = pathOf(x);
+    const folder = folderOf(path);
+    if (!path || !folder || x.LocationType === "Virtual" || inLibraryPath(path, roots) === false) return;
+    const f = found.get(folder) ?? { folder, path, episodes: 0, copied: 0, seasons: new Map() };
+    f.episodes++;
+    if (copied) f.copied++;
+    if (x.SeasonId) f.seasons.set(x.SeasonId, (f.seasons.get(x.SeasonId) ?? 0) + 1);
+    found.set(folder, f);
+  };
+  for (const row of merged) {
+    const copied = Boolean(row.Copies?.length);
+    add(row, copied);
+    for (const c of row.Copies ?? []) add(c, true);
+  }
+  return [...found.values()]
+    .map(({ seasons, ...f }) => ({ ...f, seasonId: [...seasons].sort((a, b) => b[1] - a[1])[0]?.[0] }))
+    .sort((a, b) => a.folder.localeCompare(b.folder));
 }
 
 /**
