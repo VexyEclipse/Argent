@@ -33,6 +33,8 @@ import { activeCredits, activeSkip, autoSkipNow, nextChapter, outroStart, skipLa
 import { BottomBar, PlaybackInfo, TopBar, type Menu } from "./PlayerChrome";
 import { readAutoSkip, readMatchFrameRate, readPauseInfo, readSkipEditorKey, readSound, saveSound, readQuality, readVolume, rememberedVersion, rememberVersion, saveQuality, saveVolume } from "./prefs";
 import { useAudioEffects, type SoundPrefs } from "./audioEffects";
+import { pickSource } from "./streamPlan";
+import { carriedTracks, rememberTrack } from "./trackChoices";
 import { PauseInfo } from "./PauseInfo";
 import { PlaybackReporter } from "./reporter";
 import { useMediaHealth } from "./useMediaHealth";
@@ -162,6 +164,15 @@ function PlayerRoute({ id }: { id: string }) {
   const [route, setRoute] = useState<Route>({ kind: "pending" });
   const start = item ? startTicks(item, params.get("start")) : 0;
   const version = params.get("version") ?? (item ? rememberedVersion(item.Id) : undefined);
+  // The subtitle and audio last chosen in this show, unless the link names tracks itself.
+  const carried = useMemo(
+    () => (item ? carriedTracks(user?.Id, item, pickSource(item.MediaSources, version)?.MediaStreams ?? item.MediaStreams, user?.Configuration) : {}),
+    // Worked out once per title, as it starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [item?.Id],
+  );
+  const audioParam = numberParam(params.get("audio")) ?? carried.audioIndex;
+  const subtitleParam = numberParam(params.get("subtitle")) ?? carried.subtitleIndex;
   const inGroup = Boolean(together.group);
   useEffect(() => {
     if (!item || route.kind !== "pending") return;
@@ -270,8 +281,8 @@ function PlayerRoute({ id }: { id: string }) {
         segments={skipSegments ?? []}
         startTicks={start}
         mediaSourceId={version ?? undefined}
-        audioIndex={numberParam(params.get("audio"))}
-        subtitleIndex={numberParam(params.get("subtitle"))}
+        audioIndex={audioParam}
+        subtitleIndex={subtitleParam}
         autoplay={user?.Configuration?.EnableNextEpisodeAutoPlay !== false}
         matchFrameRate={readMatchFrameRate()}
         onPosition={(s) => (position.current = s)}
@@ -291,8 +302,8 @@ function PlayerRoute({ id }: { id: string }) {
       segments={skipSegments}
       startTicks={start}
       mediaSourceId={version ?? undefined}
-      audioIndex={numberParam(params.get("audio"))}
-      subtitleIndex={numberParam(params.get("subtitle"))}
+      audioIndex={audioParam}
+      subtitleIndex={subtitleParam}
       position={position}
       exit={exit}
       playItem={playItem}
@@ -704,6 +715,8 @@ function WebPlayer(props: {
   const selectSubtitle = (index: number) => {
     setMenu(null);
     if (!stream) return;
+    // The show's next episodes start with it too.
+    rememberTrack(user?.Id, item, stream.source.MediaStreams, "Subtitle", index);
     if (subtitleChange(stream, index) === "local") {
       setStream({ ...stream, subtitleIndex: index });
       reporter.updateStreams(stream.audioIndex, index);
@@ -711,6 +724,7 @@ function WebPlayer(props: {
   };
   const selectAudio = (index: number) => {
     setMenu(null);
+    if (stream) rememberTrack(user?.Id, item, stream.source.MediaStreams, "Audio", index);
     if (stream && index !== stream.audioIndex) reload({ audioIndex: index, subtitleIndex: stream.subtitleIndex });
   };
   const selectQuality = (bitrate: number) => {
