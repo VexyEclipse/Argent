@@ -238,7 +238,10 @@ export const getEpisodes = async (seriesId: string, seasonId?: string) => {
       },
     })
     .then((r) => {
-      const Items = mergeDuplicateEpisodes(r.Items, roots, chosenEdition(seriesId));
+      // Jellyfin lists a "Part 2" folder's episodes under Season 1 too: they have a tab of their own.
+      const Items = mergeDuplicateEpisodes(r.Items, roots, chosenEdition(seriesId)).filter(
+        (e) => !(seasonId && e.SeasonFromFolder && e.SeasonId && e.SeasonId !== seasonId),
+      );
       noteCopies(seriesId, Items, !seasonId);
       return { ...r, Items };
     });

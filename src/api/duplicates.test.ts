@@ -6,6 +6,7 @@ import {
   editionsOf,
   episodeSeasons,
   folderOf,
+  folderSeason,
   hasCopies,
   looksUnnamed,
   mergeDuplicateEpisodes,
@@ -248,6 +249,38 @@ describe("editions", () => {
     expect([...episodeSeasons(mergeDuplicateEpisodes([sharp(1), first(1), extra]))!].sort()).toEqual(["orig", "s1", "sp"]);
     expect(episodeSeasons(mergeDuplicateEpisodes([sharp(1), ep("loose", 1, 2, { SeasonId: "00000000-0000-0000-0000-000000000000" })]))).toBeNull();
     expect(episodeSeasons([ep("loose", 1, 2)])).toBeNull();
+  });
+
+  it("never takes a folder named for another season for an edition", () => {
+    // Jellyfin numbers a "Part 2" folder's episodes as season 1, like the first season's.
+    const part2 = (n: number) => ep(`p${n}`, 1, n, { SeasonId: "part2", MediaSources: file(`X:\\Shows\\Show\\Part 2\\Show - 0${n}.mkv`, 1920, 1080) });
+    const merged = mergeDuplicateEpisodes([sharp(1), part2(1), sharp(2), part2(2), sharp(3), extra]);
+    expect(merged.map((e) => `${e.Id} S${e.ParentIndexNumber}`)).toEqual(["bd1 S1", "bd2 S1", "bd3 S1", "p1 S2", "p2 S2", "extra Sundefined"]);
+    expect(merged.every((e) => !e.Copies)).toBe(true);
+    expect(merged[3].SeasonFromFolder).toBe(true);
+    expect(editionsOf(merged)).toEqual([]);
+    expect([...copyOnlySeasons(merged)]).toEqual([]);
+    // A file name that says its season wins over the folder.
+    const named = ep("n1", 1, 1, { MediaSources: file("X:\\Shows\\Show\\Part 2\\Show - S01E01.mkv", 1920, 1080) });
+    expect(mergeDuplicateEpisodes([named])[0].ParentIndexNumber).toBe(1);
+  });
+
+  it("reads the season a folder's name says", () => {
+    const cases: [string, number | null][] = [
+      ["Season 2", 2],
+      ["Part 2", 2],
+      ["Part II", 2],
+      ["Season Two", 2],
+      ["2nd Season", 2],
+      ["Second Season", 2],
+      ["Show.Season.3.1080p", 3],
+      ["S2", 2],
+      ["Original", null],
+      ["Specials", null],
+      ["Show 2004", null],
+      ["Blu-ray", null],
+    ];
+    for (const [name, season] of cases) expect([name, folderSeason(name)]).toEqual([name, season]);
   });
 
   it("shows the chosen edition's copies, and falls back where it has no copy", () => {

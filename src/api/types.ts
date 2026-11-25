@@ -184,6 +184,8 @@ export interface BaseItem {
   ExtraType?: string;
   /** Argent's own: other library items for the same episode, hidden behind this one (see api/duplicates.ts). */
   Copies?: { Id: string; Path?: string; SeasonId?: string; MediaSources?: MediaSource[] }[];
+  /** Argent's own: the season number comes from the folder's name ("Part 2"), not Jellyfin. */
+  SeasonFromFolder?: boolean;
   /** Argent's own: the copy whose picture this episode shows, when it has none itself. */
   PrimaryImageItemId?: string;
   /** Argent's own: the title shown came from another copy (this one has only a file name). */

@@ -97,6 +97,61 @@ function withNumber(e: BaseItem): BaseItem {
   return n ? { ...e, IndexNumber: n.episode, ParentIndexNumber: e.ParentIndexNumber ?? n.season } : e;
 }
 
+const COUNT_WORDS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const ORDINAL_WORDS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"];
+const PART = "(?:season|series|part|cour|staffel|saison|temporada)";
+
+/**
+ * The season a folder's name says it holds, whatever Jellyfin made of it: "Season 2",
+ * "Part 2", "Part II", "Season Two", "2nd Season", "Second Season", "S2". Null when the
+ * name says none ("Original", "Specials").
+ */
+export function folderSeason(name: string): number | null {
+  const n = name.toLowerCase().replace(/[._]+/g, " ").trim();
+  const counted = new RegExp(`\\b${PART}\\s*-?\\s*(\\d{1,2}|${ROMAN.join("|")}|${COUNT_WORDS.join("|")})\\b`).exec(n);
+  if (counted) {
+    const w = counted[1];
+    return /^\d+$/.test(w) ? Number(w) : COUNT_WORDS.indexOf(w) + 1 || ROMAN.indexOf(w) + 1;
+  }
+  const ordinal = new RegExp(`\\b(?:(\\d{1,2})(?:st|nd|rd|th)|(${ORDINAL_WORDS.join("|")}))\\s+${PART}\\b`).exec(n);
+  if (ordinal) return ordinal[1] ? Number(ordinal[1]) : ORDINAL_WORDS.indexOf(ordinal[2]) + 1;
+  const short = /^s(\d{1,2})$/.exec(n);
+  return short ? Number(short[1]) : null;
+}
+
+/**
+ * An episode in a folder whose name says another season than Jellyfin gave it ("Part 2"
+ * isn't a season folder to Jellyfin, so its episodes count as season 1), moved to that
+ * season, unless its file name says the season itself. Without this, a second season
+ * numbered 01, 02… would pass for a copy of the first.
+ */
+function withFolderSeason(e: BaseItem): BaseItem {
+  const path = pathOf(e);
+  if (!path || numberFromPath(path) || e.ParentIndexNumber === 0) return e;
+  const n = folderSeason(path.split(/[\\/]/).slice(-2, -1)[0] ?? "");
+  return n !== null && n !== e.ParentIndexNumber ? { ...e, ParentIndexNumber: n, SeasonFromFolder: true } : e;
+}
+
+/** Episodes moved to another season by their folder go after that season's others (Jellyfin sorted them as season 1). */
+function placeBySeason(episodes: BaseItem[]): BaseItem[] {
+  if (!episodes.some((e) => e.SeasonFromFolder)) return episodes;
+  const out = episodes.filter((e) => !e.SeasonFromFolder);
+  for (const e of episodes.filter((x) => x.SeasonFromFolder)) {
+    const n = e.ParentIndexNumber!;
+    let at = -1;
+    out.forEach((x, i) => {
+      if ((x.ParentIndexNumber ?? 0) > 0 && x.ParentIndexNumber! <= n) at = i;
+    });
+    if (at < 0) {
+      const later = out.findIndex((x) => (x.ParentIndexNumber ?? 0) > n);
+      at = (later < 0 ? out.length : later) - 1;
+    }
+    out.splice(at + 1, 0, e);
+  }
+  return out;
+}
+
 function keyOf(e: BaseItem): string | null {
   if (e.IndexNumber !== undefined) return `${e.ParentIndexNumber ?? ""}:${e.IndexNumber}:${e.IndexNumberEnd ?? ""}`;
   const n = numberFromPath(e.MediaSources?.[0]?.Path ?? e.Path);
@@ -112,9 +167,11 @@ function keyOf(e: BaseItem): string | null {
  * the others in `Copies`, is watched if any copy is, resumes from wherever one was left
  * part-way, and borrows a picture (only from a copy whose file is still there), a proper
  * title and the story from another copy when it has none of its own. A borrowed title is
- * marked `BorrowedName`, so it can be saved to the copy kept.
+ * marked `BorrowedName`, so it can be saved to the copy kept. An episode whose folder
+ * names its season ("Part 2") is numbered and placed as that season's (`SeasonFromFolder`).
  */
-export function mergeDuplicateEpisodes(episodes: BaseItem[], roots: readonly string[] | null = null, chosen: string | null = null): BaseItem[] {
+export function mergeDuplicateEpisodes(listed: BaseItem[], roots: readonly string[] | null = null, chosen: string | null = null): BaseItem[] {
+  const episodes = placeBySeason(listed.map(withFolderSeason));
   const groups = new Map<string, BaseItem[]>();
   for (const e of episodes) {
     const key = keyOf(e);
